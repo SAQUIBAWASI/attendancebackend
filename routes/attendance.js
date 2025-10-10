@@ -10,6 +10,7 @@ router.post("/", async (req, res) => {
     const attendance = new Attendance(req.body);
     await attendance.save();
     res.json(attendance);
+    
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
