@@ -5,7 +5,7 @@ const Attendance = require("../models/Attendance.js");
 const router = express.Router();
 
 // ✅ Mark attendance part start
-router.post("/", async (req, res) => {
+router.post("/mark", async (req, res) => {
   try {
     const attendance = new Attendance(req.body);
     await attendance.save();
