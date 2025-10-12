@@ -1,60 +1,51 @@
 const mongoose = require('mongoose');
 
-const AttendanceSchema = new mongoose.Schema({
+const attendanceSchema = new mongoose.Schema({
   employeeId: { 
     type: String, 
-    required: [true, 'Employee ID is required'] 
+    required: true 
   },
   employeeName: { 
     type: String, 
-    required: [true, 'Employee name is required'] 
+    required: true 
   },
   date: { 
-    type: Date, 
-    required: [true, 'Date is required'],
-    default: Date.now 
+    type: String, 
+    required: true 
   },
   checkIn: { 
-    type: String,
-    required: [true, 'Check-in time is required']
+    type: Date 
   },
   checkOut: { 
-    type: String 
+    type: Date 
   },
   status: { 
     type: String, 
-    enum: ['present', 'absent', 'late', 'half-day'],
     default: 'present' 
-  },
-  notes: { 
-    type: String 
   },
   photo: { 
     type: String 
   },
   location: {
-    latitude: { 
-      type: Number, 
-      required: [true, 'Latitude is required'] 
-    },
-    longitude: { 
-      type: Number, 
-      required: [true, 'Longitude is required'] 
-    }
-  },
-  locationStatus: { 
-    type: String,
-    enum: ['within_office', 'outside_office', 'remote'],
-    default: 'within_office'
+    latitude: { type: Number, required: true },
+    longitude: { type: Number, required: true }
   },
   distanceFromOffice: { 
-    type: Number 
-  }
-}, {
-  timestamps: true
+    type: Number, 
+    required: true 
+  },
+  locationStatus: { 
+    type: String, 
+    enum: ['within_range', 'outside_range'],
+    required: true 
+  },
+  createdAt: { 
+    type: Date, 
+    default: Date.now 
+  },
 });
 
-// Compound index to prevent duplicate attendance for same employee on same date
-AttendanceSchema.index({ employeeId: 1, date: 1 }, { unique: true });
+// Compound index to ensure one record per employee per day
+attendanceSchema.index({ employeeId: 1, date: 1 }, { unique: true });
 
-module.exports = mongoose.model('Attendance', AttendanceSchema);
+module.exports = mongoose.model('Attendance', attendanceSchema);

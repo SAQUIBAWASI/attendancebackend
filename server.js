@@ -1,66 +1,64 @@
 // ✅ Load environment variables
 require("dotenv").config();
 
-// ✅ Import packages
+// ✅ Import required packages
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 
-// ✅ Create Express app
+// ✅ Initialize Express app
 const app = express();
 
-// ✅ MIDDLEWARE - ORDER MATTERS!
-
-// 1️⃣ CORS
+// ✅ Middleware setup
 app.use(
   cors({
-    origin: "http://localhost:5173", // frontend URL
+    origin: "http://localhost:5173", // frontend origin
     credentials: true,
   })
 );
 
-// 2️⃣ Body parsers (must come BEFORE routes)
-app.use(express.json({ limit: "10mb" })); // JSON body parse
-app.use(express.urlencoded({ extended: true, limit: "10mb" })); // URL-encoded parse
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// 3️⃣ Debugging middleware (optional, very useful)
-app.use((req, res, next) => {
-  console.log(`🔍 ${req.method} ${req.url}`);
-  console.log("📦 Content-Type:", req.headers["content-type"]);
-  console.log("📊 Body length:", Object.keys(req.body).length);
-  console.log("📝 Body content:", req.body);
-  next();
-});
+// ✅ Connect MongoDB
+mongoose
+  .connect(process.env.MONGO_URI, { dbName: "attendanceDB" })
+  .then(() => console.log("✅ MongoDB Connected Successfully!"))
+  .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
-// ✅ TEST ROUTE
-app.post("/api/debug-test", (req, res) => {
-  console.log("✅ Debug Test Body:", req.body);
-  res.json({
-    message: "Debug successful!",
-    receivedBody: req.body,
-    bodyKeys: Object.keys(req.body),
-  });
-});
-
-// ✅ ROUTES (keep AFTER middleware)
+// ✅ ROUTES
 app.use("/api/auth", require("./routes/auth.routes"));
 app.use("/api/employees", require("./routes/employee.routes"));
-app.use("/api/attendance", require("./routes/attendance.routes"));
 app.use("/api/leaves", require("./routes/leave.routes"));
 app.use("/api/department", require("./routes/department.routes"));
 app.use("/api/roles", require("./routes/role.routes"));
 app.use("/api/shifts", require("./routes/shift.routes"));
+app.use("/api/attendance", require("./routes/attendance.routes")); // ✅ Attendance routes
 
-// ✅ MongoDB Connection & Server Start
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log("✅ MongoDB Connected Successfully!");
-    const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.error("❌ MongoDB Connection Error:", err);
+// ✅ Default test route
+app.get("/", (req, res) => {
+  res.json({
+    message: "✅ Attendance API is running successfully!",
+    availableRoutes: {
+      auth: "/api/auth",
+      employees: "/api/employees",
+      leaves: "/api/leaves",
+      department: "/api/department",
+      roles: "/api/roles",
+      shifts: "/api/shifts",
+      attendance: {
+        mark: "POST /api/attendance",
+        get: "GET /api/attendance/:employeeId/:date",
+        employee: "GET /api/attendance/employee/:employeeId"
+      }
+    },
   });
+});
+
+// ✅ Start the Server
+const PORT = process.env.PORT || 5001;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📍 Mark attendance: POST http://localhost:${PORT}/api/attendance`);
+  console.log(`📍 Frontend: http://localhost:5173`);
+});

@@ -1,8 +1,18 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const { markAttendance } = require("../controller/attendance.controller");
+const { 
+  markAttendance, 
+  getAttendance,
+  getEmployeeAttendance 
+} = require('../controller/attendance.controller');
 
-// POST attendance
-router.post("/mark", markAttendance);
+// ✅ Mark attendance
+router.post('/', markAttendance);
+
+// ✅ Get specific attendance record
+router.get('/:employeeId/:date', getAttendance);
+
+// ✅ Get all attendance for an employee
+router.get('/employee/:employeeId', getEmployeeAttendance);
 
 module.exports = router;
