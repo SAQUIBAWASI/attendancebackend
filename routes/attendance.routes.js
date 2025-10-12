@@ -3,11 +3,14 @@ const router = express.Router();
 const { 
   markAttendance, 
   getAttendance,
-  getEmployeeAttendance 
+  getEmployeeAttendance, 
+  getAllAttendance
 } = require('../controller/attendance.controller');
 
 // ✅ Mark attendance
-router.post('/', markAttendance);
+router.post('/add-attendance', markAttendance);
+router.get('/allattendance', getAllAttendance);
+
 
 // ✅ Get specific attendance record
 router.get('/:employeeId/:date', getAttendance);

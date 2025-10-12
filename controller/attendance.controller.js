@@ -103,6 +103,36 @@ exports.markAttendance = async (req, res) => {
   }
 };
 
+
+
+exports.getAllAttendance = async (req, res) => {
+  try {
+    console.log("📥 Get All Attendance API Hit!");
+
+    const { employeeId, date } = req.query;
+
+    // 🔍 Optional filters
+    let filter = {};
+    if (employeeId) filter.employeeId = employeeId;
+    if (date) filter.date = date; // Make sure frontend sends date in "YYYY-MM-DD" format
+
+    const attendanceRecords = await Attendance.find(filter).sort({ date: -1 });
+
+    res.status(200).json({
+      success: true,
+      total: attendanceRecords.length,
+      data: attendanceRecords,
+    });
+
+  } catch (err) {
+    console.error("❌ Error fetching attendance:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message || "Internal server error",
+    });
+  }
+};
+
 // ✅ Get attendance by employee ID and date
 exports.getAttendance = async (req, res) => {
   try {

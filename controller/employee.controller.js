@@ -56,3 +56,29 @@ exports.getEmployees = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+
+
+// 🟢 Employee Login (via phone number only)
+exports.loginEmployee = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ success: false, message: "Phone number is required" });
+    }
+
+    const employee = await Employee.findOne({ phone });
+    if (!employee) {
+      return res.status(401).json({ success: false, message: "Invalid phone number" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
+      employee,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

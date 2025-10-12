@@ -10,12 +10,23 @@ const cors = require("cors");
 const app = express();
 
 // ✅ Middleware setup
+const allowedOrigins = ["http://localhost:5173", "http://localhost:3000"];
+
 app.use(
   cors({
-    origin: "http://localhost:5173", // frontend origin
+    origin: function (origin, callback) {
+      // allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        return callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   })
 );
+
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
@@ -34,6 +45,8 @@ app.use("/api/department", require("./routes/department.routes"));
 app.use("/api/roles", require("./routes/role.routes"));
 app.use("/api/shifts", require("./routes/shift.routes"));
 app.use("/api/attendance", require("./routes/attendance.routes")); // ✅ Attendance routes
+app.use("/api/admin", require("./routes/adminroutes")); // ✅ Attendance routes
+
 
 // ✅ Default test route
 app.get("/", (req, res) => {
@@ -42,6 +55,7 @@ app.get("/", (req, res) => {
     availableRoutes: {
       auth: "/api/auth",
       employees: "/api/employees",
+      admin: "/api/admin",
       leaves: "/api/leaves",
       department: "/api/department",
       roles: "/api/roles",
@@ -60,5 +74,5 @@ const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📍 Mark attendance: POST http://localhost:${PORT}/api/attendance`);
-  console.log(`📍 Frontend: http://localhost:5173`);
+  console.log(`📍 Frontend: http://localhost:3000`);
 });

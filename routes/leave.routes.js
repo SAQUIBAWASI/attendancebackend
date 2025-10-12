@@ -13,6 +13,6 @@ router.post("/add-leave", addLeave);
 router.get("/leaves", getLeaves);
 
 // ✅ Approve / Reject
-router.put("/leaves/:id", updateLeaveStatus);
+router.put("/updateleaves/:id", updateLeaveStatus);
 
 module.exports = router;
