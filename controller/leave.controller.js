@@ -44,6 +44,23 @@ exports.getLeaves = async (req, res) => {
   }
 };
 
+
+
+exports.getPendingLeaves = async (req, res) => {
+  try {
+    // Find leaves where status is "pending", newest first
+    const pendingLeaves = await Leave.find({ status: "pending" }).sort({ createdAt: -1 });
+
+    res.status(200).json({
+      message: "Pending leave requests fetched successfully",
+      records: pendingLeaves,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching pending leaves:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 // ✅ Update leave status (approve / reject)
 exports.updateLeaveStatus = async (req, res) => {
   try {
@@ -70,3 +87,27 @@ exports.updateLeaveStatus = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
+// Controller to get leaves of a specific employee
+exports.getLeavesByEmployee = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    if (!employeeId) {
+      return res.status(400).json({ message: "Employee ID is required" });
+    }
+
+    // Find leaves for the given employee, sorted by creation date descending
+    const leaves = await Leave.find({ employeeId }).sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      records: leaves, // returning as "records" similar to your frontend response
+    });
+  } catch (error) {
+    console.error("❌ Error fetching employee leaves:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+

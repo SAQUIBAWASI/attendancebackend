@@ -1,84 +1,92 @@
-
 const Employee = require("../models/Employee");
 
+// ➕ Add a new employee
 exports.addEmployee = async (req, res) => {
   try {
-    console.log('🔸 Incoming data:', req.body); // Debug log
+    const { name, email, password, department, role, joinDate, phone, address, employeeId } = req.body;
 
-    const {
-      name,
-      email,
-      department,
-      role,
-      joinDate,
-      phone,
-      address,
-      employeeId,
-    } = req.body;
+    const existingEmail = await Employee.findOne({ email });
+    if (existingEmail) return res.status(400).json({ message: "Email already exists" });
 
-    if (!name || !email || !employeeId) {
-      console.log('🔴 Missing required fields');
-      return res.status(400).json({ error: 'Name, email, and employeeId are required.' });
-    }
+    const existingId = await Employee.findOne({ employeeId });
+    if (existingId) return res.status(400).json({ message: "Employee ID already exists" });
 
     const employee = new Employee({
       name,
       email,
-      department,
+      password,
       role,
-      joinDate: joinDate ? new Date(joinDate) : null, // Ensure date format
-      phone,
-      address,
+      department,
       employeeId,
+      joinDate,
+      address,
+      phone,
     });
 
     await employee.save();
-    console.log('✅ Employee saved successfully:', employee); // Confirm save
-    res.status(201).json(employee);
+    res.status(201).json({ message: "Employee added successfully", employee });
   } catch (error) {
-    console.error('❌ Error saving employee:', error); // Show full error
-
-    if (error.code === 11000) {
-      const duplicateField = Object.keys(error.keyPattern)[0];
-      return res.status(400).json({ error: `${duplicateField} must be unique.` });
-    }
-
-    res.status(400).json({ error: error.message });
+    res.status(500).json({ message: "Server Error", error });
   }
 };
 
-
+// 📋 Get all employees
 exports.getEmployees = async (req, res) => {
   try {
     const employees = await Employee.find();
     res.json(employees);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ message: "Server Error", error });
   }
 };
 
+// 🔍 Get single employee by email or employeeId
+exports.getEmployeeByEmail = async (req, res) => {
+  try {
+    const { email, employeeId } = req.query;
 
+    if (!email && !employeeId)
+      return res.status(400).json({ message: "Email or Employee ID is required" });
 
-// 🟢 Employee Login (via phone number only)
+    const query = email ? { email } : { employeeId };
+    const employee = await Employee.findOne(query);
+
+    if (!employee) return res.status(404).json({ message: "Employee not found" });
+
+    res.json(employee);
+  } catch (error) {
+    res.status(500).json({ message: "Server Error", error });
+  }
+};
+
+// 🔐 Employee login (email or employeeId)
 exports.loginEmployee = async (req, res) => {
   try {
-    const { phone } = req.body;
+    const { email, employeeId, password } = req.body;
 
-    if (!phone) {
-      return res.status(400).json({ success: false, message: "Phone number is required" });
-    }
+    if (!email && !employeeId)
+      return res.status(400).json({ message: "Email or Employee ID is required" });
 
-    const employee = await Employee.findOne({ phone });
-    if (!employee) {
-      return res.status(401).json({ success: false, message: "Invalid phone number" });
-    }
+    const query = email ? { email } : { employeeId };
+    const employee = await Employee.findOne(query);
 
-    res.status(200).json({
-      success: true,
+    if (!employee) return res.status(404).json({ message: "Employee not found" });
+    if (employee.password !== password)
+      return res.status(401).json({ message: "Invalid password" });
+
+    res.json({
       message: "Login successful",
-      employee,
+      employee: {
+        id: employee._id,
+        name: employee.name,
+        email: employee.email,
+        role: employee.role,
+        department: employee.department,
+        employeeId: employee.employeeId,
+        joinDate: employee.joinDate,
+      },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ message: "Server Error", error });
   }
 };
