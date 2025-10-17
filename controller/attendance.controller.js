@@ -1,53 +1,38 @@
 const Attendance = require("../models/Attendance");
 
-// ---------------- Check-In ----------------
-// Timely Health Office Coordinates
+// Office Coordinates
 const OFFICE_COORDS = { lat: 17.4458661, lng: 78.3849383 };
-const ONSITE_RADIUS_M = 50; // 50 meters
+const ONSITE_RADIUS_M = 50;
 
-// ✅ Haversine formula to calculate distance (in meters)
+// Haversine formula
 function haversineDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371000; // Radius of Earth in meters
+  const R = 6371000;
   const toRad = (deg) => (deg * Math.PI) / 180;
-
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
 
+// ✅ Check-In
 exports.checkIn = async (req, res) => {
   try {
     const { employeeId, employeeEmail, latitude, longitude } = req.body;
+    if (!employeeId) return res.status(400).json({ message: "Employee ID required" });
+    if (!latitude || !longitude) return res.status(400).json({ message: "Latitude/Longitude required" });
 
-    if (!latitude || !longitude) {
-      return res
-        .status(400)
-        .json({ message: "Latitude and longitude are required" });
-    }
-
-    // ✅ Calculate distance between employee and office
-    const distance = haversineDistance(
-      OFFICE_COORDS.lat,
-      OFFICE_COORDS.lng,
-      parseFloat(latitude),
-      parseFloat(longitude)
-    );
-
-    // ✅ Determine if employee is onsite
+    const distance = haversineDistance(OFFICE_COORDS.lat, OFFICE_COORDS.lng, parseFloat(latitude), parseFloat(longitude));
     const onsite = distance <= ONSITE_RADIUS_M;
 
-    // ✅ Auto current date & time for check-in
-    const checkInTime = new Date();
-
-    // ✅ Create attendance record (no photoUrl)
     const attendance = await Attendance.create({
       employeeId,
       employeeEmail,
-      checkInTime,
+      checkInTime: new Date(),
       latitude,
       longitude,
       distance,
@@ -55,92 +40,55 @@ exports.checkIn = async (req, res) => {
       status: "checked-in"
     });
 
-    // ✅ Send response
     res.status(200).json({
-      message: onsite
-        ? "Check-In successful (Onsite)"
-        : "Check-In successful (Offsite)",
-      checkInTime,
-      distance: `${distance.toFixed(2)} meters`,
-      onsite,
+      message: onsite ? "Check-In successful (Onsite)" : "Check-In successful (Offsite)",
       attendance
     });
   } catch (err) {
-    console.error("Check-in error:", err);
-    res.status(500).json({ message: "Failed to Check-In", error: err.message });
+    console.error(err);
+    res.status(500).json({ message: "Check-In failed", error: err.message });
   }
 };
 
-// ---------------- Check-Out ----------------
+// ✅ Check-Out
 exports.checkOut = async (req, res) => {
   try {
     const { employeeId, employeeEmail, latitude, longitude } = req.body;
+    if (!employeeId) return res.status(400).json({ message: "Employee ID required" });
+    if (!latitude || !longitude) return res.status(400).json({ message: "Latitude/Longitude required" });
 
-    if (!latitude || !longitude) {
-      return res
-        .status(400)
-        .json({ message: "Latitude and longitude are required" });
-    }
-
-    const latNum = parseFloat(latitude);
-    const lonNum = parseFloat(longitude);
-
-    // ✅ Calculate distance from office
-    const distance = haversineDistance(
-      OFFICE_COORDS.lat,
-      OFFICE_COORDS.lng,
-      latNum,
-      lonNum
-    );
-
-    // ✅ Determine if employee is onsite
+    const distance = haversineDistance(OFFICE_COORDS.lat, OFFICE_COORDS.lng, parseFloat(latitude), parseFloat(longitude));
     const onsite = distance <= ONSITE_RADIUS_M;
 
-    // ✅ Find today's check-in record for this employee
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
 
     const attendance = await Attendance.findOne({
       employeeId,
       status: "checked-in",
-      checkInTime: { $gte: today },
-    });
+      checkInTime: { $gte: startOfToday },
+    }).sort({ checkInTime: -1 });
 
-    if (!attendance) {
-      return res
-        .status(400)
-        .json({ message: "No check-in record found for today" });
-    }
+    if (!attendance) return res.status(400).json({ message: "No check-in record found for today" });
 
-    // ✅ Update the record with checkOutTime, distance, onsite, totalHours
     const checkOutTime = new Date();
-    const totalHours =
-      (checkOutTime.getTime() - attendance.checkInTime.getTime()) / 1000 / 3600; // in hours
+    const totalHours = (checkOutTime - attendance.checkInTime) / 1000 / 3600;
 
     attendance.checkOutTime = checkOutTime;
     attendance.distance = distance;
     attendance.onsite = onsite;
-    attendance.status = "checked-out";
     attendance.totalHours = parseFloat(totalHours.toFixed(2));
+    attendance.status = "checked-out";
 
     await attendance.save();
 
     res.status(200).json({
-      message: onsite
-        ? "Check-Out successful (Onsite)"
-        : "Check-Out successful (Offsite)",
-      checkInTime: attendance.checkInTime,
-      checkOutTime,
-      totalHours: attendance.totalHours,
-      distance: `${distance.toFixed(2)} meters`,
-      onsite,
-      attendance,
+      message: onsite ? "Check-Out successful (Onsite)" : "Check-Out successful (Offsite)",
+      attendance
     });
   } catch (err) {
-    console.error("Check-Out error:", err);
-    res
-      .status(500)
-      .json({ message: "Failed to Check-Out", error: err.message });
+    console.error(err);
+    res.status(500).json({ message: "Check-Out failed", error: err.message });
   }
 };
 
