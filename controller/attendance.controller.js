@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Attendance = require("../models/Attendance");
 
 // Office Coordinates
@@ -92,18 +93,14 @@ exports.checkOut = async (req, res) => {
   }
 };
 
-
-
-// ---------------- Get All Attendance Records for an Employee ----------------
+// ✅ Get Attendance for One Employee (Fixed)
 exports.getEmployeeAttendance = async (req, res) => {
   try {
-    const { employeeId } = req.params; // get employeeId from URL param
+    const { employeeId } = req.params;
 
-    if (!employeeId) {
-      return res.status(400).json({ message: "Employee ID is required" });
-    }
+    if (!employeeId) return res.status(400).json({ message: "Employee ID is required" });
 
-    // ✅ Find all attendance records for this employee, sorted by date descending
+    // Assuming employeeId is stored as string in Attendance collection
     const records = await Attendance.find({ employeeId }).sort({ checkInTime: -1 });
 
     res.status(200).json({
@@ -118,18 +115,10 @@ exports.getEmployeeAttendance = async (req, res) => {
     });
   }
 };
-
-
-
-
-
-// ---------------- Get All Attendance ----------------
-// Controller: get all attendance records for all employees
+// ✅ Get All Attendance
 exports.getAllAttendance = async (req, res) => {
   try {
-    // ✅ Fetch all attendance records, newest first
-    const records = await Attendance.find();
-
+    const records = await Attendance.find().sort({ checkInTime: -1 });
     res.status(200).json({
       message: "All employee attendance records fetched successfully",
       records,
@@ -143,20 +132,16 @@ exports.getAllAttendance = async (req, res) => {
   }
 };
 
-
-
+// ✅ Get Today's Attendance
 exports.getTodayAttendance = async (req, res) => {
   try {
-    // ✅ Set today's start and end time
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    // ✅ Fetch attendance where checkInTime is today
     const records = await Attendance.find({
-      checkInTime: { $gte: todayStart, $lte: todayEnd }
+      checkInTime: { $gte: todayStart, $lte: todayEnd },
     }).sort({ checkInTime: -1 });
 
     res.status(200).json({
@@ -172,26 +157,18 @@ exports.getTodayAttendance = async (req, res) => {
   }
 };
 
-
-
-
-// controllers/attendanceController.js
-
+// ✅ Get Late Attendance
 exports.getLateAttendance = async (req, res) => {
   try {
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // start of today
-
-    // 10:00 AM today
+    today.setHours(0, 0, 0, 0);
     const tenAM = new Date(today);
     tenAM.setHours(10, 0, 0, 0);
 
-    // Fetch records checked in after 10:00 AM
     const lateRecords = await Attendance.find({
-      checkInTime: { $gte: tenAM }, // after 10 AM
-      status: "checked-in",
-      createdAt: { $gte: today } // ensure today's records only
-    }).sort({ checkInTime: 1 }); // earliest late first
+      checkInTime: { $gte: tenAM },
+      createdAt: { $gte: today },
+    }).sort({ checkInTime: 1 });
 
     res.status(200).json({
       message: "Late attendance records fetched successfully",
@@ -205,4 +182,3 @@ exports.getLateAttendance = async (req, res) => {
     });
   }
 };
-

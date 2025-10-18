@@ -11,15 +11,16 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Routes
+// ✅ Correct route order
 router.post("/checkin", upload.single("photo"), attendanceController.checkIn);
 router.post("/checkout", upload.single("photo"), attendanceController.checkOut);
-router.get("/allattendance", attendanceController.getAllAttendance);
+
+// 👇 Employee-specific route FIRST
 router.get("/myattendance/:employeeId", attendanceController.getEmployeeAttendance);
+
+// 👇 Then admin/global routes
+router.get("/allattendance", attendanceController.getAllAttendance);
 router.get("/todaysattendance", attendanceController.getTodayAttendance);
 router.get("/lateattendance", attendanceController.getLateAttendance);
-
-
-
 
 module.exports = router;

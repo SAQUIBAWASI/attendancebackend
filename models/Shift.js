@@ -1,26 +1,32 @@
-// models/shift.model.js
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-const shiftSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    trim: true,
+const shiftSchema = new mongoose.Schema(
+  {
+    employeeId: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    employeeName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    shiftType: {
+      type: String,
+      required: true,
+      enum: ["A", "B", "C"],
+    },
+    startTime: {
+      type: String,
+      required: true,
+    },
+    endTime: {
+      type: String,
+      required: true,
+    },
   },
-  startTime: {
-    type: String,
-    required: true,
-  },
-  endTime: {
-    type: String,
-    required: true,
-  },
-  days: {
-    type: [String],
-    required: true,
-    validate: [arr => arr.length > 0, 'At least one day is required'],
-  },
-}, { timestamps: true });
+  { timestamps: true }
+);
 
-const Shift = mongoose.model('Shift', shiftSchema);
-module.exports = Shift;
+module.exports = mongoose.model("Shift", shiftSchema);
