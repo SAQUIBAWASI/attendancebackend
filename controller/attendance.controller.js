@@ -1,65 +1,110 @@
 const mongoose = require("mongoose");
 const Attendance = require("../models/Attendance");
 
-// Office Coordinates
-const OFFICE_COORDS = { lat: 17.4458661, lng: 78.3849383 };
-const ONSITE_RADIUS_M = 50;
+// ✅ Office Coordinates (update only if office moves)
+const OFFICE_COORDS = { lat: 17.448294, lng: 78.391487 }; 
+const ONSITE_RADIUS_M = 500; // allowed distance in meters
 
-// Haversine formula
+// ✅ Haversine Formula (to calculate distance in meters)
 function haversineDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
+  const R = 6371000; // radius of Earth in meters
   const toRad = (deg) => (deg * Math.PI) / 180;
+
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
+
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) *
       Math.cos(toRad(lat2)) *
       Math.sin(dLon / 2) ** 2;
+
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return Math.round(R * c); // rounded to nearest meter
 }
 
-// ✅ Check-In
+// ✅ Check-In Controller
 exports.checkIn = async (req, res) => {
   try {
     const { employeeId, employeeEmail, latitude, longitude } = req.body;
-    if (!employeeId) return res.status(400).json({ message: "Employee ID required" });
-    if (!latitude || !longitude) return res.status(400).json({ message: "Latitude/Longitude required" });
 
-    const distance = haversineDistance(OFFICE_COORDS.lat, OFFICE_COORDS.lng, parseFloat(latitude), parseFloat(longitude));
+    if (!employeeId)
+      return res.status(400).json({ message: "Employee ID required" });
+    if (!latitude || !longitude)
+      return res
+        .status(400)
+        .json({ message: "Latitude/Longitude required" });
+
+    const userLat = parseFloat(latitude);
+    const userLng = parseFloat(longitude);
+
+    // 🧭 Calculate distance & onsite status
+    const distance = haversineDistance(
+      OFFICE_COORDS.lat,
+      OFFICE_COORDS.lng,
+      userLat,
+      userLng
+    );
     const onsite = distance <= ONSITE_RADIUS_M;
 
+    // 🪵 Debug Logs (to confirm distance + status)
+    console.log("Office:", OFFICE_COORDS);
+    console.log("User:", { userLat, userLng });
+    console.log("Distance (m):", distance);
+    console.log("Onsite:", onsite);
+
+    // ✅ Save Check-In Record
     const attendance = await Attendance.create({
       employeeId,
       employeeEmail,
       checkInTime: new Date(),
-      latitude,
-      longitude,
+      latitude: userLat,
+      longitude: userLng,
       distance,
       onsite,
-      status: "checked-in"
+      status: "checked-in",
     });
 
     res.status(200).json({
-      message: onsite ? "Check-In successful (Onsite)" : "Check-In successful (Offsite)",
-      attendance
+      message: onsite
+        ? `✅ Check-In successful (Onsite: ${distance}m away)`
+        : `🚫 Check-In successful (Offsite: ${distance}m away)`,
+      attendance,
     });
   } catch (err) {
-    console.error(err);
+    console.error("❌ Check-In Error:", err);
     res.status(500).json({ message: "Check-In failed", error: err.message });
   }
 };
 
-// ✅ Check-Out
+// ✅ Check-Out Controller
 exports.checkOut = async (req, res) => {
   try {
     const { employeeId, employeeEmail, latitude, longitude } = req.body;
-    if (!employeeId) return res.status(400).json({ message: "Employee ID required" });
-    if (!latitude || !longitude) return res.status(400).json({ message: "Latitude/Longitude required" });
 
-    const distance = haversineDistance(OFFICE_COORDS.lat, OFFICE_COORDS.lng, parseFloat(latitude), parseFloat(longitude));
+    if (!employeeId)
+      return res.status(400).json({ message: "Employee ID required" });
+    if (!latitude || !longitude)
+      return res
+        .status(400)
+        .json({ message: "Latitude/Longitude required" });
+
+    const userLat = parseFloat(latitude);
+    const userLng = parseFloat(longitude);
+
+    const distance = haversineDistance(
+      OFFICE_COORDS.lat,
+      OFFICE_COORDS.lng,
+      userLat,
+      userLng
+    );
     const onsite = distance <= ONSITE_RADIUS_M;
+
+    // 🪵 Debug Logs
+    console.log("Office:", OFFICE_COORDS);
+    console.log("User:", { userLat, userLng });
+    console.log("Distance (m):", distance);
+    console.log("Onsite:", onsite);
 
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
@@ -70,7 +115,10 @@ exports.checkOut = async (req, res) => {
       checkInTime: { $gte: startOfToday },
     }).sort({ checkInTime: -1 });
 
-    if (!attendance) return res.status(400).json({ message: "No check-in record found for today" });
+    if (!attendance)
+      return res
+        .status(400)
+        .json({ message: "No check-in record found for today" });
 
     const checkOutTime = new Date();
     const totalHours = (checkOutTime - attendance.checkInTime) / 1000 / 3600;
@@ -84,24 +132,27 @@ exports.checkOut = async (req, res) => {
     await attendance.save();
 
     res.status(200).json({
-      message: onsite ? "Check-Out successful (Onsite)" : "Check-Out successful (Offsite)",
-      attendance
+      message: onsite
+        ? `✅ Check-Out successful (Onsite: ${distance}m away)`
+        : `🚫 Check-Out successful (Offsite: ${distance}m away)`,
+      attendance,
     });
   } catch (err) {
-    console.error(err);
+    console.error("❌ Check-Out Error:", err);
     res.status(500).json({ message: "Check-Out failed", error: err.message });
   }
 };
 
-// ✅ Get Attendance for One Employee (Fixed)
+// ✅ Get Attendance for One Employee
 exports.getEmployeeAttendance = async (req, res) => {
   try {
     const { employeeId } = req.params;
+    if (!employeeId)
+      return res.status(400).json({ message: "Employee ID is required" });
 
-    if (!employeeId) return res.status(400).json({ message: "Employee ID is required" });
-
-    // Assuming employeeId is stored as string in Attendance collection
-    const records = await Attendance.find({ employeeId }).sort({ checkInTime: -1 });
+    const records = await Attendance.find({ employeeId }).sort({
+      checkInTime: -1,
+    });
 
     res.status(200).json({
       message: "Employee attendance records fetched successfully",
@@ -115,6 +166,7 @@ exports.getEmployeeAttendance = async (req, res) => {
     });
   }
 };
+
 // ✅ Get All Attendance
 exports.getAllAttendance = async (req, res) => {
   try {
@@ -178,6 +230,59 @@ exports.getLateAttendance = async (req, res) => {
     console.error("Get Late Attendance error:", err);
     res.status(500).json({
       message: "Failed to fetch late attendance records",
+      error: err.message,
+    });
+  }
+};
+// ✅ Attendance Summary API (for Dashboard)
+const Employee = require("../models/Employee"); // make sure you have Employee model
+
+exports.getAttendanceSummary = async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // 1️⃣ Count all employees
+    const totalEmployees = await Employee.countDocuments();
+
+    // 2️⃣ Get today's attendance
+    const todayRecords = await Attendance.find({
+      checkInTime: { $gte: today, $lte: endOfDay },
+    });
+
+    const presentToday = todayRecords.length;
+
+    // 3️⃣ Late employees (check-in after 10 AM)
+    const tenAM = new Date(today);
+    tenAM.setHours(10, 0, 0, 0);
+    const lateToday = todayRecords.filter(
+      (rec) => new Date(rec.checkInTime) >= tenAM
+    ).length;
+
+    // 4️⃣ Absent = total - present
+    const absentToday = Math.max(totalEmployees - presentToday, 0);
+
+    // 5️⃣ Attendance Rate %
+    const attendanceRate = totalEmployees
+      ? ((presentToday / totalEmployees) * 100).toFixed(1)
+      : 0;
+
+    res.status(200).json({
+      message: "Attendance summary fetched successfully",
+      totals: {
+        employees: totalEmployees,
+        presentToday,
+        absentToday,
+        lateToday,
+        attendanceRate,
+      },
+    });
+  } catch (err) {
+    console.error("❌ Attendance Summary Error:", err);
+    res.status(500).json({
+      message: "Failed to fetch attendance summary",
       error: err.message,
     });
   }

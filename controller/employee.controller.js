@@ -90,3 +90,24 @@ exports.loginEmployee = async (req, res) => {
     res.status(500).json({ message: "Server Error", error });
   }
 };
+// 🔹 Get attendance summary for one employee
+exports.getEmployeeAttendanceSummary = async (req, res) => {
+  try {
+    const { email, employeeId } = req.query;
+    if (!email && !employeeId) return res.status(400).json({ message: "Email or Employee ID required" });
+
+    const query = email ? { email } : { employeeId };
+    const records = await Attendance.find(query);
+
+    const totalDays = records.length;
+    const presentDays = records.filter(r => r.status === "Present").length;
+    const absentDays = records.filter(r => r.status === "Absent").length;
+    const attendanceRate = totalDays === 0 ? 0 : ((presentDays / totalDays) * 100).toFixed(2);
+
+    res.json({ totalDays, presentDays, absentDays, attendanceRate });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server Error", error });
+  }
+};
+

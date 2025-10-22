@@ -22,5 +22,6 @@ router.get("/myattendance/:employeeId", attendanceController.getEmployeeAttendan
 router.get("/allattendance", attendanceController.getAllAttendance);
 router.get("/todaysattendance", attendanceController.getTodayAttendance);
 router.get("/lateattendance", attendanceController.getLateAttendance);
+router.get("/summary", attendanceController.getAttendanceSummary);
 
 module.exports = router;

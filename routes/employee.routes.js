@@ -4,6 +4,7 @@ const {
   getEmployees,
   getEmployeeByEmail,
   loginEmployee,
+ getEmployeeAttendanceSummary,
 } = require("../controller/employee.controller");
 
 const router = express.Router();
@@ -19,5 +20,8 @@ router.get("/get-employee", getEmployeeByEmail);
 
 // 🔐 Employee login
 router.post("/login", loginEmployee);
+
+// 📊 Get attendance summary
+router.get("/attendance-summary", getEmployeeAttendanceSummary); // ✅ add this route
 
 module.exports = router;
