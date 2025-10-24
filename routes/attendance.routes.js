@@ -50,6 +50,7 @@ router.get("/myattendance/:employeeId", attendanceController.getEmployeeAttendan
 router.get("/allattendance", attendanceController.getAllAttendance);
 router.get("/today", attendanceController.getTodayAttendance);
 router.get("/lateattendance", attendanceController.getLateAttendance);
+router.get("/absenttoday", attendanceController.getAbsentToday);
 router.get("/summary", attendanceController.getAttendanceSummary);
 
 module.exports = router;

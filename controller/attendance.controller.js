@@ -703,10 +703,12 @@ exports.getAllAttendance = async (req, res) => {
 };
 
 // ---------------- Today's Attendance ----------------
+// ✅ Get Today's Attendance
 exports.getTodayAttendance = async (req, res) => {
   try {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
+
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
@@ -724,6 +726,36 @@ exports.getTodayAttendance = async (req, res) => {
   }
 };
 
+// ✅ Get Absent Today
+exports.getAbsentToday = async (req, res) => {
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // Employees who checked in today
+    const attendanceToday = await Attendance.find({
+      checkInTime: { $gte: todayStart, $lte: todayEnd },
+    }).select("employeeId");
+
+    const presentEmployeeIds = attendanceToday.map((rec) => rec.employeeId);
+
+    // Employees who are NOT present today
+    const absentEmployees = await Employee.find({
+      _id: { $nin: presentEmployeeIds },
+    });
+
+    res.status(200).json({
+      message: "Absent employees fetched successfully",
+      records: absentEmployees,
+    });
+  } catch (err) {
+    console.error("Get Absent Today Error:", err);
+    res.status(500).json({ message: "Failed to fetch absent employees", error: err.message });
+  }
+};
 // ---------------- Late Attendance ----------------
 exports.getLateAttendance = async (req, res) => {
   try {
