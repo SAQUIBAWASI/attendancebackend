@@ -51,7 +51,7 @@ app.use("/api/roles", require("./routes/role.routes"));
 app.use("/api/shifts", require("./routes/shift.routes"));
 app.use("/api/admin", require("./routes/adminroutes"));
 app.use("/api/empl", require("./routes/empl.routers"));
-
+app.use("/api/location", require("./routes/location.routes"));
 // ✅ Attendance Routes (newly added)
 app.use("/api/attendance", require("./routes/attendance.routes"));
 
@@ -68,6 +68,7 @@ app.get("/", (req, res) => {
       department: "/api/department",
       roles: "/api/roles",
       shifts: "/api/shifts",
+      location: "/api/location",
       attendance: {
         checkin: "POST /api/attendance/checkin",
         checkout: "POST /api/attendance/checkout",

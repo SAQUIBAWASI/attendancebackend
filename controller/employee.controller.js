@@ -1,5 +1,5 @@
 const Employee = require("../models/Employee");
-
+const Location = require("../models/Location");
 // ➕ Add a new employee
 exports.addEmployee = async (req, res) => {
   try {
@@ -110,4 +110,46 @@ exports.getEmployeeAttendanceSummary = async (req, res) => {
     res.status(500).json({ message: "Server Error", error });
   }
 };
+// ✅ Assign Location to Employee
+exports.assignLocation = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { locationId } = req.body;
 
+    if (!employeeId || !locationId) {
+      return res
+        .status(400)
+        .json({ message: "Employee ID and Location ID are required" });
+    }
+
+    const employee = await Employee.findOne({ employeeId });
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    const location = await Location.findById(locationId);
+    if (!location) {
+      return res.status(404).json({ message: "Location not found" });
+    }
+
+    // 🔹 Assign location to employee
+    employee.location = location._id;
+    await employee.save();
+
+    // (Optional) also add employee reference in location document
+    await Location.findByIdAndUpdate(locationId, {
+      $addToSet: { assignedEmployees: employee._id },
+    });
+
+    res.status(200).json({
+      message: `Location '${location.name}' assigned to employee '${employee.name}'`,
+      employee,
+    });
+  } catch (err) {
+    console.error("Assign location error:", err);
+    res.status(500).json({
+      message: "Failed to assign location",
+      error: err.message,
+    });
+  }
+};

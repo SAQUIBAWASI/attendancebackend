@@ -533,13 +533,301 @@
 // };
 
 
+// const Attendance = require("../models/Attendance");
+// const Employee = require("../models/Employee");
+
+// const OFFICE_COORDS = { lat: 17.448294, lng: 78.391487 };
+// const ONSITE_RADIUS_M = 600;
+
+// // Haversine formula
+// function haversineDistance(lat1, lon1, lat2, lon2) {
+//   const R = 6371000;
+//   const toRad = (deg) => (deg * Math.PI) / 180;
+//   const dLat = toRad(lat2 - lat1);
+//   const dLon = toRad(lon2 - lon1);
+//   const a =
+//     Math.sin(dLat / 2) ** 2 +
+//     Math.cos(toRad(lat1)) *
+//       Math.cos(toRad(lat2)) *
+//       Math.sin(dLon / 2) ** 2;
+//   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+//   return Math.round(R * c);
+// }
+
+// // ---------------- Check-In ----------------
+// exports.checkIn = async (req, res) => {
+//   try {
+//     const { employeeId, employeeEmail, latitude, longitude } = req.body;
+//     if (!employeeId || !employeeEmail)
+//       return res.status(400).json({ message: "Employee data missing" });
+//     if (!latitude || !longitude)
+//       return res.status(400).json({ message: "Latitude/Longitude required" });
+
+//     const userLat = parseFloat(latitude);
+//     const userLng = parseFloat(longitude);
+
+//     const distance = haversineDistance(
+//       OFFICE_COORDS.lat,
+//       OFFICE_COORDS.lng,
+//       userLat,
+//       userLng
+//     );
+//     const onsite = distance <= ONSITE_RADIUS_M;
+
+//     const startOfToday = new Date();
+//     startOfToday.setHours(0, 0, 0, 0);
+
+//     const existing = await Attendance.findOne({
+//       employeeId,
+//       checkInTime: { $gte: startOfToday },
+//       status: "checked-in",
+//     });
+
+//     if (existing)
+//       return res
+//         .status(400)
+//         .json({ message: "Already checked-in for today" });
+
+//     const attendance = await Attendance.create({
+//       employeeId,
+//       employeeEmail,
+//       checkInTime: new Date(),
+//       latitude: userLat,
+//       longitude: userLng,
+//       distance,
+//       onsite,
+//       status: "checked-in",
+//     });
+
+//     res.status(200).json({
+//       message: onsite
+//         ? `✅ Check-In successful (Onsite: ${distance}m away)`
+//         : `✅ Check-In successful (Outside: ${distance}m away)`,
+//       attendance,
+//     });
+//   } catch (err) {
+//     console.error("Check-In Error:", err);
+//     res.status(500).json({ message: "Check-In failed", error: err.message });
+//   }
+// };
+
+// // ---------------- Check-Out ----------------
+// exports.checkOut = async (req, res) => {
+//   try {
+//     const { employeeId, latitude, longitude } = req.body;
+//     if (!employeeId)
+//       return res.status(400).json({ message: "Employee ID required" });
+//     if (!latitude || !longitude)
+//       return res.status(400).json({ message: "Latitude/Longitude required" });
+
+//     const userLat = parseFloat(latitude);
+//     const userLng = parseFloat(longitude);
+
+//     const distance = haversineDistance(
+//       OFFICE_COORDS.lat,
+//       OFFICE_COORDS.lng,
+//       userLat,
+//       userLng
+//     );
+//     const onsite = distance <= ONSITE_RADIUS_M;
+
+//     const startOfToday = new Date();
+//     startOfToday.setHours(0, 0, 0, 0);
+
+//     const attendance = await Attendance.findOne({
+//       employeeId,
+//       checkInTime: { $gte: startOfToday },
+//       status: "checked-in",
+//     });
+
+//     if (!attendance)
+//       return res.status(400).json({ message: "No check-in found for today" });
+
+//     attendance.checkOutTime = new Date();
+//     attendance.distance = distance;
+//     attendance.onsite = onsite;
+//     attendance.status = "checked-out";
+//     attendance.totalHours =
+//       (attendance.checkOutTime - attendance.checkInTime) / 1000 / 3600;
+
+//     await attendance.save();
+
+//     res.status(200).json({
+//       message: onsite
+//         ? `✅ Check-Out successful (Onsite: ${distance}m away)`
+//         : `✅ Check-Out successful (Outside: ${distance}m away)`,
+//       attendance,
+//     });
+//   } catch (err) {
+//     console.error("Check-Out Error:", err);
+//     res.status(500).json({ message: "Check-Out failed", error: err.message });
+//   }
+// };
+
+// // ---------------- Employee Attendance ----------------
+// exports.getEmployeeAttendance = async (req, res) => {
+//   try {
+//     const { employeeId } = req.params;
+//     if (!employeeId)
+//       return res.status(400).json({ message: "Employee ID required" });
+
+//     const records = await Attendance.find({ employeeId }).sort({
+//       checkInTime: -1,
+//     });
+
+//     res.status(200).json({
+//       message: "Employee attendance fetched successfully",
+//       records,
+//     });
+//   } catch (err) {
+//     console.error("Get Employee Attendance Error:", err);
+//     res.status(500).json({
+//       message: "Failed to fetch attendance",
+//       error: err.message,
+//     });
+//   }
+// };
+
+// // ---------------- All Attendance ----------------
+// exports.getAllAttendance = async (req, res) => {
+//   try {
+//     const records = await Attendance.find().sort({ checkInTime: -1 });
+//     res.status(200).json({
+//       message: "All attendance records fetched successfully",
+//       records,
+//     });
+//   } catch (err) {
+//     console.error("Get All Attendance Error:", err);
+//     res.status(500).json({ message: "Failed to fetch attendance", error: err.message });
+//   }
+// };
+
+// // ---------------- Today's Attendance ----------------
+// // ✅ Get Today's Attendance
+// exports.getTodayAttendance = async (req, res) => {
+//   try {
+//     const todayStart = new Date();
+//     todayStart.setHours(0, 0, 0, 0);
+
+//     const todayEnd = new Date();
+//     todayEnd.setHours(23, 59, 59, 999);
+
+//     const records = await Attendance.find({
+//       checkInTime: { $gte: todayStart, $lte: todayEnd },
+//     }).sort({ checkInTime: -1 });
+
+//     res.status(200).json({
+//       message: "Today's attendance fetched successfully",
+//       records,
+//     });
+//   } catch (err) {
+//     console.error("Get Today Attendance Error:", err);
+//     res.status(500).json({ message: "Failed to fetch today's attendance", error: err.message });
+//   }
+// };
+
+// // ✅ Get Absent Today
+// exports.getAbsentToday = async (req, res) => {
+//   try {
+//     const todayStart = new Date();
+//     todayStart.setHours(0, 0, 0, 0);
+
+//     const todayEnd = new Date();
+//     todayEnd.setHours(23, 59, 59, 999);
+
+//     // Employees who checked in today
+//     const attendanceToday = await Attendance.find({
+//       checkInTime: { $gte: todayStart, $lte: todayEnd },
+//     }).select("employeeId");
+
+//     const presentEmployeeIds = attendanceToday.map((rec) => rec.employeeId);
+
+//     // Employees who are NOT present today
+//     const absentEmployees = await Employee.find({
+//       _id: { $nin: presentEmployeeIds },
+//     });
+
+//     res.status(200).json({
+//       message: "Absent employees fetched successfully",
+//       records: absentEmployees,
+//     });
+//   } catch (err) {
+//     console.error("Get Absent Today Error:", err);
+//     res.status(500).json({ message: "Failed to fetch absent employees", error: err.message });
+//   }
+// };
+// // ---------------- Late Attendance ----------------
+// exports.getLateAttendance = async (req, res) => {
+//   try {
+//     const today = new Date();
+//     today.setHours(0, 0, 0, 0);
+//     const tenAM = new Date(today);
+//     tenAM.setHours(10, 0, 0, 0);
+
+//     const lateRecords = await Attendance.find({
+//       checkInTime: { $gte: tenAM },
+//       createdAt: { $gte: today },
+//     }).sort({ checkInTime: 1 });
+
+//     res.status(200).json({
+//       message: "Late attendance fetched successfully",
+//       records: lateRecords,
+//     });
+//   } catch (err) {
+//     console.error("Get Late Attendance Error:", err);
+//     res.status(500).json({ message: "Failed to fetch late attendance", error: err.message });
+//   }
+// };
+
+// // ---------------- Attendance Summary ----------------
+// exports.getAttendanceSummary = async (req, res) => {
+//   try {
+//     const today = new Date();
+//     today.setHours(0, 0, 0, 0);
+//     const endOfDay = new Date();
+//     endOfDay.setHours(23, 59, 59, 999);
+
+//     const totalEmployees = await Employee.countDocuments();
+//     const todayRecords = await Attendance.find({
+//       checkInTime: { $gte: today, $lte: endOfDay },
+//     });
+
+//     const presentToday = todayRecords.length;
+//     const tenAM = new Date(today);
+//     tenAM.setHours(10, 0, 0, 0);
+
+//     const lateToday = todayRecords.filter(
+//       (rec) => new Date(rec.checkInTime) >= tenAM
+//     ).length;
+
+//     const absentToday = Math.max(totalEmployees - presentToday, 0);
+//     const attendanceRate = totalEmployees
+//       ? ((presentToday / totalEmployees) * 100).toFixed(1)
+//       : 0;
+
+//     res.status(200).json({
+//       message: "Attendance summary fetched successfully",
+//       totals: {
+//         employees: totalEmployees,
+//         presentToday,
+//         absentToday,
+//         lateToday,
+//         attendanceRate,
+//       },
+//     });
+//   } catch (err) {
+//     console.error("❌ Attendance Summary Error:", err);
+//     res.status(500).json({ message: "Failed to fetch summary", error: err.message });
+//   }
+// };
+
 const Attendance = require("../models/Attendance");
 const Employee = require("../models/Employee");
+const Location = require("../models/Location");
 
-const OFFICE_COORDS = { lat: 17.448294, lng: 78.391487 };
-const ONSITE_RADIUS_M = 600;
+const ONSITE_RADIUS_M = 50; // ✅ Only 50m range check
 
-// Haversine formula
+// ---------------- Helper Function ----------------
 function haversineDistance(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const toRad = (deg) => (deg * Math.PI) / 180;
@@ -554,24 +842,24 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   return Math.round(R * c);
 }
 
-// ---------------- Check-In ----------------
+// ---------------- ✅ Dynamic Check-In ----------------
 exports.checkIn = async (req, res) => {
   try {
     const { employeeId, employeeEmail, latitude, longitude } = req.body;
     if (!employeeId || !employeeEmail)
       return res.status(400).json({ message: "Employee data missing" });
-    if (!latitude || !longitude)
-      return res.status(400).json({ message: "Latitude/Longitude required" });
 
-    const userLat = parseFloat(latitude);
-    const userLng = parseFloat(longitude);
+    const activeLocation = await Location.findOne({ isActive: true });
+    if (!activeLocation)
+      return res.status(404).json({ message: "No active office location found" });
 
     const distance = haversineDistance(
-      OFFICE_COORDS.lat,
-      OFFICE_COORDS.lng,
-      userLat,
-      userLng
+      activeLocation.latitude,
+      activeLocation.longitude,
+      latitude,
+      longitude
     );
+
     const onsite = distance <= ONSITE_RADIUS_M;
 
     const startOfToday = new Date();
@@ -584,51 +872,49 @@ exports.checkIn = async (req, res) => {
     });
 
     if (existing)
-      return res
-        .status(400)
-        .json({ message: "Already checked-in for today" });
+      return res.status(400).json({ message: "Already checked-in for today" });
 
     const attendance = await Attendance.create({
       employeeId,
       employeeEmail,
       checkInTime: new Date(),
-      latitude: userLat,
-      longitude: userLng,
+      latitude,
+      longitude,
       distance,
       onsite,
+      officeName: activeLocation.name,
       status: "checked-in",
     });
 
     res.status(200).json({
       message: onsite
-        ? `✅ Check-In successful (Onsite: ${distance}m away)`
-        : `✅ Check-In successful (Outside: ${distance}m away)`,
+        ? `✅ Check-In successful (Inside office: ${distance}m away)`
+        : `✅ Check-In successful (Outside office: ${distance}m away)`,
       attendance,
     });
   } catch (err) {
-    console.error("Check-In Error:", err);
     res.status(500).json({ message: "Check-In failed", error: err.message });
   }
 };
 
-// ---------------- Check-Out ----------------
+// ---------------- ✅ Dynamic Check-Out ----------------
 exports.checkOut = async (req, res) => {
   try {
     const { employeeId, latitude, longitude } = req.body;
     if (!employeeId)
       return res.status(400).json({ message: "Employee ID required" });
-    if (!latitude || !longitude)
-      return res.status(400).json({ message: "Latitude/Longitude required" });
 
-    const userLat = parseFloat(latitude);
-    const userLng = parseFloat(longitude);
+    const activeLocation = await Location.findOne({ isActive: true });
+    if (!activeLocation)
+      return res.status(404).json({ message: "No active office location found" });
 
     const distance = haversineDistance(
-      OFFICE_COORDS.lat,
-      OFFICE_COORDS.lng,
-      userLat,
-      userLng
+      activeLocation.latitude,
+      activeLocation.longitude,
+      latitude,
+      longitude
     );
+
     const onsite = distance <= ONSITE_RADIUS_M;
 
     const startOfToday = new Date();
@@ -646,6 +932,7 @@ exports.checkOut = async (req, res) => {
     attendance.checkOutTime = new Date();
     attendance.distance = distance;
     attendance.onsite = onsite;
+    attendance.officeName = activeLocation.name;
     attendance.status = "checked-out";
     attendance.totalHours =
       (attendance.checkOutTime - attendance.checkInTime) / 1000 / 3600;
@@ -654,15 +941,15 @@ exports.checkOut = async (req, res) => {
 
     res.status(200).json({
       message: onsite
-        ? `✅ Check-Out successful (Onsite: ${distance}m away)`
-        : `✅ Check-Out successful (Outside: ${distance}m away)`,
+        ? `✅ Check-Out successful (Inside office: ${distance}m away)`
+        : `✅ Check-Out successful (Outside office: ${distance}m away)`,
       attendance,
     });
   } catch (err) {
-    console.error("Check-Out Error:", err);
     res.status(500).json({ message: "Check-Out failed", error: err.message });
   }
 };
+
 
 // ---------------- Employee Attendance ----------------
 exports.getEmployeeAttendance = async (req, res) => {
