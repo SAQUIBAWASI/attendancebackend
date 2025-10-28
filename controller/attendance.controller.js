@@ -825,10 +825,10 @@ const Attendance = require("../models/Attendance");
 const Employee = require("../models/Employee");
 const Location = require("../models/Location");
 
-// Constants - TOP LEVEL PE DEFINE KARO
+// Constants
 const ONSITE_RADIUS_M = 50; // 50 meters
 
-// Haversine distance calculation
+// Haversine distance function
 function haversineDistance(lat1, lon1, lat2, lon2) {
   const R = 6371000; // meters
   const toRad = (deg) => (deg * Math.PI) / 180;
@@ -837,38 +837,43 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) *
-    Math.cos(toRad(lat2)) *
-    Math.sin(dLon / 2) ** 2;
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return Math.round(R * c);
 }
 
 exports.checkIn = async (req, res) => {
   try {
-    const { employeeId, employeeEmail, latitude, longitude } = req.body;
+    const { employeeId, employeeEmail, latitude, longitude, reason } = req.body;
 
+    // Required fields check
     if (!employeeId || !employeeEmail || !latitude || !longitude) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({ message: "Employee ID, email, and location are required" });
     }
 
-    // 1️⃣ Get the active location
-    const activeLocation = await Location.findOne({ isActive: true });
-    if (!activeLocation) {
-      return res.status(404).json({ message: "No active office location found" });
+    // Get employee with assigned location
+    const employee = await Employee.findOne({ employeeId }).populate("location");
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
     }
 
-    // 2️⃣ Calculate distance between employee and office
+    const assignedLocation = employee.location;
+    if (!assignedLocation) {
+      return res.status(404).json({ message: "No location assigned to employee" });
+    }
+
+    // Calculate distance
     const distance = haversineDistance(
-      activeLocation.latitude,
-      activeLocation.longitude,
+      assignedLocation.latitude,
+      assignedLocation.longitude,
       latitude,
       longitude
     );
 
-    // 3️⃣ Determine if employee is onsite
     const onsite = distance <= ONSITE_RADIUS_M;
 
-    // 4️⃣ Check if already checked-in today
+    // Check if already checked in today
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
@@ -882,8 +887,8 @@ exports.checkIn = async (req, res) => {
       return res.status(400).json({ message: "Already checked-in for today" });
     }
 
-    // 5️⃣ Create attendance record
-    const attendance = await Attendance.create({
+    // Save attendance record
+    const attendanceData = {
       employeeId,
       employeeEmail,
       checkInTime: new Date(),
@@ -891,49 +896,58 @@ exports.checkIn = async (req, res) => {
       longitude,
       distance,
       onsite,
-      officeName: activeLocation.name,
+      officeName: assignedLocation.name,
       status: "checked-in",
-    });
+    };
+
+    // ✅ Store reason only if provided
+    if (reason) {
+      attendanceData.reason = reason.trim();
+    }
+
+    const attendance = await Attendance.create(attendanceData);
 
     res.status(200).json({
-      message: onsite
-        ? `✅ Check-In successful (Inside office: ${distance}m away)`
-        : `✅ Check-In successful (Outside office: ${distance}m away)`,
+      message: `✅ Check-In successful (${onsite ? "Inside" : "Outside"} assigned location: ${distance}m away)`,
       attendance,
     });
-
   } catch (err) {
     console.error("Check-in error:", err);
     res.status(500).json({ message: "Check-In failed", error: err.message });
   }
 };
 
+
 exports.checkOut = async (req, res) => {
   try {
-    const { employeeId, latitude, longitude } = req.body;
+    const { employeeId, latitude, longitude, reason } = req.body;
 
     if (!employeeId || !latitude || !longitude) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    // 1️⃣ Get the active location
-    const activeLocation = await Location.findOne({ isActive: true });
-    if (!activeLocation) {
-      return res.status(404).json({ message: "No active office location found" });
+    // 1️⃣ Get Employee with assigned location
+    const employee = await Employee.findOne({ employeeId }).populate("location");
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
     }
 
-    // 2️⃣ Calculate distance
+    const assignedLocation = employee.location;
+    if (!assignedLocation) {
+      return res.status(404).json({ message: "No location assigned to employee" });
+    }
+
+    // 2️⃣ Calculate distance between employee and assigned location
     const distance = haversineDistance(
-      activeLocation.latitude,
-      activeLocation.longitude,
+      assignedLocation.latitude,
+      assignedLocation.longitude,
       latitude,
       longitude
     );
 
-    // 3️⃣ Determine if employee is onsite (FIXED: ONSITE_RADIUS_M use karo)
     const onsite = distance <= ONSITE_RADIUS_M;
 
-    // 4️⃣ Find today's check-in
+    // 3️⃣ Find today's check-in
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
@@ -947,32 +961,44 @@ exports.checkOut = async (req, res) => {
       return res.status(400).json({ message: "No check-in found for today" });
     }
 
-    // 5️⃣ Calculate total hours
+    // 4️⃣ Calculate total hours
     const checkOutTime = new Date();
     const checkInTime = new Date(existingCheckIn.checkInTime);
     const totalHours = ((checkOutTime - checkInTime) / (1000 * 60 * 60)).toFixed(2);
 
-    // 6️⃣ Update attendance record
+    // 5️⃣ Update attendance record
+    const updateData = {
+      checkOutTime,
+      totalHours,
+      status: "checked-out",
+      latitude,
+      longitude,
+      distance,
+      onsite,
+    };
+
+    if (!onsite) {
+      updateData.reason = reason || "No reason provided";
+    }
+
     const attendance = await Attendance.findByIdAndUpdate(
       existingCheckIn._id,
-      {
-        checkOutTime,
-        totalHours,
-        status: "checked-out",
-      },
+      updateData,
       { new: true }
     );
 
     res.status(200).json({
-      message: `✅ Check-Out successful (${onsite ? 'Inside' : 'Outside'} office: ${distance}m away)`,
+      message: onsite
+        ? `✅ Check-Out successful (Inside assigned location: ${distance}m away)`
+        : `✅ Check-Out successful (Outside assigned location: ${distance}m away)`,
       attendance,
     });
-
   } catch (err) {
     console.error("Check-out error:", err);
     res.status(500).json({ message: "Check-Out failed", error: err.message });
   }
 };
+
 // ---------------- Employee Attendance ----------------
 exports.getEmployeeAttendance = async (req, res) => {
   try {

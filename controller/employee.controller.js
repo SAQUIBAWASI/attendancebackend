@@ -153,3 +153,71 @@ exports.assignLocation = async (req, res) => {
     });
   }
 };
+
+
+
+// Alternative version if you want to search by employeeId instead of MongoDB _id
+exports.getAssignedLocationByEmployeeId = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    if (!employeeId) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Employee ID is required" 
+      });
+    }
+
+    // Find employee by employeeId and populate location details
+    const employee = await Employee.findOne({ employeeId })
+      .populate('location', 'name latitude longitude fullAddress isActive')
+      .select('name email employeeId location');
+
+    if (!employee) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Employee not found" 
+      });
+    }
+
+    // If employee has no location assigned
+    if (!employee.location) {
+      return res.status(200).json({
+        success: true,
+        message: "No location assigned to this employee",
+        data: {
+          employee: {
+            _id: employee._id,
+            name: employee.name,
+            email: employee.email,
+            employeeId: employee.employeeId
+          },
+          location: null
+        }
+      });
+    }
+
+    // Return employee with assigned location
+    res.status(200).json({
+      success: true,
+      message: "Assigned location fetched successfully",
+      data: {
+        employee: {
+          _id: employee._id,
+          name: employee.name,
+          email: employee.email,
+          employeeId: employee.employeeId
+        },
+        location: employee.location
+      }
+    });
+
+  } catch (error) {
+    console.error("Get assigned location error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch assigned location",
+      error: error.message
+    });
+  }
+};

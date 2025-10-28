@@ -63,6 +63,7 @@ const attendanceSchema = new mongoose.Schema(
     distance: { type: Number, default: 0 },
     onsite: { type: Boolean, default: false },
     status: { type: String, enum: ["checked-in", "checked-out"], default: "checked-in" },
+    reason: { type: String },
   },
   { timestamps: true }
 );

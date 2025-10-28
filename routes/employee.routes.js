@@ -34,7 +34,8 @@ const {
   getEmployeeByEmail,
   loginEmployee,
   getEmployeeAttendanceSummary,
-  assignLocation, // ✅ add this instead
+  assignLocation,
+  getAssignedLocationByEmployeeId, // ✅ add this instead
 } = require("../controller/employee.controller");
 
 const router = express.Router();
@@ -56,6 +57,8 @@ router.get("/attendance-summary", getEmployeeAttendanceSummary);
 
 // ✅ Assign location to employee
 router.put("/assign-location/:employeeId", assignLocation);
+router.get("/mylocation/:employeeId", getAssignedLocationByEmployeeId);
+
 
 module.exports = router;
 
