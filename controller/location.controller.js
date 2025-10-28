@@ -46,26 +46,37 @@ const Location = require("../models/Location");
 // ✅ Add New Location
 exports.addLocation = async (req, res) => {
   try {
-    const { name, latitude, longitude } = req.body;
-    if (!name || !latitude || !longitude) {
-      return res.status(400).json({ message: "All fields are required" });
+    const { name, latitude, longitude, fullAddress } = req.body;
+
+    // ✅ Validation
+    if (!name || !latitude || !longitude || !fullAddress) {
+      return res.status(400).json({ message: "All fields are required (name, latitude, longitude, fullAddress)" });
     }
 
+    // ✅ Create new location entry
     const location = await Location.create({
       name,
       latitude,
       longitude,
-      isActive: true, // optional — you can keep this for future toggling
+      fullAddress,
+      isActive: true, // optional: you can use this later to deactivate a location
     });
 
     res.status(200).json({
+      success: true,
       message: "Location added successfully",
       location,
     });
   } catch (err) {
-    res.status(500).json({ message: "Failed to add location", error: err.message });
+    console.error("Add Location Error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to add location",
+      error: err.message,
+    });
   }
 };
+
 
 // ✅ Get All Locations
 exports.getAllLocations = async (req, res) => {
@@ -84,11 +95,11 @@ exports.getAllLocations = async (req, res) => {
 exports.updateLocation = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, latitude, longitude } = req.body;
+    const { name, fullAddress, latitude, longitude } = req.body;
 
     const updated = await Location.findByIdAndUpdate(
       id,
-      { name, latitude, longitude },
+      { name, latitude, longitude, fullAddress },
       { new: true }
     );
 

@@ -31,16 +31,12 @@ const locationSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: true,
-      trim: true,
     },
     latitude: {
       type: Number,
-      required: true,
     },
     longitude: {
       type: Number,
-      required: true,
     },
     address: {
       type: String,
@@ -49,6 +45,9 @@ const locationSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+     fullAddress: {
+      type: String,
     },
     assignedEmployees: [
       {

@@ -825,34 +825,39 @@ const Attendance = require("../models/Attendance");
 const Employee = require("../models/Employee");
 const Location = require("../models/Location");
 
-const ONSITE_RADIUS_M = 50; // ✅ Only 50m range check
+// Constants - TOP LEVEL PE DEFINE KARO
+const ONSITE_RADIUS_M = 50; // 50 meters
 
-// ---------------- Helper Function ----------------
+// Haversine distance calculation
 function haversineDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
+  const R = 6371000; // meters
   const toRad = (deg) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) ** 2;
+    Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return Math.round(R * c);
 }
 
-// ---------------- ✅ Dynamic Check-In ----------------
 exports.checkIn = async (req, res) => {
   try {
     const { employeeId, employeeEmail, latitude, longitude } = req.body;
-    if (!employeeId || !employeeEmail)
-      return res.status(400).json({ message: "Employee data missing" });
 
+    if (!employeeId || !employeeEmail || !latitude || !longitude) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    // 1️⃣ Get the active location
     const activeLocation = await Location.findOne({ isActive: true });
-    if (!activeLocation)
+    if (!activeLocation) {
       return res.status(404).json({ message: "No active office location found" });
+    }
 
+    // 2️⃣ Calculate distance between employee and office
     const distance = haversineDistance(
       activeLocation.latitude,
       activeLocation.longitude,
@@ -860,20 +865,24 @@ exports.checkIn = async (req, res) => {
       longitude
     );
 
+    // 3️⃣ Determine if employee is onsite
     const onsite = distance <= ONSITE_RADIUS_M;
 
+    // 4️⃣ Check if already checked-in today
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    const existing = await Attendance.findOne({
+    const existingCheckIn = await Attendance.findOne({
       employeeId,
       checkInTime: { $gte: startOfToday },
       status: "checked-in",
     });
 
-    if (existing)
+    if (existingCheckIn) {
       return res.status(400).json({ message: "Already checked-in for today" });
+    }
 
+    // 5️⃣ Create attendance record
     const attendance = await Attendance.create({
       employeeId,
       employeeEmail,
@@ -892,22 +901,28 @@ exports.checkIn = async (req, res) => {
         : `✅ Check-In successful (Outside office: ${distance}m away)`,
       attendance,
     });
+
   } catch (err) {
+    console.error("Check-in error:", err);
     res.status(500).json({ message: "Check-In failed", error: err.message });
   }
 };
 
-// ---------------- ✅ Dynamic Check-Out ----------------
 exports.checkOut = async (req, res) => {
   try {
     const { employeeId, latitude, longitude } = req.body;
-    if (!employeeId)
-      return res.status(400).json({ message: "Employee ID required" });
 
+    if (!employeeId || !latitude || !longitude) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    // 1️⃣ Get the active location
     const activeLocation = await Location.findOne({ isActive: true });
-    if (!activeLocation)
+    if (!activeLocation) {
       return res.status(404).json({ message: "No active office location found" });
+    }
 
+    // 2️⃣ Calculate distance
     const distance = haversineDistance(
       activeLocation.latitude,
       activeLocation.longitude,
@@ -915,42 +930,49 @@ exports.checkOut = async (req, res) => {
       longitude
     );
 
+    // 3️⃣ Determine if employee is onsite (FIXED: ONSITE_RADIUS_M use karo)
     const onsite = distance <= ONSITE_RADIUS_M;
 
+    // 4️⃣ Find today's check-in
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    const attendance = await Attendance.findOne({
+    const existingCheckIn = await Attendance.findOne({
       employeeId,
       checkInTime: { $gte: startOfToday },
       status: "checked-in",
     });
 
-    if (!attendance)
+    if (!existingCheckIn) {
       return res.status(400).json({ message: "No check-in found for today" });
+    }
 
-    attendance.checkOutTime = new Date();
-    attendance.distance = distance;
-    attendance.onsite = onsite;
-    attendance.officeName = activeLocation.name;
-    attendance.status = "checked-out";
-    attendance.totalHours =
-      (attendance.checkOutTime - attendance.checkInTime) / 1000 / 3600;
+    // 5️⃣ Calculate total hours
+    const checkOutTime = new Date();
+    const checkInTime = new Date(existingCheckIn.checkInTime);
+    const totalHours = ((checkOutTime - checkInTime) / (1000 * 60 * 60)).toFixed(2);
 
-    await attendance.save();
+    // 6️⃣ Update attendance record
+    const attendance = await Attendance.findByIdAndUpdate(
+      existingCheckIn._id,
+      {
+        checkOutTime,
+        totalHours,
+        status: "checked-out",
+      },
+      { new: true }
+    );
 
     res.status(200).json({
-      message: onsite
-        ? `✅ Check-Out successful (Inside office: ${distance}m away)`
-        : `✅ Check-Out successful (Outside office: ${distance}m away)`,
+      message: `✅ Check-Out successful (${onsite ? 'Inside' : 'Outside'} office: ${distance}m away)`,
       attendance,
     });
+
   } catch (err) {
+    console.error("Check-out error:", err);
     res.status(500).json({ message: "Check-Out failed", error: err.message });
   }
 };
-
-
 // ---------------- Employee Attendance ----------------
 exports.getEmployeeAttendance = async (req, res) => {
   try {

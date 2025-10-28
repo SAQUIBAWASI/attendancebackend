@@ -20,9 +20,9 @@ const {
   deleteLocation,
 } = require("../controller/location.controller");
 
-router.post("/save", addLocation);             // Add new location
-router.get("/active", getAllLocations);          // Get all locations
-router.put("/:id", updateLocation);        // Update existing location
-router.delete("/:id", deleteLocation);     // Delete location
+router.post("/add-location", addLocation);             // Add new location
+router.get("/alllocation", getAllLocations);          // Get all locations
+router.put("/updatelocation/:id", updateLocation);        // Update existing location
+router.delete("/deletelocation/:id", deleteLocation);     // Delete location
 
 module.exports = router;
