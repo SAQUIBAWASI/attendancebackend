@@ -15,7 +15,7 @@ const shiftSchema = new mongoose.Schema(
     shiftType: {
       type: String,
       required: true,
-      enum: ["A", "B", "C"],
+      enum: ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
     },
     startTime: {
       type: String,
