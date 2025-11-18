@@ -779,45 +779,411 @@
 //   }
 // };
 
-// // ---------------- Attendance Summary ----------------
+// // // ---------------- SUMMARY ----------------
 // exports.getAttendanceSummary = async (req, res) => {
 //   try {
-//     const today = new Date();
-//     today.setHours(0, 0, 0, 0);
-//     const endOfDay = new Date();
-//     endOfDay.setHours(23, 59, 59, 999);
+//     const attendance = await Attendance.find();
 
-//     const totalEmployees = await Employee.countDocuments();
-//     const todayRecords = await Attendance.find({
-//       checkInTime: { $gte: today, $lte: endOfDay },
-//     });
+//     // --------------------------
+//     // Helpers
+//     // --------------------------
+//     const isToday = (date) => {
+//       const today = new Date();
+//       return (
+//         date.getDate() === today.getDate() &&
+//         date.getMonth() === today.getMonth() &&
+//         date.getFullYear() === today.getFullYear()
+//       );
+//     };
 
-//     const presentToday = todayRecords.length;
-//     const tenAM = new Date(today);
-//     tenAM.setHours(10, 0, 0, 0);
+//     const isThisWeek = (date) => {
+//       const today = new Date();
+//       const firstDay = new Date(today.setDate(today.getDate() - today.getDay()));
+//       const lastDay = new Date(today.setDate(today.getDate() - today.getDay() + 6));
+//       return date >= firstDay && date <= lastDay;
+//     };
 
-//     const lateToday = todayRecords.filter(
-//       (rec) => new Date(rec.checkInTime) >= tenAM
-//     ).length;
+//     const isThisMonth = (date) => {
+//       const today = new Date();
+//       return (
+//         date.getMonth() === today.getMonth() &&
+//         date.getFullYear() === today.getFullYear()
+//       );
+//     };
 
-//     const absentToday = Math.max(totalEmployees - presentToday, 0);
-//     const attendanceRate = totalEmployees
-//       ? ((presentToday / totalEmployees) * 100).toFixed(1)
-//       : 0;
+//     // --------------------------
+//     // Half Day / Full Day Logic FIXED
+//     // --------------------------
+//     const isHalfDay = (h) => h >= 4.5 && h < 9;
+//     const isFullDay = (h) => h >= 9;
+
+//     // Utility: extract hours safely
+//     const getHours = (att) => Number(att.totalHours || 0);
+
+//     // --------------------------
+//     // TODAY STATS
+//     // --------------------------
+//     const todayAttendance = attendance.filter(a => isToday(a.checkInTime));
+//     const todayHalf = todayAttendance.filter(a => isHalfDay(getHours(a))).length;
+//     const todayFull = todayAttendance.filter(a => isFullDay(getHours(a))).length;
+//     const todayWorking = todayFull + todayHalf * 0.5;
+
+//     // --------------------------
+//     // WEEKLY STATS
+//     // --------------------------
+//     const weekAttendance = attendance.filter(a => isThisWeek(a.checkInTime));
+//     const weekHalf = weekAttendance.filter(a => isHalfDay(getHours(a))).length;
+//     const weekFull = weekAttendance.filter(a => isFullDay(getHours(a))).length;
+//     const weekWorking = weekFull + weekHalf * 0.5;
+
+//     // --------------------------
+//     // MONTHLY STATS
+//     // --------------------------
+//     const monthAttendance = attendance.filter(a => isThisMonth(a.checkInTime));
+//     const monthHalf = monthAttendance.filter(a => isHalfDay(getHours(a))).length;
+//     const monthFull = monthAttendance.filter(a => isFullDay(getHours(a))).length;
+//     const monthWorking = monthFull + monthHalf * 0.5;
 
 //     res.status(200).json({
-//       message: "Attendance summary fetched successfully",
-//       totals: {
-//         employees: totalEmployees,
-//         presentToday,
-//         absentToday,
-//         lateToday,
-//         attendanceRate,
+//       success: true,
+
+//       today: {
+//         present: todayAttendance.length,
+//         halfDay: todayHalf,
+//         fullDay: todayFull,
+//         workingDays: todayWorking,
 //       },
+
+//       weekly: {
+//         present: weekAttendance.length,
+//         halfDay: weekHalf,
+//         fullDay: weekFull,
+//         workingDays: weekWorking,
+//       },
+
+//       monthly: {
+//         present: monthAttendance.length,
+//         halfDay: monthHalf,
+//         fullDay: monthFull,
+//         workingDays: monthWorking,
+//       }
+//     });
+
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
+
+// const Attendance = require("../models/Attendance");
+// const Employee = require("../models/Employee");
+
+// // Config
+// const shifts = {
+//   A: "10:00",
+//   B: "09:00",
+//   C: "07:00",
+//   D: "06:30",
+//   E: "14:00",
+//   F: "08:00",
+//   G: "10:30",
+//   H: "07:00",
+//   I: "11:00",
+// };
+// const OFFICE_COORDS = { lat: 17.448294, lng: 78.391487 }; // fallback
+// const ONSITE_RADIUS_M = 50; // keep your expected value
+
+// // Haversine
+// function haversineDistance(lat1, lon1, lat2, lon2) {
+//   const R = 6371000;
+//   const toRad = (deg) => (deg * Math.PI) / 180;
+//   const dLat = toRad(lat2 - lat1);
+//   const dLon = toRad(lon2 - lon1);
+//   const a =
+//     Math.sin(dLat / 2) ** 2 +
+//     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+//   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+//   return Math.round(R * c);
+// }
+
+// // ---------------- CHECK-IN ----------------
+// exports.checkIn = async (req, res) => {
+//   try {
+//     console.log("CHECKIN REQ BODY:", req.body);
+
+//     let { employeeId, employeeEmail, latitude, longitude, reason, shiftCode } = req.body;
+
+//     // basic validation
+//     if (!employeeId || !employeeEmail) {
+//       console.log("Missing employeeId or employeeEmail");
+//       return res.status(400).json({ message: "Employee ID and email required" });
+//     }
+//     if (latitude == null || longitude == null) {
+//       console.log("Missing lat/lng");
+//       return res.status(400).json({ message: "Latitude & Longitude required" });
+//     }
+
+//     // convert & validate numbers
+//     latitude = parseFloat(latitude);
+//     longitude = parseFloat(longitude);
+//     if (!isFinite(latitude) || !isFinite(longitude)) {
+//       console.log("Invalid lat/lng:", latitude, longitude);
+//       return res.status(400).json({ message: "Latitude & Longitude must be valid numbers" });
+//     }
+
+//     // fetch employee (populate location)
+//     const employee = await Employee.findOne({ employeeId }).populate("location");
+//     if (!employee) {
+//       console.log("Employee not found:", employeeId);
+//       return res.status(404).json({ message: "Employee not found" });
+//     }
+
+//     // location fallback
+//     const assigned = employee.location;
+//     const locLat = assigned && isFinite(assigned.latitude) ? assigned.latitude : OFFICE_COORDS.lat;
+//     const locLng = assigned && isFinite(assigned.longitude) ? assigned.longitude : OFFICE_COORDS.lng;
+//     const officeName = assigned?.name || "Default Office";
+
+//     // distance + onsite
+//     const distance = haversineDistance(locLat, locLng, latitude, longitude);
+//     const onsite = distance <= ONSITE_RADIUS_M;
+
+//     // check duplicate for same day (use full day range)
+//     const todayStart = new Date();
+//     todayStart.setHours(0, 0, 0, 0);
+//     const todayEnd = new Date();
+//     todayEnd.setHours(23, 59, 59, 999);
+
+//     const existing = await Attendance.findOne({
+//       employeeId,
+//       checkInTime: { $gte: todayStart, $lte: todayEnd },
+//       status: "checked-in",
+//     });
+
+//     if (existing) {
+//       console.log("Already checked-in record exists:", existing._id);
+//       return res.status(400).json({ message: "Already checked-in for today" });
+//     }
+
+//     // shift -> default A if not provided
+//     const workingShift = shiftCode && shifts[shiftCode] ? shiftCode : "A";
+//     const [shH, shM] = shifts[workingShift].split(":").map((n) => Number(n));
+//     const shiftStart = new Date();
+//     shiftStart.setHours(shH, shM, 0, 0);
+//     const graceMin = 5;
+//     const shiftWithGrace = new Date(shiftStart.getTime() + graceMin * 60000);
+//     const lateToday = new Date() > shiftWithGrace;
+
+//     // create attendance (fields must match Attendance schema)
+//     const attendance = await Attendance.create({
+//       employeeId: employee.employeeId,
+//       employeeEmail: employee.email || employeeEmail,
+//       name: employee.name || "Unknown",
+//       shiftCode: workingShift,
+//       lateToday,
+//       checkInTime: new Date(),
+//       latitude,
+//       longitude,
+//       distance,
+//       onsite,
+//       officeName,
+//       status: "checked-in",
+//       reason: reason || undefined,
+//     });
+
+//     console.log("Check-in created:", attendance._id);
+//     return res.status(200).json({
+//       message: "Check-in successful",
+//       lateToday,
+//       onsite,
+//       distance,
+//       attendance,
 //     });
 //   } catch (err) {
-//     console.error("❌ Attendance Summary Error:", err);
-//     res.status(500).json({ message: "Failed to fetch summary", error: err.message });
+//     console.error("CHECK-IN ERROR:", err);
+//     return res.status(500).json({ message: "Check-In failed", error: err.message });
+//   }
+// };
+
+// // ---------------- CHECK-OUT ----------------
+// exports.checkOut = async (req, res) => {
+//   try {
+//     console.log("CHECKOUT REQ BODY:", req.body);
+//     let { employeeId, latitude, longitude, reason } = req.body;
+
+//     if (!employeeId) {
+//       return res.status(400).json({ message: "Employee ID required" });
+//     }
+//     if (latitude == null || longitude == null) {
+//       return res.status(400).json({ message: "Latitude & Longitude required" });
+//     }
+
+//     latitude = parseFloat(latitude);
+//     longitude = parseFloat(longitude);
+//     if (!isFinite(latitude) || !isFinite(longitude)) {
+//       return res.status(400).json({ message: "Latitude & Longitude must be valid numbers" });
+//     }
+
+//     const employee = await Employee.findOne({ employeeId }).populate("location");
+//     if (!employee) return res.status(404).json({ message: "Employee not found" });
+
+//     const assigned = employee.location;
+//     const locLat = assigned && isFinite(assigned.latitude) ? assigned.latitude : OFFICE_COORDS.lat;
+//     const locLng = assigned && isFinite(assigned.longitude) ? assigned.longitude : OFFICE_COORDS.lng;
+
+//     const distance = haversineDistance(locLat, locLng, latitude, longitude);
+//     const onsite = distance <= ONSITE_RADIUS_M;
+
+//     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+//     const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+
+//     const record = await Attendance.findOne({
+//       employeeId,
+//       checkInTime: { $gte: todayStart, $lte: todayEnd },
+//       status: "checked-in",
+//     });
+
+//     if (!record) {
+//       console.log("No check-in found for:", employeeId);
+//       return res.status(400).json({ message: "No check-in found for today" });
+//     }
+
+//     const checkOutTime = new Date();
+//     const totalHours = ((checkOutTime - new Date(record.checkInTime)) / (1000 * 60 * 60)).toFixed(2);
+
+//     const updated = await Attendance.findByIdAndUpdate(
+//       record._id,
+//       {
+//         checkOutTime,
+//         totalHours: Number(totalHours),
+//         status: "checked-out",
+//         latitude,
+//         longitude,
+//         distance,
+//         onsite,
+//         reason: onsite ? record.reason : reason || record.reason || "No reason provided",
+//       },
+//       { new: true }
+//     );
+
+//     console.log("Check-out updated:", updated._id);
+//     return res.status(200).json({ message: "Check-out successful", attendance: updated });
+//   } catch (err) {
+//     console.error("CHECK-OUT ERROR:", err);
+//     return res.status(500).json({ message: "Check-Out failed", error: err.message });
+//   }
+// };
+
+// // ---------------- GET EMPLOYEE ATTENDANCE ----------------
+// exports.getEmployeeAttendance = async (req,res)=>{
+//   try{
+//     const { employeeId } = req.params;
+//     const records = await Attendance.find({ employeeId }).sort({ checkInTime:-1 });
+//     res.status(200).json({ records });
+//   }catch(err){
+//     res.status(500).json({message:"Error", error:err.message});
+//   }
+// };
+
+// // ---------------- ALL ATTENDANCE ----------------
+// exports.getAllAttendance = async (req,res)=>{
+//   try{
+//     const records = await Attendance.find().sort({ checkInTime:-1 });
+//     res.status(200).json({ records });
+//   }catch(err){
+//     res.status(500).json({message:"Error", error:err.message});
+//   }
+// };
+
+// // ---------------- TODAY ATTENDANCE ----------------
+// exports.getTodayAttendance = async (req,res)=>{
+//   try{
+//     const start = new Date(); start.setHours(0,0,0,0);
+//     const end = new Date(); end.setHours(23,59,59,999);
+//     const records = await Attendance.find({ checkInTime:{ $gte:start, $lte:end } }).sort({ checkInTime:-1 });
+//     res.status(200).json({ records });
+//   }catch(err){
+//     res.status(500).json({message:"Error", error:err.message});
+//   }
+// };
+
+// // ---------------- LATE ATTENDANCE ----------------
+// exports.getLateAttendance = async (req,res)=>{
+//   try{
+//     const start = new Date(); start.setHours(0,0,0,0);
+//     const end = new Date(); end.setHours(23,59,59,999);
+//     const records = await Attendance.find({ lateToday:true, checkInTime:{ $gte:start, $lte:end } }).sort({ checkInTime:1 });
+//     res.status(200).json({ records });
+//   }catch(err){
+//     res.status(500).json({message:"Error", error:err.message});
+//   }
+// };
+
+// // ---------------- ABSENT TODAY ----------------
+// exports.getAbsentToday = async (req,res)=>{
+//   try{
+//     const start = new Date(); start.setHours(0,0,0,0);
+//     const end = new Date(); end.setHours(23,59,59,999);
+
+//     const attended = await Attendance.find({ checkInTime:{ $gte:start, $lte:end } });
+//     const presentIds = attended.map(a=>a.employeeId);
+
+//     const absent = await Employee.find({ employeeId: { $nin: presentIds } });
+//     res.status(200).json({ records: absent });
+//   }catch(err){
+//     res.status(500).json({message:"Error", error:err.message});
+//   }
+// };
+
+// // ---------------- SUMMARY ----------------
+// exports.getAttendanceSummary = async (req,res)=>{
+//   try{
+//     const attendance = await Attendance.find();
+
+//     const isToday = date => {
+//       const t = new Date();
+//       return date.getDate()===t.getDate() && date.getMonth()===t.getMonth() && date.getFullYear()===t.getFullYear();
+//     };
+
+//     const isThisWeek = date => {
+//       const t = new Date();
+//       const firstDay = new Date(t.setDate(t.getDate()-t.getDay()));
+//       const lastDay = new Date(t.setDate(t.getDate()-t.getDay()+6));
+//       return date>=firstDay && date<=lastDay;
+//     };
+
+//     const isThisMonth = date => {
+//       const t = new Date();
+//       return date.getMonth()===t.getMonth() && date.getFullYear()===t.getFullYear();
+//     };
+
+//     const isHalfDay = h => h>=4.5 && h<9;
+//     const isFullDay = h => h>=9;
+//     const getHours = att => Number(att.totalHours || 0);
+
+//     const todayAttendance = attendance.filter(a=>isToday(a.checkInTime));
+//     const todayHalf = todayAttendance.filter(a=>isHalfDay(getHours(a))).length;
+//     const todayFull = todayAttendance.filter(a=>isFullDay(getHours(a))).length;
+//     const todayWorking = todayFull + todayHalf*0.5;
+
+//     const weekAttendance = attendance.filter(a=>isThisWeek(a.checkInTime));
+//     const weekHalf = weekAttendance.filter(a=>isHalfDay(getHours(a))).length;
+//     const weekFull = weekAttendance.filter(a=>isFullDay(getHours(a))).length;
+//     const weekWorking = weekFull + weekHalf*0.5;
+
+//     const monthAttendance = attendance.filter(a=>isThisMonth(a.checkInTime));
+//     const monthHalf = monthAttendance.filter(a=>isHalfDay(getHours(a))).length;
+//     const monthFull = monthAttendance.filter(a=>isFullDay(getHours(a))).length;
+//     const monthWorking = monthFull + monthHalf*0.5;
+
+//     res.status(200).json({
+//       success:true,
+//       today:{ present: todayAttendance.length, halfDay: todayHalf, fullDay: todayFull, workingDays: todayWorking },
+//       weekly:{ present: weekAttendance.length, halfDay: weekHalf, fullDay: weekFull, workingDays: weekWorking },
+//       monthly:{ present: monthAttendance.length, halfDay: monthHalf, fullDay: monthFull, workingDays: monthWorking }
+//     });
+//   }catch(err){
+//     res.status(500).json({message:"Error", error:err.message});
 //   }
 // };
 
@@ -825,97 +1191,72 @@ const Attendance = require("../models/Attendance");
 const Employee = require("../models/Employee");
 const Location = require("../models/Location");
 
-// ---------------- SHIFT TIMINGS ----------------
-const shifts = {
-  A: "10:00",
-  B: "09:00",
-  C: "07:00",
-  D: "06:30",
-  E: "14:00",
-  F: "08:00",
-  G: "10:30",
-  H: "07:00",
-  I: "11:00",
-};
+// Constants
+const ONSITE_RADIUS_M = 50; // 50 meters
 
-// ---------------- Haversine Distance ----------------
+// Haversine distance function
 function haversineDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
+  const R = 6371000; // meters
   const toRad = (deg) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return Math.round(R * c);
 }
 
-const ONSITE_RADIUS_M = 50;
-
-// ---------------- CHECK-IN ----------------
 exports.checkIn = async (req, res) => {
   try {
-    const { employeeId, employeeEmail, latitude, longitude, reason, shiftCode } =
-      req.body;
+    const { employeeId, employeeEmail, latitude, longitude, reason } = req.body;
 
+    // Required fields check
     if (!employeeId || !employeeEmail || !latitude || !longitude) {
-      return res
-        .status(400)
-        .json({ message: "Employee ID, email, and location are required" });
+      return res.status(400).json({ message: "Employee ID, email, and location are required" });
     }
 
-    // Employee details + location
+    // Get employee with assigned location
     const employee = await Employee.findOne({ employeeId }).populate("location");
-    if (!employee) return res.status(404).json({ message: "Employee not found" });
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
 
     const assignedLocation = employee.location;
-    if (!assignedLocation)
+    if (!assignedLocation) {
       return res.status(404).json({ message: "No location assigned to employee" });
+    }
 
-    // Distance Check
+    // Calculate distance
     const distance = haversineDistance(
       assignedLocation.latitude,
       assignedLocation.longitude,
       latitude,
       longitude
     );
+
     const onsite = distance <= ONSITE_RADIUS_M;
 
-    // Check if already checked-in today
+    // Check if already checked in today
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    const alreadyCheckedIn = await Attendance.findOne({
+    const existingCheckIn = await Attendance.findOne({
       employeeId,
       checkInTime: { $gte: startOfToday },
       status: "checked-in",
     });
 
-    if (alreadyCheckedIn) {
+    if (existingCheckIn) {
       return res.status(400).json({ message: "Already checked-in for today" });
     }
 
-    // ---------------- SHIFT-BASED LATE LOGIC (FIXED) ----------------
-    const workingShift = shiftCode && shifts[shiftCode] ? shiftCode : "A"; // default
-    const [h, m] = shifts[workingShift].split(":").map(Number);
-
-    const shiftStart = new Date();
-    shiftStart.setHours(h, m, 0, 0);
-
-    const grace = 5; // minutes
-    const shiftWithGrace = new Date(shiftStart.getTime() + grace * 60000);
-
-    const isLate = new Date() > shiftWithGrace;
-
-    // Save Data
-    const attendance = await Attendance.create({
+    // Save attendance record
+    const attendanceData = {
       employeeId,
       employeeEmail,
-      name: employee.name, // ⭐ Name save
-      shiftCode: workingShift,
-      lateToday: isLate,
-
       checkInTime: new Date(),
       latitude,
       longitude,
@@ -923,85 +1264,98 @@ exports.checkIn = async (req, res) => {
       onsite,
       officeName: assignedLocation.name,
       status: "checked-in",
-      reason: reason || undefined,
-    });
+    };
 
-    res.status(200).json({
-      message: `Check-in successful`,
-      lateToday: isLate,
-      attendance,
-    });
+    // ✅ Store reason only if provided
+    if (reason) {
+      attendanceData.reason = reason.trim();
+    }
+
+    const attendance = await Attendance.create(attendanceData);
+
+    res.status(200).json({message: `✅ Check-In successful (${onsite ? "Inside" : "Outside"} assigned location: ${distance}m away)`,
+      attendance,});
   } catch (err) {
     console.error("Check-in error:", err);
     res.status(500).json({ message: "Check-In failed", error: err.message });
   }
 };
 
-// ---------------- CHECK-OUT ----------------
+
 exports.checkOut = async (req, res) => {
   try {
     const { employeeId, latitude, longitude, reason } = req.body;
+if (!employeeId || !employeeEmail || latitude == null || longitude == null) {
+  return res.status(400).json({ message: "Employee ID, email, and location are required" });
+}
 
-    if (!employeeId || !latitude || !longitude) {
-      return res.status(400).json({ message: "All fields are required" });
+
+    // 1️⃣ Get Employee with assigned location
+    const employee = await Employee.findOne({ employeeId }).populate("location");
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
     }
 
-    const employee = await Employee.findOne({ employeeId }).populate("location");
-    if (!employee) return res.status(404).json({ message: "Employee not found" });
-
     const assignedLocation = employee.location;
-    if (!assignedLocation)
+    if (!assignedLocation) {
       return res.status(404).json({ message: "No location assigned to employee" });
+    }
 
-    // Distance
+    // 2️⃣ Calculate distance between employee and assigned location
     const distance = haversineDistance(
       assignedLocation.latitude,
       assignedLocation.longitude,
       latitude,
       longitude
     );
+
     const onsite = distance <= ONSITE_RADIUS_M;
 
-    // Today's check-in
+    // 3️⃣ Find today's check-in
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    const record = await Attendance.findOne({
+    const existingCheckIn = await Attendance.findOne({
       employeeId,
       checkInTime: { $gte: startOfToday },
       status: "checked-in",
     });
 
-    if (!record) {
+    if (!existingCheckIn) {
       return res.status(400).json({ message: "No check-in found for today" });
     }
 
-    // Total Hours
+    // 4️⃣ Calculate total hours
     const checkOutTime = new Date();
-    const totalHours = (
-      (checkOutTime - new Date(record.checkInTime)) /
-      (1000 * 60 * 60)
-    ).toFixed(2);
+    const checkInTime = new Date(existingCheckIn.checkInTime);
+    const totalHours = ((checkOutTime - checkInTime) / (1000 * 60 * 60)).toFixed(2);
 
-    // Update
-    const updated = await Attendance.findByIdAndUpdate(
-      record._id,
-      {
-        checkOutTime,
-        totalHours,
-        status: "checked-out",
-        latitude,
-        longitude,
-        distance,
-        onsite,
-        reason: onsite ? undefined : reason || "No reason provided",
-      },
+    // 5️⃣ Update attendance record
+    const updateData = {
+      checkOutTime,
+      totalHours,
+      status: "checked-out",
+      latitude,
+      longitude,
+      distance,
+      onsite,
+    };
+
+    if (!onsite) {
+      updateData.reason = reason || "No reason provided";
+    }
+
+    const attendance = await Attendance.findByIdAndUpdate(
+      existingCheckIn._id,
+      updateData,
       { new: true }
     );
 
     res.status(200).json({
-      message: "Check-out successful",
-      attendance: updated,
+      message: onsite
+        ? `✅ Check-Out successful (Inside assigned location: ${distance}m away)`
+        : `✅ Check-Out successful (Outside assigned location: ${distance}m away)`,
+      attendance,
     });
   } catch (err) {
     console.error("Check-out error:", err);
@@ -1009,186 +1363,159 @@ exports.checkOut = async (req, res) => {
   }
 };
 
-// ---------------- GET EMPLOYEE ATTENDANCE ----------------
+// ---------------- Employee Attendance ----------------
 exports.getEmployeeAttendance = async (req, res) => {
   try {
     const { employeeId } = req.params;
+    if (!employeeId)
+      return res.status(400).json({ message: "Employee ID required" });
 
     const records = await Attendance.find({ employeeId }).sort({
       checkInTime: -1,
     });
 
-    res.status(200).json({ records });
+    res.status(200).json({
+      message: "Employee attendance fetched successfully",
+      records,
+    });
   } catch (err) {
-    res.status(500).json({ message: "Error", error: err.message });
+    console.error("Get Employee Attendance Error:", err);
+    res.status(500).json({
+      message: "Failed to fetch attendance",
+      error: err.message,
+    });
   }
 };
 
-// ---------------- ALL ATTENDANCE ----------------
+// ---------------- All Attendance ----------------
 exports.getAllAttendance = async (req, res) => {
   try {
     const records = await Attendance.find().sort({ checkInTime: -1 });
-    res.status(200).json({ records });
+    res.status(200).json({
+      message: "All attendance records fetched successfully",
+      records,
+    });
   } catch (err) {
-    res.status(500).json({ message: "Error", error: err.message });
+    console.error("Get All Attendance Error:", err);
+    res.status(500).json({ message: "Failed to fetch attendance", error: err.message });
   }
 };
 
-// ---------------- TODAY ATTENDANCE ----------------
+// ---------------- Today's Attendance ----------------
+// ✅ Get Today's Attendance
 exports.getTodayAttendance = async (req, res) => {
   try {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
 
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
 
     const records = await Attendance.find({
-      checkInTime: { $gte: start, $lte: end },
+      checkInTime: { $gte: todayStart, $lte: todayEnd },
     }).sort({ checkInTime: -1 });
 
-    res.status(200).json({ records });
+    res.status(200).json({
+      message: "Today's attendance fetched successfully",
+      records,
+    });
   } catch (err) {
-    res.status(500).json({ message: "Error", error: err.message });
+    console.error("Get Today Attendance Error:", err);
+    res.status(500).json({ message: "Failed to fetch today's attendance", error: err.message });
   }
 };
 
-// ---------------- LATE ATTENDANCE ----------------
-exports.getLateAttendance = async (req, res) => {
-  try {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
-
-    const records = await Attendance.find({
-      lateToday: true, // ⭐ fixed
-      checkInTime: { $gte: start, $lte: end },
-    }).sort({ checkInTime: 1 });
-
-    res.status(200).json({ records });
-  } catch (err) {
-    res.status(500).json({ message: "Error", error: err.message });
-  }
-};
-
-// ---------------- ABSENT TODAY ----------------
+// ✅ Get Absent Today
 exports.getAbsentToday = async (req, res) => {
   try {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
 
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
 
-    const attended = await Attendance.find({
-      checkInTime: { $gte: start, $lte: end },
+    // Employees who checked in today
+    const attendanceToday = await Attendance.find({
+      checkInTime: { $gte: todayStart, $lte: todayEnd },
+    }).select("employeeId");
+
+    const presentEmployeeIds = attendanceToday.map((rec) => rec.employeeId);
+
+    // Employees who are NOT present today
+    const absentEmployees = await Employee.find({
+      _id: { $nin: presentEmployeeIds },
     });
 
-    const presentIds = attended.map((x) => x.employeeId);
-
-    const absent = await Employee.find({
-      employeeId: { $nin: presentIds },
+    res.status(200).json({
+      message: "Absent employees fetched successfully",
+      records: absentEmployees,
     });
-
-    res.status(200).json({ records: absent });
   } catch (err) {
-    res.status(500).json({ message: "Error", error: err.message });
+    console.error("Get Absent Today Error:", err);
+    res.status(500).json({ message: "Failed to fetch absent employees", error: err.message });
+  }
+};
+// ---------------- Late Attendance ----------------
+exports.getLateAttendance = async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tenAM = new Date(today);
+    tenAM.setHours(10, 0, 0, 0);
+
+    const lateRecords = await Attendance.find({
+      checkInTime: { $gte: tenAM },
+      createdAt: { $gte: today },
+    }).sort({ checkInTime: 1 });
+
+    res.status(200).json({
+      message: "Late attendance fetched successfully",
+      records: lateRecords,
+    });
+  } catch (err) {
+    console.error("Get Late Attendance Error:", err);
+    res.status(500).json({ message: "Failed to fetch late attendance", error: err.message });
   }
 };
 
-// ---------------- SUMMARY ----------------
+// ---------------- Attendance Summary ----------------
 exports.getAttendanceSummary = async (req, res) => {
   try {
-    const attendance = await Attendance.find();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
 
-    // --------------------------
-    // Helpers
-    // --------------------------
-    const isToday = (date) => {
-      const today = new Date();
-      return (
-        date.getDate() === today.getDate() &&
-        date.getMonth() === today.getMonth() &&
-        date.getFullYear() === today.getFullYear()
-      );
-    };
-
-    const isThisWeek = (date) => {
-      const today = new Date();
-      const firstDay = new Date(today.setDate(today.getDate() - today.getDay()));
-      const lastDay = new Date(today.setDate(today.getDate() - today.getDay() + 6));
-      return date >= firstDay && date <= lastDay;
-    };
-
-    const isThisMonth = (date) => {
-      const today = new Date();
-      return (
-        date.getMonth() === today.getMonth() &&
-        date.getFullYear() === today.getFullYear()
-      );
-    };
-
-    // --------------------------
-    // Half Day / Full Day Logic FIXED
-    // --------------------------
-    const isHalfDay = (h) => h >= 4.5 && h < 9;
-    const isFullDay = (h) => h >= 9;
-
-    // Utility: extract hours safely
-    const getHours = (att) => Number(att.totalHours || 0);
-
-    // --------------------------
-    // TODAY STATS
-    // --------------------------
-    const todayAttendance = attendance.filter(a => isToday(a.checkInTime));
-    const todayHalf = todayAttendance.filter(a => isHalfDay(getHours(a))).length;
-    const todayFull = todayAttendance.filter(a => isFullDay(getHours(a))).length;
-    const todayWorking = todayFull + todayHalf * 0.5;
-
-    // --------------------------
-    // WEEKLY STATS
-    // --------------------------
-    const weekAttendance = attendance.filter(a => isThisWeek(a.checkInTime));
-    const weekHalf = weekAttendance.filter(a => isHalfDay(getHours(a))).length;
-    const weekFull = weekAttendance.filter(a => isFullDay(getHours(a))).length;
-    const weekWorking = weekFull + weekHalf * 0.5;
-
-    // --------------------------
-    // MONTHLY STATS
-    // --------------------------
-    const monthAttendance = attendance.filter(a => isThisMonth(a.checkInTime));
-    const monthHalf = monthAttendance.filter(a => isHalfDay(getHours(a))).length;
-    const monthFull = monthAttendance.filter(a => isFullDay(getHours(a))).length;
-    const monthWorking = monthFull + monthHalf * 0.5;
-
-    res.status(200).json({
-      success: true,
-
-      today: {
-        present: todayAttendance.length,
-        halfDay: todayHalf,
-        fullDay: todayFull,
-        workingDays: todayWorking,
-      },
-
-      weekly: {
-        present: weekAttendance.length,
-        halfDay: weekHalf,
-        fullDay: weekFull,
-        workingDays: weekWorking,
-      },
-
-      monthly: {
-        present: monthAttendance.length,
-        halfDay: monthHalf,
-        fullDay: monthFull,
-        workingDays: monthWorking,
-      }
+    const totalEmployees = await Employee.countDocuments();
+    const todayRecords = await Attendance.find({
+      checkInTime: { $gte: today, $lte: endOfDay },
     });
 
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    const presentToday = todayRecords.length;
+    const tenAM = new Date(today);
+    tenAM.setHours(10, 0, 0, 0);
+
+    const lateToday = todayRecords.filter(
+      (rec) => new Date(rec.checkInTime) >= tenAM
+    ).length;
+
+    const absentToday = Math.max(totalEmployees - presentToday, 0);
+    const attendanceRate = totalEmployees
+      ? ((presentToday / totalEmployees) * 100).toFixed(1)
+      : 0;
+
+    res.status(200).json({
+      message: "Attendance summary fetched successfully",
+      totals: {
+        employees: totalEmployees,
+        presentToday,
+        absentToday,
+        lateToday,
+        attendanceRate,
+      },
+    });
+  } catch (err) {
+    console.error("❌ Attendance Summary Error:", err);
+    res.status(500).json({ message: "Failed to fetch summary", error: err.message });
   }
 };
