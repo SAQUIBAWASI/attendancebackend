@@ -1285,7 +1285,7 @@ exports.checkIn = async (req, res) => {
 exports.checkOut = async (req, res) => {
   try {
     const { employeeId, latitude, longitude, reason } = req.body;
-if (!employeeId || !employeeEmail || latitude == null || longitude == null) {
+if (!employeeId || latitude == null || longitude == null) {
   return res.status(400).json({ message: "Employee ID, email, and location are required" });
 }
 
