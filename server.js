@@ -55,6 +55,8 @@ app.use("/api/empl", require("./routes/empl.routers"));
 app.use("/api/location", require("./routes/location.routes"));
 // ✅ Attendance Routes (newly added)
 app.use("/api/attendance", require("./routes/attendance.routes"));
+app.use("/api/salary", require("./routes/salary.routes"));
+
 
 // ✅ Default test route
 app.get("/", (req, res) => {
@@ -70,6 +72,7 @@ app.get("/", (req, res) => {
       roles: "/api/roles",
       shifts: "/api/shifts",
       location: "/api/location",
+      salary: "/api/salary",
       attendance: {
         checkin: "POST /api/attendance/checkin",
         checkout: "POST /api/attendance/checkout",
