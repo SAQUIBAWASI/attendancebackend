@@ -37,6 +37,11 @@ const employeeSchema = new mongoose.Schema({
     default: 0 
   },
 
+  weekOffPerMonth: {         // ⭐ ADDED NEW FIELD
+    type: Number,
+    default: 0
+  },
+  
   employeeId: { type: String, unique: true, required: true },
 
   location: { 
@@ -47,4 +52,3 @@ const employeeSchema = new mongoose.Schema({
 });
 
 module.exports = mongoose.model("Employee", employeeSchema);
-
