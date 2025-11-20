@@ -5,7 +5,7 @@ const Employee = require("../models/Employee.js");
 // -------------------------------------------------------
 exports.setSalary = async (req, res) => {
   try {
-    const { employeeId, name, salaryPerDay, salaryPerMonth, shiftHours } = req.body;
+    const { employeeId, name, salaryPerDay, salaryPerMonth, shiftHours, weekOffPerMonth } = req.body;
 
     if (!employeeId) {
       return res.status(400).json({ message: "employeeId is required" });
@@ -39,7 +39,8 @@ exports.setSalary = async (req, res) => {
       {
         name,
         salaryPerMonth: finalSalaryPerMonth,
-        shiftHours
+        shiftHours,
+        weekOffPerMonth: weekOffPerMonth || 0    // ⭐ ADDED NEW FIELD
       },
       { new: true, upsert: true }
     );
@@ -74,6 +75,7 @@ exports.getSalary = async (req, res) => {
       name: emp.name,
       shiftHours: emp.shiftHours,
       salaryPerMonth: emp.salaryPerMonth,
+      weekOffPerMonth: emp.weekOffPerMonth || 0   // ⭐ ADDED NEW FIELD
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -94,6 +96,7 @@ exports.getAllSalaries = async (req, res) => {
       name: emp.name,
       shiftHours: emp.shiftHours,
       salaryPerMonth: emp.salaryPerMonth,
+      weekOffPerMonth: emp.weekOffPerMonth || 0   // ⭐ ADDED NEW FIELD
     }));
 
     res.json(salaryList);
