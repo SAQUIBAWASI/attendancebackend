@@ -20,6 +20,11 @@ const EmployeeSchema = new mongoose.Schema({
   shiftHours: {
     type: Number,
     default: 0
+  },
+
+  weekOffPerMonth: {       // ⭐ ADDED NEW FIELD
+    type: Number,
+    default: 0
   }
 });
 
