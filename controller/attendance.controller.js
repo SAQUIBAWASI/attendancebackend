@@ -1519,3 +1519,50 @@ exports.getAttendanceSummary = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch summary", error: err.message });
   }
 };
+
+
+
+exports.updateAttendance = async (req, res) => {
+  try {
+    const { attendanceId, hours, reason } = req.body;
+
+    // Basic validation
+    if (!attendanceId || !hours || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: 'attendanceId, hours and reason are required'
+      });
+    }
+
+    // Update totalHours and reason in database
+    const updatedAttendance = await Attendance.findByIdAndUpdate(
+      attendanceId,
+      { 
+        totalHours: parseFloat(hours),
+        reason: reason,
+        updatedAt: new Date()
+      },
+      { new: true }
+    );
+
+    if (!updatedAttendance) {
+      return res.status(404).json({
+        success: false,
+        message: 'Attendance record not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Hours and reason updated successfully',
+      data: updatedAttendance
+    });
+
+  } catch (error) {
+    console.error('Error updating hours:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
