@@ -1,19 +1,3 @@
-const express = require("express");
-const router = express.Router();
-
-const {
-  saveSummary,
-  getSummary,
-  calculateSummary
-} = require("../controller/attendanceSummary.controller");
-
-// router.post("/save", saveSummary);
-// router.get("/get", getSummary);
-router.get("/getattendancesummary", calculateSummary);
-
-
-// module.exports = router;
-
 // const express = require("express");
 // const router = express.Router();
 
@@ -23,13 +7,56 @@ router.get("/getattendancesummary", calculateSummary);
 //   calculateSummary
 // } = require("../controller/attendanceSummary.controller");
 
+// // router.post("/save", saveSummary);
+// // router.get("/get", getSummary);
+// router.get("/getattendancesummary", calculateSummary);
+
+
+// // module.exports = router;
+
+// // const express = require("express");
+// // const router = express.Router();
+
+// // const {
+// //   saveSummary,
+// //   getSummary,
+// //   calculateSummary
+// // } = require("../controller/attendanceSummary.controller");
+
+// router.post("/save", saveSummary);
+// router.get("/get", getSummary);
+
+// // Main API (works for admin + employee filtered)
+// //router.get("/getattendancesummary", getattendancesummary);
+
+// // Optional: Separate employee-only API
+// //router.get("/getattendancesummary/:employeeId", calculateSummary);
+
+// module.exports = router;
+
+
+const express = require("express");
+const router = express.Router();
+
+const {
+  saveSummary,
+  getSummary,
+  calculateSummary,
+  getAllAttendance,
+  updateAttendance,
+  getEmployeeDetails
+} = require("../controller/attendanceSummary.controller");
+
+// 📊 Attendance Summary Routes
 router.post("/save", saveSummary);
 router.get("/get", getSummary);
+router.post("/calculate", calculateSummary);
 
-// Main API (works for admin + employee filtered)
-//router.get("/getattendancesummary", getattendancesummary);
+// 👥 Employee Details Routes
+router.get("/employee-details", getEmployeeDetails);
 
-// Optional: Separate employee-only API
-//router.get("/getattendancesummary/:employeeId", calculateSummary);
+// 📝 Attendance Records Routes
+router.get("/allattendance", getAllAttendance);
+router.put("/update", updateAttendance);
 
 module.exports = router;
