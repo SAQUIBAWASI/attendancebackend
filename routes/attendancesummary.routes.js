@@ -44,7 +44,8 @@ const {
   calculateSummary,
   getAllAttendance,
   updateAttendance,
-  getEmployeeDetails
+  getEmployeeDetails,
+  getSalaries
 } = require("../controller/attendanceSummary.controller");
 
 // 📊 Attendance Summary Routes
@@ -58,5 +59,8 @@ router.get("/employee-details", getEmployeeDetails);
 // 📝 Attendance Records Routes
 router.get("/allattendance", getAllAttendance);
 router.put("/update", updateAttendance);
+
+router.get("/getsalaries", getSalaries);
+
 
 module.exports = router;

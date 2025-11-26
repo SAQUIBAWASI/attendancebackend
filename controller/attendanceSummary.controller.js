@@ -644,82 +644,73 @@ exports.calculateSummary = async (req, res) => {
   try {
     const { fromDate, toDate, month } = req.body;
 
-    // Build query based on filters
     let query = {};
     let summaryMonth = month;
-    
+
+    // 🔍 Date range or month filter
     if (fromDate && toDate) {
       query.checkInTime = {
         $gte: new Date(fromDate),
-        $lte: new Date(toDate + 'T23:59:59.999Z')
+        $lte: new Date(toDate + "T23:59:59.999Z")
       };
-      // Set month based on fromDate if month not provided
+
       if (!month) {
-        const from = new Date(fromDate);
-        summaryMonth = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}`;
+        const f = new Date(fromDate);
+        summaryMonth = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, "0")}`;
       }
     } else if (month) {
-      const [year, monthNum] = month.split('-');
-      const startDate = new Date(year, monthNum - 1, 1);
-      const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
-      
-      query.checkInTime = {
-        $gte: startDate,
-        $lte: endDate
-      };
+      const [year, m] = month.split("-");
+      const start = new Date(year, m - 1, 1);
+      const end = new Date(year, m, 0, 23, 59, 59, 999);
+
+      query.checkInTime = { $gte: start, $lte: end };
     }
 
-    console.log('🔍 Query for summary:', query);
+    console.log("🔍 Summary Query:", query);
 
-    // Fetch all attendance records with filters
+    // 🟦 Fetch attendance + employees
     const attendanceRecords = await Attendance.find(query).sort({ checkInTime: -1 });
-    console.log('📊 Raw records found:', attendanceRecords.length);
-    
-    // Fetch all employees
     const employees = await Employee.find({});
-    console.log('👥 Employees found:', employees.length);
 
-    // Constants for calculation
+    console.log("📊 Attendance found:", attendanceRecords.length);
+    console.log("👥 Employees found:", employees.length);
+
+    // Constants
     const FULL_DAY_HOURS = 9;
     const HALF_DAY_THRESHOLD = 8.80;
     const FULL_DAY_LEAVE_THRESHOLD = 4;
 
-    // Helper function to calculate day type
-    const calculateDayType = (hours) => {
-      const numericHours = parseFloat(hours) || 0;
-      
-      if (numericHours >= FULL_DAY_HOURS) {
-        return "full";
-      } else if (numericHours >= HALF_DAY_THRESHOLD) {
-        return "half";
-      } else if (numericHours >= FULL_DAY_LEAVE_THRESHOLD) {
-        return "half";
-      } else {
-        return "full_leave";
-      }
+    const calculateDayType = (hrs) => {
+      const h = parseFloat(hrs) || 0;
+
+      if (h >= FULL_DAY_HOURS) return "full";
+      if (h >= HALF_DAY_THRESHOLD) return "half";
+      if (h >= FULL_DAY_LEAVE_THRESHOLD) return "half";
+      return "full_leave";
     };
 
-    // Generate summary
     const summaryMap = {};
-    const processedDates = {}; // Track processed dates per employee
+    const processedDates = {};
 
     attendanceRecords.forEach((rec) => {
       if (!rec.employeeId || !rec.checkInTime) return;
-      
+
       const employeeId = rec.employeeId;
       const checkInDate = new Date(rec.checkInTime);
-      const dateKey = checkInDate.toISOString().split('T')[0]; // YYYY-MM-DD
-      
-      // Use provided month or calculate from date
-      const monthYear = summaryMonth || `${checkInDate.getFullYear()}-${String(checkInDate.getMonth() + 1).padStart(2, '0')}`;
-      
-      // Initialize employee summary if not exists
+      const dateKey = checkInDate.toISOString().split("T")[0];
+
+      const finalMonth =
+        summaryMonth ||
+        `${checkInDate.getFullYear()}-${String(checkInDate.getMonth() + 1).padStart(2, "0")}`;
+
+      // 🟪 Initialize employee summary
       if (!summaryMap[employeeId]) {
-        const employee = employees.find(emp => emp.employeeId === employeeId) || {};
+        const emp = employees.find((e) => e.employeeId === employeeId) || {};
+
         summaryMap[employeeId] = {
           employeeId,
-          name: employee.name || `Employee ${employeeId}`,
-          month: monthYear,
+          name: emp.name || `Employee ${employeeId}`,
+          month: finalMonth,
           presentDays: 0,
           lateDays: 0,
           onsiteDays: 0,
@@ -730,95 +721,85 @@ exports.calculateSummary = async (req, res) => {
           calculatedSalary: 0,
           totalRecords: 0
         };
+
         processedDates[employeeId] = new Set();
       }
-      
-      // Skip if we've already processed this date for this employee
-      if (processedDates[employeeId].has(dateKey)) {
-        console.log(`⏩ Skipping duplicate date ${dateKey} for employee ${employeeId}`);
-        return;
-      }
+
+      // ⏩ Skip duplicate date
+      if (processedDates[employeeId].has(dateKey)) return;
       processedDates[employeeId].add(dateKey);
-      
-      // Calculate hours worked
+
+      // ⏱ Hours calculation
       let hours = 0;
-      if (rec.totalHours !== undefined && rec.totalHours !== null) {
+      if (rec.totalHours !== undefined) {
         hours = parseFloat(rec.totalHours);
       } else if (rec.checkOutTime) {
-        const checkIn = new Date(rec.checkInTime);
-        const checkOut = new Date(rec.checkOutTime);
-        hours = (checkOut - checkIn) / (1000 * 60 * 60);
+        hours =
+          (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) /
+          (1000 * 60 * 60);
       }
-      
-      // Determine day type based on rules
-      const dayType = calculateDayType(hours);
-      
-      // Update summary based on day type
-      switch (dayType) {
-        case "full":
-          summaryMap[employeeId].presentDays += 1;
-          summaryMap[employeeId].totalWorkingDays += 1;
-          break;
-        case "half":
-          summaryMap[employeeId].halfDayLeaves += 1;
-          summaryMap[employeeId].totalWorkingDays += 0.5;
-          break;
-        case "full_leave":
-          summaryMap[employeeId].fullDayLeaves += 1;
-          break;
+
+      // 📌 Day type
+      const type = calculateDayType(hours);
+
+      if (type === "full") {
+        summaryMap[employeeId].presentDays += 1;
+        summaryMap[employeeId].totalWorkingDays += 1;
+      } else if (type === "half") {
+        summaryMap[employeeId].halfDayLeaves += 1;
+        summaryMap[employeeId].totalWorkingDays += 0.5;
+      } else if (type === "full_leave") {
+        summaryMap[employeeId].fullDayLeaves += 1;
       }
-      
-      // Check for late arrival (after 10 AM)
-      const checkInHour = checkInDate.getHours();
-      const checkInMinute = checkInDate.getMinutes();
-      if (checkInHour > 10 || (checkInHour === 10 && checkInMinute > 0)) {
+
+      // ⏰ Late check–in
+      const hour = checkInDate.getHours();
+      const minute = checkInDate.getMinutes();
+      if (hour > 10 || (hour === 10 && minute > 0)) {
         summaryMap[employeeId].lateDays += 1;
       }
-      
-      // Check work location - count as Onsite
-      if (rec.region === "Onsite" || rec.region === "onsite") {
+
+      // 🏢 ONSITE DAYS FIXED — only if onsite == true
+      if (rec.onsite === true) {
         summaryMap[employeeId].onsiteDays += 1;
-        console.log(`🏢 Onsite record found for ${employeeId} on ${dateKey}`);
+        console.log(`🏢 Onsite counted for ${employeeId} on ${dateKey}`);
       }
-      
+
       summaryMap[employeeId].totalRecords += 1;
     });
 
-    // Calculate working days and salary
+    // 💰 Salary Calculation
     Object.values(summaryMap).forEach((emp) => {
-      emp.workingDays = emp.presentDays;
-      emp.totalWorkingDays = emp.presentDays + (emp.halfDayLeaves * 0.5);
-      
-      // Simple salary calculation
       const baseSalary = 30000;
       const workingDaysInMonth = 26;
+
       const dailyRate = baseSalary / workingDaysInMonth;
-      
+
+      emp.workingDays = emp.presentDays;
+      emp.totalWorkingDays = emp.presentDays + emp.halfDayLeaves * 0.5;
+
       emp.calculatedSalary = Math.round(emp.totalWorkingDays * dailyRate);
     });
 
-    const employeeSummary = Object.values(summaryMap);
+    const finalSummary = Object.values(summaryMap);
 
-    console.log('📈 Final summary calculated:', employeeSummary.length, 'employees');
-    employeeSummary.forEach(emp => {
-      console.log(`📋 ${emp.employeeId}: Present=${emp.presentDays}, Onsite=${emp.onsiteDays}, HalfDays=${emp.halfDayLeaves}, FullLeaves=${emp.fullDayLeaves}`);
-    });
+    console.log("📈 Summary generated for:", finalSummary.length);
 
     res.json({
       success: true,
-      summary: employeeSummary,
-      totalRecords: employeeSummary.length
+      summary: finalSummary,
+      totalEmployees: finalSummary.length
     });
-
   } catch (error) {
-    console.error('❌ Error calculating summary:', error);
+    console.error("❌ Summary error:", error);
     res.status(500).json({
       success: false,
-      message: 'Error calculating attendance summary',
+      message: "Error calculating summary",
       error: error.message
     });
   }
 };
+
 
 /**
  * 📌 Get Employee Details for Specific Employee
@@ -906,3 +887,142 @@ function calculateDayType(hours) {
     return "full_leave";
   }
 }
+
+
+
+
+exports.getSalaries = async (req, res) => {
+  try {
+    let { month } = req.query;
+
+    // If no month → use current month
+    if (!month) {
+      const today = new Date();
+      const y = today.getFullYear();
+      const m = String(today.getMonth() + 1).padStart(2, "0");
+      month = `${y}-${m}`;
+    }
+
+    const [year, m] = month.split("-");
+    const start = new Date(year, m - 1, 1);
+    const end = new Date(year, m, 0, 23, 59, 59, 999);
+
+    // EMPLOYEES
+    const employees = await Employee.find({});
+
+    // ATTENDANCE
+    const attendanceRecords = await Attendance.find({
+      checkInTime: { $gte: start, $lte: end }
+    });
+
+    // LEAVES
+    const leaves = await Leave.find({
+      date: { $gte: start, $lte: end }
+    });
+
+    const FULL_DAY_HOURS = 9;
+    const HALF_DAY_THRESHOLD = 8.8;
+    const FULL_DAY_LEAVE_THRESHOLD = 4;
+
+    const calculateDayType = (hrs) => {
+      const h = parseFloat(hrs) || 0;
+      if (h >= FULL_DAY_HOURS) return "full";
+      if (h >= HALF_DAY_THRESHOLD) return "half";
+      if (h >= FULL_DAY_LEAVE_THRESHOLD) return "half";
+      return "full_leave";
+    };
+
+    const salaryMap = {};
+    const processedDates = {};
+
+    // INITIALIZE EMPLOYEE OBJECTS
+    employees.forEach((e) => {
+      salaryMap[e.employeeId] = {
+        employeeId: e.employeeId,
+        name: e.name,
+        month,
+
+        presentDays: 0,
+        halfDayLeaves: 0,
+        fullDayLeaves: 0,
+
+        onsiteDays: 0,
+        weekOffs: e.weekOffPerMonth || 0,
+
+        totalLeaves: 0,
+        leaveTypes: {},
+
+        salaryPerMonth: e.salaryPerMonth || 0,
+        salaryPerDay: e.salaryPerDay || (e.salaryPerMonth ? e.salaryPerMonth / 26 : 0),
+        calculatedSalary: 0
+      };
+
+      processedDates[e.employeeId] = new Set();
+    });
+
+    // PROCESS ATTENDANCE
+    attendanceRecords.forEach((rec) => {
+      if (!rec.employeeId || !rec.checkInTime) return;
+      const empId = rec.employeeId;
+      if (!salaryMap[empId]) return;
+
+      const checkInDate = new Date(rec.checkInTime);
+      const dateKey = checkInDate.toISOString().split("T")[0];
+
+      if (processedDates[empId].has(dateKey)) return;
+      processedDates[empId].add(dateKey);
+
+      let hours = 0;
+      if (rec.totalHours !== undefined) hours = parseFloat(rec.totalHours);
+      else if (rec.checkOutTime) {
+        hours = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
+      }
+
+      const type = calculateDayType(hours);
+
+      if (type === "full") salaryMap[empId].presentDays += 1;
+      else if (type === "half") salaryMap[empId].halfDayLeaves += 1;
+      else salaryMap[empId].fullDayLeaves += 1;
+
+      if (rec.onsite === true) salaryMap[empId].onsiteDays += 1;
+    });
+
+    // PROCESS LEAVES WITH TYPES
+    leaves.forEach((l) => {
+      const empId = l.employeeId;
+      if (!salaryMap[empId]) return;
+
+      const type = l.leaveType?.toLowerCase() || "unknown";
+
+      if (!salaryMap[empId].leaveTypes[type]) {
+        salaryMap[empId].leaveTypes[type] = 0;
+      }
+      salaryMap[empId].leaveTypes[type] += 1;
+
+      salaryMap[empId].totalLeaves += 1;
+
+      if (type === "full") salaryMap[empId].fullDayLeaves += 1;
+      if (type === "half") salaryMap[empId].halfDayLeaves += 1;
+    });
+
+    // SALARY CALCULATION
+    Object.values(salaryMap).forEach((emp) => {
+      const paidDays = emp.presentDays + emp.halfDayLeaves * 0.5;
+      emp.calculatedSalary = Math.round(paidDays * emp.salaryPerDay);
+    });
+
+    res.json({
+      success: true,
+      salaries: Object.values(salaryMap),
+      totalEmployees: Object.values(salaryMap).length
+    });
+
+  } catch (error) {
+    console.error("❌ Salary error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error calculating salaries",
+      error: error.message
+    });
+  }
+};
