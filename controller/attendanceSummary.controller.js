@@ -1090,6 +1090,8 @@ exports.getAllAttendance = async (req, res) => {
 /**
  * 📌 Update Attendance Record (Hours, Region, Comment) - FIXED VERSION
  */
+//  * 📌 Update Attendance Record (Hours, Region, Comment) - FIXED VERSION
+//  */
 exports.updateAttendance = async (req, res) => {
   try {
     const { attendanceId, hours, region, reason } = req.body;
@@ -1115,7 +1117,7 @@ exports.updateAttendance = async (req, res) => {
     if (region !== undefined) updateData.region = region;
     if (reason !== undefined) {
       updateData.reason = reason;
-      updateData.comment = reason;
+      updateData.comment = reason; // Also update comment field for compatibility
     }
     
     // Recalculate day type based on new hours
@@ -1162,6 +1164,7 @@ exports.updateAttendance = async (req, res) => {
     });
   }
 };
+
 
 /**
  * 📌 Save Attendance Summary
@@ -1243,15 +1246,33 @@ exports.getSummary = async (req, res) => {
   try {
     const { month, fromDate, toDate, employeeId } = req.query;
 
+    console.log("📥 GetSummary API Called with:", { month, fromDate, toDate, employeeId });
+
     let filter = {};
-    if (month) filter.month = month;
+    
+    // Date range filter
     if (fromDate && toDate) {
-      filter.fromDate = fromDate;
-      filter.toDate = toDate;
+      filter.createdAt = {
+        $gte: new Date(fromDate),
+        $lte: new Date(toDate + "T23:59:59.999Z")
+      };
     }
-    if (employeeId) filter.employeeId = employeeId;
+    
+    // Month filter
+    if (month) {
+      filter.month = month;
+    }
+    
+    // Employee filter
+    if (employeeId) {
+      filter.employeeId = employeeId;
+    }
+
+    console.log("🔍 Database Filter:", filter);
 
     const data = await AttendanceSummary.find(filter).sort({ createdAt: -1 });
+
+    console.log("✅ Found records:", data.length);
 
     res.json({
       success: true,
@@ -1405,34 +1426,48 @@ exports.calculateSummary = async (req, res) => {
       summaryMap[employeeId].totalRecords += 1;
     });
 
-    // 💰 Salary Calculation
-    Object.values(summaryMap).forEach((emp) => {
-      const baseSalary = 30000;
-      const workingDaysInMonth = 30;
+    const summaryArray = Object.values(summaryMap);
 
-      const dailyRate = baseSalary / workingDaysInMonth;
+    // ✅ SAVE TO DATABASE - IMPORTANT FIX
+    if (summaryArray.length > 0) {
+      // Delete existing summaries for same period
+      const deleteFilter = {};
+      if (month) deleteFilter.month = month;
+      if (fromDate && toDate) {
+        deleteFilter.createdAt = {
+          $gte: new Date(fromDate),
+          $lte: new Date(toDate + "T23:59:59.999Z")
+        };
+      }
 
-      emp.workingDays = emp.presentDays;
-      emp.totalWorkingDays = emp.presentDays + emp.halfDayWorking * 0.5;
+      await AttendanceSummary.deleteMany(deleteFilter);
 
-      emp.calculatedSalary = Math.round(emp.totalWorkingDays * dailyRate);
-    });
+      // Save new summaries with proper fields
+      const summariesToSave = summaryArray.map(summary => ({
+        ...summary,
+        fromDate: fromDate || null,
+        toDate: toDate || null,
+        calculatedAt: new Date(),
+        createdAt: new Date()
+      }));
 
-    const finalSummary = Object.values(summaryMap);
+      const savedSummaries = await AttendanceSummary.insertMany(summariesToSave);
 
-    console.log("📈 Summary generated for:", finalSummary.length);
+      console.log("💾 Summaries saved to database:", savedSummaries.length);
+    }
 
     res.json({
       success: true,
-      summary: finalSummary,
-      totalEmployees: finalSummary.length
+      count: summaryArray.length,
+      summary: summaryArray,
+      message: "Summary calculated and saved successfully"
     });
-  } catch (error) {
-    console.error("❌ Summary error:", error);
-    res.status(500).json({
+
+  } catch (err) {
+    console.error('❌ Error calculating summary:', err);
+    res.status(500).json({ 
       success: false,
-      message: "Error calculating summary",
-      error: error.message
+      message: err.message 
     });
   }
 };
@@ -1549,25 +1584,28 @@ exports.getSalaries = async (req, res) => {
 
       // -------- LEAVE CALCULATION (FIXED, NO EXTRA DAY) --------
       const leaveTypes = {};
-      let totalLeaves = 0;
+let totalLeaves = 0;
 
-      empLeaves.forEach((leave) => {
-        const type = leave.leaveType?.toUpperCase() || "OTHER";
-        if (!leaveTypes[type]) leaveTypes[type] = 0;
+// Sirf approved leaves filter karo
+const approvedLeaves = empLeaves.filter(leave => leave.status === 'approved');
 
-        const leaveStart = new Date(leave.startDate);
-        const leaveEnd = new Date(leave.endDate || leave.startDate);
+approvedLeaves.forEach((leave) => {
+  const type = leave.leaveType?.toUpperCase() || "";
+  if (!leaveTypes[type]) leaveTypes[type] = 0;
 
-        const overlapStart = leaveStart < start ? start : leaveStart;
-        const overlapEnd = leaveEnd > end ? end : leaveEnd;
+  const leaveStart = new Date(leave.startDate);
+  const leaveEnd = new Date(leave.endDate || leave.startDate);
 
-        if (overlapStart <= overlapEnd) {
-          const diffTime = overlapEnd - overlapStart;
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          leaveTypes[type] += diffDays;
-          totalLeaves += diffDays;
-        }
-      });
+  const overlapStart = leaveStart < start ? start : leaveStart;
+  const overlapEnd = leaveEnd > end ? end : leaveEnd;
+
+  if (overlapStart <= overlapEnd) {
+    const diffTime = overlapEnd - overlapStart;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    leaveTypes[type] += diffDays;
+    totalLeaves += diffDays;
+  }
+});
 
       // -------- ATTENDANCE ----------
       const presentDays = empSummary?.presentDays || 0;

@@ -34,13 +34,31 @@ exports.addLeave = async (req, res) => {
 };
 
 // ✅ Get all leaves
+// leave.controller.js mein getLeaves function update karo
 exports.getLeaves = async (req, res) => {
   try {
-    const leaves = await Leave.find().sort({ createdAt: -1 });
-    res.status(200).json(leaves);
+    const { status, employeeId } = req.query;
+    
+    let filter = {};
+    
+    // ✅ Status filter add karo
+    if (status) {
+      filter.status = status;
+    }
+    
+    // ✅ Employee filter
+    if (employeeId) {
+      filter.employeeId = employeeId;
+    }
+
+    console.log("🔍 Leaves Filter:", filter);
+    
+    const leaves = await Leave.find(filter).sort({ createdAt: -1 });
+    
+    res.json(leaves);
   } catch (error) {
     console.error("❌ Error fetching leaves:", error);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: error.message });
   }
 };
 

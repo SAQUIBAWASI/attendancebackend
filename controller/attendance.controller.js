@@ -1390,16 +1390,40 @@ exports.getEmployeeAttendance = async (req, res) => {
 // ---------------- All Attendance ----------------
 exports.getAllAttendance = async (req, res) => {
   try {
-    const records = await Attendance.find().sort({ checkInTime: -1 });
+    const { employeeId, fromDate, toDate } = req.query;
+
+    let filter = {};
+
+    // 🔹 Employee Filter
+    if (employeeId) {
+      filter.employeeId = employeeId;
+    }
+
+    // 🔹 Date Filter
+    if (fromDate && toDate) {
+      filter.checkInTime = {
+        $gte: new Date(fromDate),
+        $lte: new Date(toDate + "T23:59:59"),
+      };
+    }
+
+    // 🔹 Fetch with Filter
+    const records = await Attendance.find(filter).sort({ checkInTime: -1 });
+
     res.status(200).json({
-      message: "All attendance records fetched successfully",
+      message: "Attendance records fetched successfully",
       records,
     });
   } catch (err) {
     console.error("Get All Attendance Error:", err);
-    res.status(500).json({ message: "Failed to fetch attendance", error: err.message });
+    res.status(500).json({
+      message: "Failed to fetch attendance",
+      error: err.message,
+    });
   }
 };
+
+
 
 // ---------------- Today's Attendance ----------------
 // ✅ Get Today's Attendance
