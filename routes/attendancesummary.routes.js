@@ -63,4 +63,7 @@ router.put("/update", updateAttendance);
 router.get("/getsalaries", getSalaries);
 
 
+// // Optional: Separate employee-only API
+router.get("/get/:employeeId", calculateSummary);
+router.get("/getsalaries/:employeeId", calculateSummary);
 module.exports = router;

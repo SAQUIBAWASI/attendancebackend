@@ -1033,6 +1033,24 @@ const AttendanceSummary = require("../models/AttendanceSummary");
 const Employee = require("../models/Employee");
 const Leave = require("../models/Leave");
 
+// ✅ YEHI ADD KARNA HAI - Calculate Day Type Function
+const calculateDayType = (hours) => {
+  const h = parseFloat(hours) || 0;
+  
+  // Same logic as in calculateSummary
+  const FULL_DAY_THRESHOLD = 8.80;
+  const HALF_DAY_THRESHOLD = 4;
+
+  if (h > FULL_DAY_THRESHOLD) {
+    return "full";
+  } else if (h >= HALF_DAY_THRESHOLD) {
+    return "half";
+  } else {
+    return "full_leave";
+  }
+};
+
+
 /**
  * 📌 Get All Attendance Records with Filters
  */
@@ -1090,8 +1108,6 @@ exports.getAllAttendance = async (req, res) => {
 /**
  * 📌 Update Attendance Record (Hours, Region, Comment) - FIXED VERSION
  */
-//  * 📌 Update Attendance Record (Hours, Region, Comment) - FIXED VERSION
-//  */
 exports.updateAttendance = async (req, res) => {
   try {
     const { attendanceId, hours, region, reason } = req.body;
