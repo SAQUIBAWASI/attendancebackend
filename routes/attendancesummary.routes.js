@@ -45,7 +45,9 @@ const {
   getAllAttendance,
   updateAttendance,
   getEmployeeDetails,
-  getSalaries
+  fixSummaryData,
+  getSalaries,
+  checkMonthData 
 } = require("../controller/attendanceSummary.controller");
 
 // 📊 Attendance Summary Routes
@@ -61,9 +63,11 @@ router.get("/allattendance", getAllAttendance);
 router.put("/update", updateAttendance);
 
 router.get("/getsalaries", getSalaries);
-
+router.post("/fix-summary-data", fixSummaryData);
 
 // // Optional: Separate employee-only API
 router.get("/get/:employeeId", calculateSummary);
 router.get("/getsalaries/:employeeId", calculateSummary);
+
+router.get("/check-month-data", checkMonthData);
 module.exports = router;

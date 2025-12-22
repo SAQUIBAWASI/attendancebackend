@@ -1256,7 +1256,7 @@ exports.saveSummary = async (req, res) => {
 };
 
 /**
- * 📌 Get Saved Summary
+ * 📌 Get Saved Summary - ✅ FIXED: Auto-correct wrong data
  */
 exports.getSummary = async (req, res) => {
   try {
@@ -1286,14 +1286,59 @@ exports.getSummary = async (req, res) => {
 
     console.log("🔍 Database Filter:", filter);
 
-    const data = await AttendanceSummary.find(filter).sort({ createdAt: -1 });
+    let data = await AttendanceSummary.find(filter).sort({ createdAt: -1 });
 
     console.log("✅ Found records:", data.length);
 
+    // ✅ FIXED: Auto-correct wrong data for current month
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+    const currentDay = today.getDate();
+    
+    const correctedData = data.map(summary => {
+      if (summary.month) {
+        const [year, monthNum] = summary.month.split('-').map(Number);
+        
+        // Only correct if current month
+        if (year === currentYear && monthNum === currentMonth) {
+          const summaryObj = summary.toObject(); // Convert to plain object
+          
+          // Get corrected values
+          const correctedPresent = Math.min(summary.presentDays, currentDay);
+          const correctedLate = Math.min(summary.lateDays, currentDay);
+          const correctedOnsite = Math.min(summary.onsiteDays, currentDay);
+          const correctedHalf = Math.min(summary.halfDayWorking, currentDay);
+          const correctedFullLeave = Math.min(summary.fullDayNotWorking, currentDay);
+          const correctedTotal = correctedPresent + (correctedHalf * 0.5);
+          
+          console.log(`🔧 Auto-correcting ${summary.employeeId}: present ${summary.presentDays} → ${correctedPresent}`);
+          
+          return {
+            ...summaryObj,
+            presentDays: correctedPresent,
+            lateDays: correctedLate,
+            onsiteDays: correctedOnsite,
+            halfDayWorking: correctedHalf,
+            fullDayNotWorking: correctedFullLeave,
+            totalWorkingDays: correctedTotal
+          };
+        }
+      }
+      return summary;
+    });
+
+    // Check if any correction happened
+    const wasCorrected = JSON.stringify(data) !== JSON.stringify(correctedData);
+    if (wasCorrected) {
+      console.log("🔄 Summary data auto-corrected for current month");
+    }
+
     res.json({
       success: true,
-      count: data.length,
-      summary: data
+      count: correctedData.length,
+      summary: correctedData,
+      note: wasCorrected ? "Data auto-corrected for current month" : "Data is correct"
     });
   } catch (err) {
     console.error('❌ Error fetching summary:', err);
@@ -1305,81 +1350,135 @@ exports.getSummary = async (req, res) => {
 };
 
 /**
- * 📌 Calculate Summary from Raw Data
+ * 📌 Calculate Summary from Raw Data - COMPLETELY FIXED VERSION (November-December Separate)
  */
 exports.calculateSummary = async (req, res) => {
   try {
     const { fromDate, toDate, month } = req.body;
-
+    
     let query = {};
-    let summaryMonth = month;
+    
+    console.log("📥 CalculateSummary called with:", { month, fromDate, toDate });
 
-    // 🔍 Date range or month filter
-    if (fromDate && toDate) {
+    // 🔍 Use a separate variable for processed month
+    let processedMonth = month;
+    
+    // 🔍 STRICT MONTH FILTERING
+    if (processedMonth) {
+      const [year, m] = processedMonth.split("-");
+      const start = new Date(year, m - 1, 1);
+      
+      // Month ka exact last day
+      let end = new Date(year, m, 0, 23, 59, 59, 999);
+      
+      // Agar current month hai, toh sirf aaj tak
+      const today = new Date();
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth() + 1;
+      
+      if (parseInt(year) === currentYear && parseInt(m) === currentMonth) {
+        end = new Date(today);
+        end.setHours(23, 59, 59, 999);
+        console.log("✅ Current month detected. Limiting to today:", end);
+      }
+      
+      query.checkInTime = { $gte: start, $lte: end };
+      console.log("📅 STRICT Month filter applied:", processedMonth, "from", start, "to", end);
+      
+    } else if (fromDate && toDate) {
       query.checkInTime = {
         $gte: new Date(fromDate),
         $lte: new Date(toDate + "T23:59:59.999Z")
       };
-
-      if (!month) {
-        const f = new Date(fromDate);
-        summaryMonth = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, "0")}`;
+      console.log("📅 Date range filter applied:", fromDate, toDate);
+      
+      // If no month but date range, calculate month from fromDate
+      if (fromDate) {
+        const date = new Date(fromDate);
+        processedMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
       }
-    } else if (month) {
-      const [year, m] = month.split("-");
-      const start = new Date(year, m - 1, 1);
-      const end = new Date(year, m, 0, 23, 59, 59, 999);
-
+    } else {
+      // Default: current month
+      const today = new Date();
+      const start = new Date(today.getFullYear(), today.getMonth(), 1);
+      const end = new Date(today);
+      end.setHours(23, 59, 59, 999);
+      
       query.checkInTime = { $gte: start, $lte: end };
+      processedMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+      console.log("📅 No filter, using current month:", processedMonth);
     }
 
-    console.log("🔍 Summary Query:", query);
+    console.log("🔍 MongoDB Query:", JSON.stringify(query));
+    console.log("📆 Processing month:", processedMonth);
 
     // 🟦 Fetch attendance + employees
     const attendanceRecords = await Attendance.find(query).sort({ checkInTime: -1 });
     const employees = await Employee.find({});
 
-    console.log("📊 Attendance found:", attendanceRecords.length);
+    console.log("📊 Attendance records found:", attendanceRecords.length);
     console.log("👥 Employees found:", employees.length);
 
-    // Constants - EXACT THRESHOLDS AS PER REQUIREMENT
-    const FULL_DAY_THRESHOLD = 8.80; // 8.81+ hours = Full Day
-    const HALF_DAY_THRESHOLD = 4;    // 4 to 8.80 hours = Half Day
+    // DEBUG: Check months in fetched records
+    if (attendanceRecords.length > 0) {
+      const monthsInRecords = [...new Set(attendanceRecords.map(rec => {
+        const d = new Date(rec.checkInTime);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      }))];
+      console.log("📆 Months found in attendance records:", monthsInRecords);
+    }
+
+    // Constants
+    const FULL_DAY_THRESHOLD = 8.80;
+    const HALF_DAY_THRESHOLD = 4;
 
     const calculateDayType = (hrs) => {
       const h = parseFloat(hrs) || 0;
 
       if (h > FULL_DAY_THRESHOLD) {
-        return "full"; // 8.81, 8.82, 8.9, 9.0, etc. = FULL DAY
+        return "full";
       } else if (h >= HALF_DAY_THRESHOLD) {
-        return "half"; // 4.0 to 8.80 = HALF DAY
+        return "half";
       } else {
-        return "full_leave"; // 4.0 se kam = FULL LEAVE
+        return "full_leave";
       }
     };
 
     const summaryMap = {};
     const processedDates = {};
 
+    // 🔴 MAIN FIX: Strict month filtering during processing
     attendanceRecords.forEach((rec) => {
       if (!rec.employeeId || !rec.checkInTime) return;
 
       const employeeId = rec.employeeId;
       const checkInDate = new Date(rec.checkInTime);
       const dateKey = checkInDate.toISOString().split("T")[0];
+      
+      // ✅ STRICT CHECK: Record का month processedMonth से match होना चाहिए
+      const recordMonth = `${checkInDate.getFullYear()}-${String(checkInDate.getMonth() + 1).padStart(2, "0")}`;
+      
+      if (processedMonth && recordMonth !== processedMonth) {
+        // Skip records from different months
+        console.log(`⏩ SKIPPING: ${employeeId} - Record from ${recordMonth}, but processing ${processedMonth}`);
+        return;
+      }
 
-      const finalMonth =
-        summaryMonth ||
-        `${checkInDate.getFullYear()}-${String(checkInDate.getMonth() + 1).padStart(2, "0")}`;
+      // Future date check
+      const today = new Date();
+      if (checkInDate > today) {
+        console.log(`⏭️ Skipping future date: ${employeeId} - ${checkInDate}`);
+        return;
+      }
 
-      // 🟪 Initialize employee summary
+      // Initialize summary
       if (!summaryMap[employeeId]) {
         const emp = employees.find((e) => e.employeeId === employeeId) || {};
 
         summaryMap[employeeId] = {
           employeeId,
           name: emp.name || `Employee ${employeeId}`,
-          month: finalMonth,
+          month: processedMonth,
           presentDays: 0,
           lateDays: 0,
           onsiteDays: 0,
@@ -1394,49 +1493,46 @@ exports.calculateSummary = async (req, res) => {
         processedDates[employeeId] = new Set();
       }
 
-      // ⏩ Skip duplicate date
-      if (processedDates[employeeId].has(dateKey)) return;
+      // Skip duplicate date
+      if (processedDates[employeeId].has(dateKey)) {
+        console.log(`⏩ Skipping duplicate date for ${employeeId}: ${dateKey}`);
+        return;
+      }
       processedDates[employeeId].add(dateKey);
 
-      // ⏱ Hours calculation
+      // Hours calculation
       let hours = 0;
       if (rec.totalHours !== undefined) {
         hours = parseFloat(rec.totalHours);
       } else if (rec.checkOutTime) {
-        hours =
-          (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) /
-          (1000 * 60 * 60);
+        hours = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
       }
 
-      // 📌 Day type with EXACT logic
+      // Day type
       const type = calculateDayType(hours);
       
-      console.log(`📊 Employee ${employeeId} - Hours: ${hours.toFixed(2)}, Type: ${type}`);
+      console.log(`📊 ${employeeId} - ${dateKey}: ${hours.toFixed(2)}h = ${type}`);
 
       if (type === "full") {
         summaryMap[employeeId].presentDays += 1;
         summaryMap[employeeId].totalWorkingDays += 1;
-        console.log(`✅ ${employeeId}: ${hours} hours = FULL DAY`);
       } else if (type === "half") {
         summaryMap[employeeId].halfDayWorking += 1;
         summaryMap[employeeId].totalWorkingDays += 0.5;
-        console.log(`🟡 ${employeeId}: ${hours} hours = HALF DAY`);
       } else if (type === "full_leave") {
         summaryMap[employeeId].fullDayNotWorking += 1;
-        console.log(`🔴 ${employeeId}: ${hours} hours = FULL LEAVE`);
       }
 
-      // ⏰ Late check–in
+      // Late check-in
       const hour = checkInDate.getHours();
       const minute = checkInDate.getMinutes();
       if (hour > 10 || (hour === 10 && minute > 0)) {
         summaryMap[employeeId].lateDays += 1;
       }
 
-      // 🏢 ONSITE DAYS FIXED — only if onsite == true
+      // Onsite days
       if (rec.onsite === true) {
         summaryMap[employeeId].onsiteDays += 1;
-        console.log(`🏢 Onsite counted for ${employeeId} on ${dateKey}`);
       }
 
       summaryMap[employeeId].totalRecords += 1;
@@ -1444,23 +1540,51 @@ exports.calculateSummary = async (req, res) => {
 
     const summaryArray = Object.values(summaryMap);
 
-    // ✅ SAVE TO DATABASE - IMPORTANT FIX
-    if (summaryArray.length > 0) {
-      // Delete existing summaries for same period
-      const deleteFilter = {};
-      if (month) deleteFilter.month = month;
-      if (fromDate && toDate) {
-        deleteFilter.createdAt = {
-          $gte: new Date(fromDate),
-          $lte: new Date(toDate + "T23:59:59.999Z")
-        };
+    console.log("📋 Summary calculated for", processedMonth + ":", summaryArray.length, "employees");
+
+    // Current month adjustment
+    if (processedMonth) {
+      const now = new Date();
+      const [selectedYear, selectedMonth] = processedMonth.split('-').map(Number);
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const currentDay = now.getDate();
+      
+      if (selectedYear === currentYear && selectedMonth === currentMonth) {
+        console.log("✅ Adjusting for current month, max days:", currentDay);
+        
+        summaryArray.forEach(emp => {
+          const correctedPresent = Math.min(emp.presentDays, currentDay);
+          const correctedLate = Math.min(emp.lateDays, currentDay);
+          const correctedOnsite = Math.min(emp.onsiteDays, currentDay);
+          const correctedHalf = Math.min(emp.halfDayWorking, currentDay);
+          const correctedFullLeave = Math.min(emp.fullDayNotWorking, currentDay);
+          const correctedTotal = correctedPresent + (correctedHalf * 0.5);
+          
+          emp.presentDays = correctedPresent;
+          emp.lateDays = correctedLate;
+          emp.onsiteDays = correctedOnsite;
+          emp.halfDayWorking = correctedHalf;
+          emp.fullDayNotWorking = correctedFullLeave;
+          emp.totalWorkingDays = correctedTotal;
+        });
       }
+    }
 
-      await AttendanceSummary.deleteMany(deleteFilter);
+    // ✅ SAVE TO DATABASE (ONLY for this month)
+    if (summaryArray.length > 0 && processedMonth) {
+      // Delete ONLY summaries for this specific month
+      const deleteFilter = { month: processedMonth };
+      
+      console.log("🗑️ Deleting existing summaries for:", processedMonth);
+      
+      const deleteResult = await AttendanceSummary.deleteMany(deleteFilter);
+      console.log(`🗑️ Deleted ${deleteResult.deletedCount} existing summaries for ${processedMonth}`);
 
-      // Save new summaries with proper fields
+      // Save new summaries with CORRECT month
       const summariesToSave = summaryArray.map(summary => ({
         ...summary,
+        month: processedMonth, // Ensure month is saved correctly
         fromDate: fromDate || null,
         toDate: toDate || null,
         calculatedAt: new Date(),
@@ -1468,15 +1592,19 @@ exports.calculateSummary = async (req, res) => {
       }));
 
       const savedSummaries = await AttendanceSummary.insertMany(summariesToSave);
-
-      console.log("💾 Summaries saved to database:", savedSummaries.length);
+      console.log(`💾 Saved ${savedSummaries.length} summaries for ${processedMonth}`);
+      
+      // Verify what was saved
+      const verifyData = await AttendanceSummary.find({ month: processedMonth });
+      console.log(`✅ Verification: ${verifyData.length} records now in DB for ${processedMonth}`);
     }
 
     res.json({
       success: true,
       count: summaryArray.length,
       summary: summaryArray,
-      message: "Summary calculated and saved successfully"
+      month: processedMonth,
+      message: `Summary calculated and saved successfully for ${processedMonth}`
     });
 
   } catch (err) {
@@ -1553,7 +1681,87 @@ exports.getEmployeeDetails = async (req, res) => {
 };
 
 /**
- * 📌 Get Salaries with WeekOff Calculation - COMPLETELY FIXED VERSION
+ * 📌 Fix Wrong Summary Data (Without Deleting) - ✅ NEW FUNCTION ADDED
+ */
+exports.fixSummaryData = async (req, res) => {
+  try {
+    const { month } = req.body;
+    
+    if (!month) {
+      return res.status(400).json({
+        success: false,
+        message: "Month is required (e.g., 2025-12)"
+      });
+    }
+    
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+    const currentDay = today.getDate();
+    
+    const [year, monthNum] = month.split('-').map(Number);
+    
+    console.log(`🔧 Fixing summary data for ${month}, current day: ${currentDay}`);
+    
+    let updateCount = 0;
+    
+    if (year === currentYear && monthNum === currentMonth) {
+      // Current month hai - limit to current day
+      const summaries = await AttendanceSummary.find({ month });
+      
+      for (const summary of summaries) {
+        // Calculate new correct values
+        const correctedPresent = Math.min(summary.presentDays, currentDay);
+        const correctedLate = Math.min(summary.lateDays, currentDay);
+        const correctedOnsite = Math.min(summary.onsiteDays, currentDay);
+        const correctedHalf = Math.min(summary.halfDayWorking, currentDay);
+        const correctedFullLeave = Math.min(summary.fullDayNotWorking, currentDay);
+        const correctedTotal = correctedPresent + (correctedHalf * 0.5);
+        
+        // Update if needed
+        if (summary.presentDays !== correctedPresent || 
+            summary.lateDays !== correctedLate ||
+            summary.totalWorkingDays !== correctedTotal) {
+          
+          await AttendanceSummary.findByIdAndUpdate(
+            summary._id,
+            {
+              presentDays: correctedPresent,
+              lateDays: correctedLate,
+              onsiteDays: correctedOnsite,
+              halfDayWorking: correctedHalf,
+              fullDayNotWorking: correctedFullLeave,
+              totalWorkingDays: correctedTotal
+            }
+          );
+          
+          updateCount++;
+          console.log(`✅ Fixed ${summary.employeeId}: present ${summary.presentDays} → ${correctedPresent} days`);
+        }
+      }
+    } else {
+      // Past month hai - kuch mat karo
+      console.log(`ℹ️ ${month} is past month, no fix needed`);
+    }
+    
+    res.json({
+      success: true,
+      message: `Fixed ${updateCount} summary records for ${month}`,
+      fixedCount: updateCount
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fixing summary:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fixing summary data',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 📌 Get Salaries - ULTIMATE FIX (No Data Deletion)
  */
 exports.getSalaries = async (req, res) => {
   try {
@@ -1561,118 +1769,194 @@ exports.getSalaries = async (req, res) => {
 
     if (!month) {
       const today = new Date();
-      const y = today.getFullYear();
-      const m = String(today.getMonth() + 1).padStart(2, "0");
-      month = `${y}-${m}`;
+      month = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
     }
 
-    const [year, m] = month.split("-");
-    const start = new Date(year, m - 1, 1);
-    const end = new Date(year, m, 0, 23, 59, 59, 999);
+    console.log("=".repeat(60));
+    console.log("💰 FINAL SALARY FIX - MONTH:", month);
+    console.log("=".repeat(60));
 
+    const [year, monthNum] = month.split("-").map(Number);
+    const start = new Date(year, monthNum - 1, 1);
+    const end = new Date(year, monthNum, 0, 23, 59, 59, 999);
+
+    console.log(`📅 Salary Period: ${start.toDateString()} to ${end.toDateString()}`);
+
+    // Step 1: Get employees
     const employees = await Employee.find({});
-    const attendanceSummary = await AttendanceSummary.find({ month });
+    console.log(`👥 Total Employees: ${employees.length}`);
 
-    const leaves = await Leave.find({
-      $or: [
-        { startDate: { $gte: start, $lte: end } },
-        { endDate: { $gte: start, $lte: end } },
-        {
-          $and: [
-            { startDate: { $lte: start } },
-            { endDate: { $gte: end } }
-          ]
-        }
-      ]
+    // Step 2: Get attendance for REQUESTED MONTH ONLY
+    const attendanceSummaries = await AttendanceSummary.find({ month: month });
+    console.log(`📊 Attendance records in ${month}: ${attendanceSummaries.length}`);
+
+    // Step 3: SMART LEAVES FILTERING
+    // First get ALL approved leaves
+    const allLeaves = await Leave.find({ status: 'approved' });
+    console.log(`📝 All approved leaves in system: ${allLeaves.length}`);
+
+    // Now filter leaves for THIS MONTH ONLY using JavaScript
+    const monthLeaves = allLeaves.filter(leave => {
+      const leaveStart = new Date(leave.startDate);
+      const leaveEnd = new Date(leave.endDate || leave.startDate);
+      
+      // Check if leave overlaps with requested month
+      return (leaveStart <= end && leaveEnd >= start);
     });
 
+    console.log(`✅ Leaves in ${month}: ${monthLeaves.length}`);
+
+    // Debug: Show leaves by employee
+    const leavesByEmployee = {};
+    monthLeaves.forEach(leave => {
+      if (!leavesByEmployee[leave.employeeId]) {
+        leavesByEmployee[leave.employeeId] = [];
+      }
+      leavesByEmployee[leave.employeeId].push(leave);
+    });
+
+    console.log("\n📋 Leaves Distribution:");
+    Object.keys(leavesByEmployee).forEach(empId => {
+      console.log(`   ${empId}: ${leavesByEmployee[empId].length} leave(s)`);
+    });
+
+    // Step 4: Calculate salaries
     const salaryMap = {};
 
-    employees.forEach((emp) => {
+    employees.forEach(emp => {
+      console.log(`\n--- Processing: ${emp.employeeId} - ${emp.name} ---`);
 
-      const empSummary = attendanceSummary.find(
-        (summary) => summary.employeeId === emp.employeeId
-      );
+      // Get attendance for THIS MONTH
+      const empAttendance = attendanceSummaries.find(s => s.employeeId === emp.employeeId);
+      
+      if (!empAttendance) {
+        console.log(`⚠️ No attendance found for ${month}`);
+        // Still create entry but with zero attendance
+        salaryMap[emp.employeeId] = {
+          employeeId: emp.employeeId,
+          name: emp.name,
+          month: month,
+          presentDays: 0,
+          halfDayWorking: 0,
+          totalWorkingDays: 0,
+          weekOffs: emp.weekOffPerMonth || 0,
+          totalLeaves: 0,
+          leaveTypes: "No Leaves",
+          salaryPerMonth: emp.salaryPerMonth || 0,
+          salaryPerDay: (emp.salaryPerMonth || 0) / 30,
+          paidDays: 0,
+          calculatedSalary: 0,
+          note: `No attendance data for ${month}`
+        };
+        return;
+      }
 
-      const empLeaves = leaves.filter(
-        (leave) => leave.employeeId === emp.employeeId
-      );
+      console.log(`📊 Attendance: Present=${empAttendance.presentDays}, Half=${empAttendance.halfDayWorking}, Total=${empAttendance.totalWorkingDays}`);
 
-      // -------- LEAVE CALCULATION (FIXED, NO EXTRA DAY) --------
+      // Get leaves for THIS employee in THIS month
+      const empLeaves = leavesByEmployee[emp.employeeId] || [];
+      console.log(`📝 Leaves in ${month}: ${empLeaves.length}`);
+
+      // Calculate leave days in THIS MONTH
+      let totalLeaveDays = 0;
       const leaveTypes = {};
-let totalLeaves = 0;
 
-// Sirf approved leaves filter karo
-const approvedLeaves = empLeaves.filter(leave => leave.status === 'approved');
+      empLeaves.forEach(leave => {
+        const type = leave.leaveType?.toUpperCase() || "UNKNOWN";
+        if (!leaveTypes[type]) leaveTypes[type] = 0;
 
-approvedLeaves.forEach((leave) => {
-  const type = leave.leaveType?.toUpperCase() || "";
-  if (!leaveTypes[type]) leaveTypes[type] = 0;
+        const leaveStart = new Date(leave.startDate);
+        const leaveEnd = new Date(leave.endDate || leave.startDate);
 
-  const leaveStart = new Date(leave.startDate);
-  const leaveEnd = new Date(leave.endDate || leave.startDate);
+        // Calculate overlap with requested month
+        const overlapStart = leaveStart < start ? start : leaveStart;
+        const overlapEnd = leaveEnd > end ? end : leaveEnd;
 
-  const overlapStart = leaveStart < start ? start : leaveStart;
-  const overlapEnd = leaveEnd > end ? end : leaveEnd;
+        if (overlapStart <= overlapEnd) {
+          const days = Math.floor((overlapEnd - overlapStart) / (1000 * 60 * 60 * 24)) + 1;
+          leaveTypes[type] += days;
+          totalLeaveDays += days;
+          
+          console.log(`   📅 ${days} day(s): ${overlapStart.toDateString()} to ${overlapEnd.toDateString()}`);
+        }
+      });
 
-  if (overlapStart <= overlapEnd) {
-    const diffTime = overlapEnd - overlapStart;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    leaveTypes[type] += diffDays;
-    totalLeaves += diffDays;
-  }
-});
+      // Weekoffs
+      const weekOffs = emp.weekOffPerMonth || 0;
+      console.log(`📅 Weekoffs: ${weekOffs}`);
 
-      // -------- ATTENDANCE ----------
-      const presentDays = empSummary?.presentDays || 0;
-      const halfDayWorking = empSummary?.halfDayWorking || 0;
-
-      // --------*** USE EMPLOYEE’S OWN WEEKOFF ***--------
-      const weekOffPerMonth = emp.weekOffPerMonth || 0;
-
-      // -------- SALARY ----------
+      // Salary calculation
       const salaryPerMonth = emp.salaryPerMonth || 0;
       const dailyRate = salaryPerMonth / 30;
-
-      // -------- PAID DAYS FORMULA ----------
-      const paidDays = Math.max(
-        0,
-        presentDays + halfDayWorking * 0.5 + weekOffPerMonth - totalLeaves
-      );
-
+      
+      const totalWorkingDays = empAttendance.totalWorkingDays || 0;
+      const paidDays = Math.max(0, totalWorkingDays + weekOffs - totalLeaveDays);
       const calculatedSalary = Math.round(paidDays * dailyRate);
 
+      console.log(`🧮 Formula: ${totalWorkingDays} (work) + ${weekOffs} (weekoff) - ${totalLeaveDays} (leaves) = ${paidDays} days`);
+      console.log(`💰 Salary: ${paidDays} × ₹${dailyRate.toFixed(2)} = ₹${calculatedSalary}`);
+
+      // Store result
       salaryMap[emp.employeeId] = {
         employeeId: emp.employeeId,
         name: emp.name,
-        month,
+        month: month,
 
-        presentDays,
-        halfDayWorking,
-        weekOffs: weekOffPerMonth,
+        // Attendance
+        presentDays: empAttendance.presentDays || 0,
+        halfDayWorking: empAttendance.halfDayWorking || 0,
+        totalWorkingDays: parseFloat(totalWorkingDays.toFixed(1)),
+        workingDays: parseFloat(totalWorkingDays.toFixed(1)),
 
-        totalLeaves,
-        leaveTypes,
+        // Weekoffs
+        weekOffs: weekOffs,
+        weekOffDays: weekOffs,
 
-        salaryPerMonth,
-        salaryPerDay: dailyRate.toFixed(2),
-        paidDays,
-        calculatedSalary,
+        // Leaves
+        totalLeaves: totalLeaveDays,
+        leaveTypes: totalLeaveDays > 0 ? leaveTypes : "No Leaves",
 
+        // Salary
+        salaryPerMonth: salaryPerMonth,
+        salaryPerDay: parseFloat(dailyRate.toFixed(2)),
+        paidDays: parseFloat(paidDays.toFixed(2)),
+        calculatedSalary: calculatedSalary,
+
+        // Display
+        calculatedSalaryDisplay: `₹${calculatedSalary}`,
+        salaryPerDayDisplay: `₹${dailyRate.toFixed(2)}/day`,
+
+        // Debug info
         _debug: {
-          presentDays,
-          halfDayWorking,
-          weekOffPerMonth,
-          totalLeaves,
-          paidDays
+          attendanceMonth: empAttendance.month,
+          leavesCount: empLeaves.length,
+          leavesInSystem: allLeaves.filter(l => l.employeeId === emp.employeeId).length,
+          formula: `${totalWorkingDays} + ${weekOffs} - ${totalLeaveDays}`
         }
       };
     });
 
+    console.log("\n" + "=".repeat(60));
+    console.log(`✅ FINISHED: Salaries for ${month}`);
+    console.log(`📋 Employees with data: ${Object.keys(salaryMap).length}`);
+    console.log("=".repeat(60));
+
     res.json({
       success: true,
+      month: month,
+      period: {
+        start: start.toISOString(),
+        end: end.toISOString()
+      },
+      dataSummary: {
+        totalEmployees: employees.length,
+        employeesWithAttendance: attendanceSummaries.length,
+        leavesInMonth: monthLeaves.length,
+        leavesInSystem: allLeaves.length
+      },
       salaries: Object.values(salaryMap),
       totalEmployees: Object.values(salaryMap).length,
+      note: `Calculated for ${month} only. No data was deleted.`
     });
 
   } catch (error) {
@@ -1681,5 +1965,101 @@ approvedLeaves.forEach((leave) => {
       success: false,
       error: error.message,
     });
+  }
+};
+/**
+ * 📌 Check Month Data - Diagnostic Function
+ */
+exports.checkMonthData = async (req, res) => {
+  try {
+    const { month1, month2 } = req.query;
+    
+    console.log(`🔍 Checking data for months: ${month1} and ${month2}`);
+    
+    // Get summaries for both months
+    const summaries1 = await AttendanceSummary.find({ month: month1 });
+    const summaries2 = await AttendanceSummary.find({ month: month2 });
+    
+    // Get leaves for both months
+    const [year1, monthNum1] = month1.split("-").map(Number);
+    const start1 = new Date(year1, monthNum1 - 1, 1);
+    const end1 = new Date(year1, monthNum1, 0, 23, 59, 59, 999);
+    
+    const [year2, monthNum2] = month2.split("-").map(Number);
+    const start2 = new Date(year2, monthNum2 - 1, 1);
+    const end2 = new Date(year2, monthNum2, 0, 23, 59, 59, 999);
+    
+    const leaves1 = await Leave.find({
+      status: 'approved',
+      $or: [
+        { startDate: { $gte: start1, $lte: end1 } },
+        { endDate: { $gte: start1, $lte: end1 } },
+        { $and: [
+            { startDate: { $lte: start1 } },
+            { endDate: { $gte: end1 } }
+          ]
+        }
+      ]
+    });
+    
+    const leaves2 = await Leave.find({
+      status: 'approved',
+      $or: [
+        { startDate: { $gte: start2, $lte: end2 } },
+        { endDate: { $gte: start2, $lte: end2 } },
+        { $and: [
+            { startDate: { $lte: start2 } },
+            { endDate: { $gte: end2 } }
+          ]
+        }
+      ]
+    });
+    
+    // Find employees with data in both months
+    const employees = await Employee.find({});
+    const crossMonthEmployees = [];
+    
+    employees.forEach(emp => {
+      const inMonth1 = summaries1.find(s => s.employeeId === emp.employeeId);
+      const inMonth2 = summaries2.find(s => s.employeeId === emp.employeeId);
+      const leavesIn1 = leaves1.filter(l => l.employeeId === emp.employeeId);
+      const leavesIn2 = leaves2.filter(l => l.employeeId === emp.employeeId);
+      
+      if (inMonth1 && inMonth2) {
+        crossMonthEmployees.push({
+          employeeId: emp.employeeId,
+          name: emp.name,
+          [month1]: {
+            presentDays: inMonth1.presentDays,
+            totalWorkingDays: inMonth1.totalWorkingDays,
+            leaves: leavesIn1.length
+          },
+          [month2]: {
+            presentDays: inMonth2.presentDays,
+            totalWorkingDays: inMonth2.totalWorkingDays,
+            leaves: leavesIn2.length
+          }
+        });
+      }
+    });
+    
+    res.json({
+      success: true,
+      months: { month1, month2 },
+      summaries: {
+        [month1]: summaries1.length,
+        [month2]: summaries2.length
+      },
+      leaves: {
+        [month1]: leaves1.length,
+        [month2]: leaves2.length
+      },
+      crossMonthEmployees: crossMonthEmployees.length > 0 ? crossMonthEmployees : "No cross-month data found",
+      note: "This is diagnostic only - no data changed"
+    });
+    
+  } catch (error) {
+    console.error('❌ Check error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
