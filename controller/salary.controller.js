@@ -104,3 +104,26 @@ exports.getAllSalaries = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+exports.updateEmployeeSalary = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    const employee = await Employee.findOneAndUpdate(
+      { employeeId },   // 👈 EMP008
+      req.body,
+      { new: true }
+    );
+
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    res.json({
+      message: "Salary updated successfully",
+      employee
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Update failed" });
+  }
+};

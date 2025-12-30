@@ -1067,6 +1067,22 @@ exports.getAllAttendance = async (req, res) => {
         $lte: new Date(toDate + 'T23:59:59.999Z')
       };
     }
+    // ✅ Reason count (INSIDE LOOP)
+if (rec.reason) {
+  const reason = rec.reason.toLowerCase();
+
+  if (reason.includes("onsite")) {
+    summaryMap[employeeId].reasonCount.onsite += 1;
+  } else if (reason.includes("field")) {
+    summaryMap[employeeId].reasonCount.fieldWork += 1;
+  } else if (
+    reason.includes("work from home") ||
+    reason.includes("wfh")
+  ) {
+    summaryMap[employeeId].reasonCount.workFromHome += 1;
+  }
+}
+
     
     // Month filter
     if (month) {
@@ -1104,6 +1120,10 @@ exports.getAllAttendance = async (req, res) => {
     });
   }
 };
+
+
+
+
 
 /**
  * 📌 Update Attendance Record (Hours, Region, Comment) - FIXED VERSION
@@ -1232,6 +1252,15 @@ exports.saveSummary = async (req, res) => {
       toDate: toDate || null,
       calculatedSalary: summary.calculatedSalary || 0,
       workingDays: summary.workingDays || 0,
+      overTimeHours: summary.overTimeHours || 0,
+onsiteYesDays: summary.onsiteYesDays || 0,
+onsiteNoDays: summary.onsiteNoDays || 0,
+reasonCount: summary.reasonCount || {
+  onsite: 0,
+  fieldWork: 0,
+  workFromHome: 0
+},
+
       createdAt: new Date()
     }));
 
@@ -1476,19 +1505,34 @@ exports.calculateSummary = async (req, res) => {
         const emp = employees.find((e) => e.employeeId === employeeId) || {};
 
         summaryMap[employeeId] = {
-          employeeId,
-          name: emp.name || `Employee ${employeeId}`,
-          month: processedMonth,
-          presentDays: 0,
-          lateDays: 0,
-          onsiteDays: 0,
-          halfDayWorking: 0,
-          fullDayNotWorking: 0,
-          totalWorkingDays: 0,
-          workingDays: 0,
-          calculatedSalary: 0,
-          totalRecords: 0
-        };
+  employeeId,
+  name: emp.name || `Employee ${employeeId}`,
+  month: processedMonth,
+
+  presentDays: 0,
+  lateDays: 0,
+  onsiteDays: 0,
+
+  onsiteYesDays: 0,
+  onsiteNoDays: 0,
+
+  reasonCount: {
+    onsite: 0,
+    fieldWork: 0,
+    workFromHome: 0
+  },
+
+  halfDayWorking: 0,
+  fullDayNotWorking: 0,
+  totalWorkingDays: 0,
+
+  overTimeHours: 0, // 👈 NEW
+
+  workingDays: 0,
+  calculatedSalary: 0,
+  totalRecords: 0
+};
+
 
         processedDates[employeeId] = new Set();
       }
@@ -1507,6 +1551,13 @@ exports.calculateSummary = async (req, res) => {
       } else if (rec.checkOutTime) {
         hours = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
       }
+
+    const STANDARD_HOURS = 9;
+const extraHours = Math.max(hours - STANDARD_HOURS, 0);
+
+// OT accumulate
+summaryMap[employeeId].overTimeHours += Number(extraHours.toFixed(2));
+
 
       // Day type
       const type = calculateDayType(hours);
@@ -1531,9 +1582,13 @@ exports.calculateSummary = async (req, res) => {
       }
 
       // Onsite days
-      if (rec.onsite === true) {
-        summaryMap[employeeId].onsiteDays += 1;
-      }
+     if (rec.onsite === true) {
+  summaryMap[employeeId].onsiteDays += 1;
+  summaryMap[employeeId].onsiteYesDays += 1;
+} else {
+  summaryMap[employeeId].onsiteNoDays += 1;
+}
+
 
       summaryMap[employeeId].totalRecords += 1;
     });
@@ -1772,201 +1827,107 @@ exports.getSalaries = async (req, res) => {
       month = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
     }
 
-    console.log("=".repeat(60));
-    console.log("💰 FINAL SALARY FIX - MONTH:", month);
-    console.log("=".repeat(60));
+    month = month.trim(); // ✅ IMPORTANT
 
     const [year, monthNum] = month.split("-").map(Number);
     const start = new Date(year, monthNum - 1, 1);
     const end = new Date(year, monthNum, 0, 23, 59, 59, 999);
 
-    console.log(`📅 Salary Period: ${start.toDateString()} to ${end.toDateString()}`);
-
-    // Step 1: Get employees
+    // 1️⃣ Employees
     const employees = await Employee.find({});
-    console.log(`👥 Total Employees: ${employees.length}`);
 
-    // Step 2: Get attendance for REQUESTED MONTH ONLY
-    const attendanceSummaries = await AttendanceSummary.find({ month: month });
-    console.log(`📊 Attendance records in ${month}: ${attendanceSummaries.length}`);
+    // 2️⃣ Attendance (STRICT month)
+    const attendanceSummaries = await AttendanceSummary.find({ month });
 
-    // Step 3: SMART LEAVES FILTERING
-    // First get ALL approved leaves
-    const allLeaves = await Leave.find({ status: 'approved' });
-    console.log(`📝 All approved leaves in system: ${allLeaves.length}`);
+    // ✅ MAP attendance by employeeId
+    const attendanceMap = {};
+    attendanceSummaries.forEach(a => {
+      attendanceMap[String(a.employeeId)] = a;
+    });
 
-    // Now filter leaves for THIS MONTH ONLY using JavaScript
+    // 3️⃣ Approved leaves (display only)
+    const allLeaves = await Leave.find({ status: "approved" });
+
     const monthLeaves = allLeaves.filter(leave => {
       const leaveStart = new Date(leave.startDate);
       const leaveEnd = new Date(leave.endDate || leave.startDate);
-      
-      // Check if leave overlaps with requested month
-      return (leaveStart <= end && leaveEnd >= start);
+      return leaveStart <= end && leaveEnd >= start;
     });
 
-    console.log(`✅ Leaves in ${month}: ${monthLeaves.length}`);
-
-    // Debug: Show leaves by employee
     const leavesByEmployee = {};
-    monthLeaves.forEach(leave => {
-      if (!leavesByEmployee[leave.employeeId]) {
-        leavesByEmployee[leave.employeeId] = [];
+    monthLeaves.forEach(l => {
+      if (!leavesByEmployee[l.employeeId]) {
+        leavesByEmployee[l.employeeId] = [];
       }
-      leavesByEmployee[leave.employeeId].push(leave);
+      leavesByEmployee[l.employeeId].push(l);
     });
 
-    console.log("\n📋 Leaves Distribution:");
-    Object.keys(leavesByEmployee).forEach(empId => {
-      console.log(`   ${empId}: ${leavesByEmployee[empId].length} leave(s)`);
-    });
-
-    // Step 4: Calculate salaries
+    // 4️⃣ Salary calculation
     const salaryMap = {};
 
     employees.forEach(emp => {
-      console.log(`\n--- Processing: ${emp.employeeId} - ${emp.name} ---`);
 
-      // Get attendance for THIS MONTH
-      const empAttendance = attendanceSummaries.find(s => s.employeeId === emp.employeeId);
-      
-      if (!empAttendance) {
-        console.log(`⚠️ No attendance found for ${month}`);
-        // Still create entry but with zero attendance
-        salaryMap[emp.employeeId] = {
-          employeeId: emp.employeeId,
-          name: emp.name,
-          month: month,
-          presentDays: 0,
-          halfDayWorking: 0,
-          totalWorkingDays: 0,
-          weekOffs: emp.weekOffPerMonth || 0,
-          totalLeaves: 0,
-          leaveTypes: "No Leaves",
-          salaryPerMonth: emp.salaryPerMonth || 0,
-          salaryPerDay: (emp.salaryPerMonth || 0) / 30,
-          paidDays: 0,
-          calculatedSalary: 0,
-          note: `No attendance data for ${month}`
-        };
-        return;
-      }
+      // ✅ CORRECT attendance for selected month
+      const empAttendance = attendanceMap[String(emp.employeeId)];
 
-      console.log(`📊 Attendance: Present=${empAttendance.presentDays}, Half=${empAttendance.halfDayWorking}, Total=${empAttendance.totalWorkingDays}`);
+      const weekOffs = emp.weekOffPerMonth || 0;
+      const salaryPerMonth = emp.salaryPerMonth || 0;
+      const dailyRate = salaryPerMonth / 30;
 
-      // Get leaves for THIS employee in THIS month
+      const totalWorkingDays = empAttendance?.totalWorkingDays || 0;
+
+      // ❌ No paid leave policy
+      const paidDays = Math.max(0, totalWorkingDays + weekOffs);
+
+      const calculatedSalary = Math.round(paidDays * dailyRate);
+
       const empLeaves = leavesByEmployee[emp.employeeId] || [];
-      console.log(`📝 Leaves in ${month}: ${empLeaves.length}`);
-
-      // Calculate leave days in THIS MONTH
       let totalLeaveDays = 0;
       const leaveTypes = {};
 
       empLeaves.forEach(leave => {
         const type = leave.leaveType?.toUpperCase() || "UNKNOWN";
-        if (!leaveTypes[type]) leaveTypes[type] = 0;
-
-        const leaveStart = new Date(leave.startDate);
-        const leaveEnd = new Date(leave.endDate || leave.startDate);
-
-        // Calculate overlap with requested month
-        const overlapStart = leaveStart < start ? start : leaveStart;
-        const overlapEnd = leaveEnd > end ? end : leaveEnd;
-
-        if (overlapStart <= overlapEnd) {
-          const days = Math.floor((overlapEnd - overlapStart) / (1000 * 60 * 60 * 24)) + 1;
-          leaveTypes[type] += days;
-          totalLeaveDays += days;
-          
-          console.log(`   📅 ${days} day(s): ${overlapStart.toDateString()} to ${overlapEnd.toDateString()}`);
-        }
+        leaveTypes[type] = (leaveTypes[type] || 0) + 1;
+        totalLeaveDays += 1;
       });
 
-      // Weekoffs
-      const weekOffs = emp.weekOffPerMonth || 0;
-      console.log(`📅 Weekoffs: ${weekOffs}`);
-
-      // Salary calculation
-      const salaryPerMonth = emp.salaryPerMonth || 0;
-      const dailyRate = salaryPerMonth / 30;
-      
-      const totalWorkingDays = empAttendance.totalWorkingDays || 0;
-      const paidDays = Math.max(0, totalWorkingDays + weekOffs - totalLeaveDays);
-      const calculatedSalary = Math.round(paidDays * dailyRate);
-
-      console.log(`🧮 Formula: ${totalWorkingDays} (work) + ${weekOffs} (weekoff) - ${totalLeaveDays} (leaves) = ${paidDays} days`);
-      console.log(`💰 Salary: ${paidDays} × ₹${dailyRate.toFixed(2)} = ₹${calculatedSalary}`);
-
-      // Store result
       salaryMap[emp.employeeId] = {
         employeeId: emp.employeeId,
         name: emp.name,
-        month: month,
+        month,
 
-        // Attendance
-        presentDays: empAttendance.presentDays || 0,
-        halfDayWorking: empAttendance.halfDayWorking || 0,
-        totalWorkingDays: parseFloat(totalWorkingDays.toFixed(1)),
-        workingDays: parseFloat(totalWorkingDays.toFixed(1)),
+        presentDays: empAttendance?.presentDays || 0,
+        halfDayWorking: empAttendance?.halfDayWorking || 0,
+        totalWorkingDays,
 
-        // Weekoffs
-        weekOffs: weekOffs,
-        weekOffDays: weekOffs,
+        weekOffs,
 
-        // Leaves
         totalLeaves: totalLeaveDays,
-        leaveTypes: totalLeaveDays > 0 ? leaveTypes : "No Leaves",
+        leaveTypes: totalLeaveDays ? leaveTypes : "No Leaves",
 
-        // Salary
-        salaryPerMonth: salaryPerMonth,
-        salaryPerDay: parseFloat(dailyRate.toFixed(2)),
-        paidDays: parseFloat(paidDays.toFixed(2)),
-        calculatedSalary: calculatedSalary,
-
-        // Display
-        calculatedSalaryDisplay: `₹${calculatedSalary}`,
-        salaryPerDayDisplay: `₹${dailyRate.toFixed(2)}/day`,
-
-        // Debug info
-        _debug: {
-          attendanceMonth: empAttendance.month,
-          leavesCount: empLeaves.length,
-          leavesInSystem: allLeaves.filter(l => l.employeeId === emp.employeeId).length,
-          formula: `${totalWorkingDays} + ${weekOffs} - ${totalLeaveDays}`
-        }
+        salaryPerMonth,
+        salaryPerDay: Number(dailyRate.toFixed(2)),
+        paidDays,
+        calculatedSalary,
+        calculatedSalaryDisplay: `₹${calculatedSalary}`
       };
     });
 
-    console.log("\n" + "=".repeat(60));
-    console.log(`✅ FINISHED: Salaries for ${month}`);
-    console.log(`📋 Employees with data: ${Object.keys(salaryMap).length}`);
-    console.log("=".repeat(60));
-
     res.json({
       success: true,
-      month: month,
-      period: {
-        start: start.toISOString(),
-        end: end.toISOString()
-      },
-      dataSummary: {
-        totalEmployees: employees.length,
-        employeesWithAttendance: attendanceSummaries.length,
-        leavesInMonth: monthLeaves.length,
-        leavesInSystem: allLeaves.length
-      },
-      salaries: Object.values(salaryMap),
-      totalEmployees: Object.values(salaryMap).length,
-      note: `Calculated for ${month} only. No data was deleted.`
+      month,
+      salaries: Object.values(salaryMap)
     });
 
   } catch (error) {
-    console.error("❌ Salary error:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error.message
     });
   }
 };
+
+
 /**
  * 📌 Check Month Data - Diagnostic Function
  */

@@ -50,6 +50,18 @@ const AttendanceSummarySchema = new mongoose.Schema({
   fullDayNotWorking: { type: Number, default: 0 }, // Changed from fullDayLeaves
   totalWorkingDays: { type: Number, default: 0 },
 
+  onsiteYesDays: { type: Number, default: 0 },
+  onsiteNoDays: { type: Number, default: 0 },
+
+  reasonCount: {
+    onsite: { type: Number, default: 0 },
+    fieldWork: { type: Number, default: 0 },
+    workFromHome: { type: Number, default: 0 }
+  },
+
+
+overTimeHours: { type: Number, default: 0 }, // 👈 OT
+
   fromDate: { type: Date },
   toDate: { type: Date },
   month: { type: String }, // "2025-11"
