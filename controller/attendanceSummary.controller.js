@@ -1028,6 +1028,1020 @@
 // };
 
 
+// const Attendance = require("../models/Attendance");
+// const AttendanceSummary = require("../models/AttendanceSummary");
+// const Employee = require("../models/Employee");
+// const Leave = require("../models/Leave");
+
+// // ✅ YEHI ADD KARNA HAI - Calculate Day Type Function
+// const calculateDayType = (hours) => {
+//   const h = parseFloat(hours) || 0;
+  
+//   // Same logic as in calculateSummary
+//   const FULL_DAY_THRESHOLD = 8.80;
+//   const HALF_DAY_THRESHOLD = 4;
+
+//   if (h > FULL_DAY_THRESHOLD) {
+//     return "full";
+//   } else if (h >= HALF_DAY_THRESHOLD) {
+//     return "half";
+//   } else {
+//     return "full_leave";
+//   }
+// };
+
+
+// /**
+//  * 📌 Get All Attendance Records with Filters
+//  */
+// exports.getAllAttendance = async (req, res) => {
+//   try {
+//     const { fromDate, toDate, month, employeeId } = req.query;
+    
+//     let query = {};
+    
+//     // Date range filter
+//     if (fromDate && toDate) {
+//       query.checkInTime = {
+//         $gte: new Date(fromDate),
+//         $lte: new Date(toDate + 'T23:59:59.999Z')
+//       };
+//     }
+//     // ✅ Reason count (INSIDE LOOP)
+// // if (rec.reason) {
+// //   const reason = rec.reason.toLowerCase();
+
+// //   if (reason.includes("onsite")) {
+// //     summaryMap[employeeId].reasonCount.onsite += 1;
+// //   } else if (reason.includes("field")) {
+// //     summaryMap[employeeId].reasonCount.fieldWork += 1;
+// //   } else if (
+// //     reason.includes("work from home") ||
+// //     reason.includes("wfh")
+// //   ) {
+// //     summaryMap[employeeId].reasonCount.workFromHome += 1;
+// //   }
+// // }
+
+    
+//     // Month filter
+//     if (month) {
+//       const [year, monthNum] = month.split('-');
+//       const startDate = new Date(year, monthNum - 1, 1);
+//       const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
+      
+//       query.checkInTime = {
+//         $gte: startDate,
+//         $lte: endDate
+//       };
+//     }
+    
+//     // Employee filter
+//     if (employeeId) {
+//       query.employeeId = employeeId;
+//     }
+    
+//     const records = await Attendance.find(query)
+//       .sort({ checkInTime: -1 })
+//       .lean();
+    
+//     res.json({
+//       success: true,
+//       records: records,
+//       count: records.length
+//     });
+    
+//   } catch (error) {
+//     console.error('❌ Error fetching attendance:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error fetching attendance records',
+//       error: error.message
+//     });
+//   }
+// };
+
+
+
+
+
+// /**
+//  * 📌 Update Attendance Record (Hours, Region, Comment) - FIXED VERSION
+//  */
+// exports.updateAttendance = async (req, res) => {
+//   try {
+//     const { attendanceId, hours, region, reason } = req.body;
+    
+//     console.log('📝 Update request received:', { attendanceId, hours, region, reason });
+    
+//     if (!attendanceId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Attendance ID is required'
+//       });
+//     }
+    
+//     if (hours === undefined && !region && !reason) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'At least one field (hours, region, or reason) is required to update'
+//       });
+//     }
+    
+//     const updateData = {};
+//     if (hours !== undefined) updateData.totalHours = parseFloat(hours);
+//     if (region !== undefined) updateData.region = region;
+//     if (reason !== undefined) {
+//       updateData.reason = reason;
+//       updateData.comment = reason; // Also update comment field for compatibility
+//     }
+    
+//     // Recalculate day type based on new hours
+//     if (hours !== undefined) {
+//       const calculatedDayType = calculateDayType(parseFloat(hours));
+//       updateData.dayType = calculatedDayType;
+//     }
+    
+//     console.log('🔄 Update data:', updateData);
+    
+//     const updatedRecord = await Attendance.findByIdAndUpdate(
+//       attendanceId,
+//       updateData,
+//       { new: true, runValidators: true }
+//     );
+    
+//     if (!updatedRecord) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Attendance record not found'
+//       });
+//     }
+    
+//     console.log('✅ Attendance record updated:', {
+//       id: attendanceId,
+//       hours: hours,
+//       region: region,
+//       reason: reason,
+//       dayType: updatedRecord.dayType
+//     });
+    
+//     // 🔥 AUTO RECALCULATE SUMMARY FOR THAT MONTH
+// const d = new Date(updatedRecord.checkInTime);
+// const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+// console.log("🔁 Auto recalculating summary for:", month);
+
+// // Delete old summary of that month
+// await AttendanceSummary.deleteMany({ month });
+
+// // Recalculate summary
+// await exports.calculateSummary(
+//   { body: { month } },
+//   { json: () => {} } // dummy response
+// );
+
+//     res.json({
+//       success: true,
+//       message: 'Attendance record updated successfully',
+//       record: updatedRecord
+//     });
+    
+//   } catch (error) {
+//     console.error('❌ Error updating attendance:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error updating attendance record',
+//       error: error.message
+//     });
+//   }
+// };
+
+
+
+
+// /**
+//  * 📌 Save Attendance Summary
+//  */
+// exports.saveSummary = async (req, res) => {
+//   try {
+//     const { summaries, fromDate, toDate, month } = req.body;
+
+//     if (!summaries || !Array.isArray(summaries)) {
+//       return res.status(400).json({ 
+//         success: false,
+//         message: "Invalid summary data" 
+//       });
+//     }
+
+//     console.log('💾 Saving summary for:', {
+//       month,
+//       fromDate,
+//       toDate,
+//       employeeCount: summaries.length
+//     });
+
+//     // Remove existing summaries for the same period
+//     let deleteQuery = {};
+//     if (month) {
+//       deleteQuery.month = month;
+//     } else if (fromDate && toDate) {
+//       deleteQuery.fromDate = fromDate;
+//       deleteQuery.toDate = toDate;
+//     }
+
+//     if (Object.keys(deleteQuery).length > 0) {
+//       await AttendanceSummary.deleteMany(deleteQuery);
+//       console.log('🗑️ Cleared existing summaries for period');
+//     }
+
+//     // Prepare data for insertion with updated field names
+//     const insertData = summaries.map((summary) => ({
+//       employeeId: summary.employeeId,
+//       name: summary.name,
+//       month: summary.month,
+//       presentDays: summary.presentDays || 0,
+//       lateDays: summary.lateDays || 0,
+//       onsiteDays: summary.onsiteDays || 0,
+//       halfDayWorking: summary.halfDayWorking || summary.halfDayLeaves || 0,
+//       fullDayNotWorking: summary.fullDayNotWorking || summary.fullDayLeaves || 0,
+//       totalWorkingDays: summary.totalWorkingDays || 0,
+//       fromDate: fromDate || null,
+//       toDate: toDate || null,
+//       calculatedSalary: summary.calculatedSalary || 0,
+//       workingDays: summary.workingDays || 0,
+//       overTimeHours: summary.overTimeHours || 0,
+// onsiteYesDays: summary.onsiteYesDays || 0,
+// onsiteNoDays: summary.onsiteNoDays || 0,
+// reasonCount: summary.reasonCount || {
+//   onsite: 0,
+//   fieldWork: 0,
+//   workFromHome: 0
+// },
+
+//       createdAt: new Date()
+//     }));
+
+//     const result = await AttendanceSummary.insertMany(insertData);
+
+//     console.log('✅ Summary saved successfully:', result.length, 'records');
+
+//     res.json({
+//       success: true,
+//       message: "Summary saved successfully",
+//       count: result.length,
+//       data: result
+//     });
+    
+//   } catch (err) {
+//     console.error('❌ Error saving summary:', err);
+//     res.status(500).json({ 
+//       success: false,
+//       message: err.message 
+//     });
+//   }
+// };
+
+// /**
+//  * 📌 Get Saved Summary - ✅ FIXED: Auto-correct wrong data
+//  */
+// exports.getSummary = async (req, res) => {
+//   try {
+//     const { month, fromDate, toDate, employeeId } = req.query;
+
+//     console.log("📥 GetSummary API Called with:", { month, fromDate, toDate, employeeId });
+
+//     let filter = {};
+    
+//     // Date range filter
+//     if (fromDate && toDate) {
+//       filter.createdAt = {
+//         $gte: new Date(fromDate),
+//         $lte: new Date(toDate + "T23:59:59.999Z")
+//       };
+//     }
+    
+//     // Month filter
+//     if (month) {
+//       filter.month = month;
+//     }
+    
+//     // Employee filter
+//     if (employeeId) {
+//       filter.employeeId = employeeId;
+//     }
+
+//     console.log("🔍 Database Filter:", filter);
+
+//     let data = await AttendanceSummary.find(filter).sort({ createdAt: -1 });
+
+//     console.log("✅ Found records:", data.length);
+
+//     // ✅ FIXED: Auto-correct wrong data for current month
+//     const today = new Date();
+//     const currentYear = today.getFullYear();
+//     const currentMonth = today.getMonth() + 1;
+//     const currentDay = today.getDate();
+    
+//     const correctedData = data.map(summary => {
+//       if (summary.month) {
+//         const [year, monthNum] = summary.month.split('-').map(Number);
+        
+//         // Only correct if current month
+//         if (year === currentYear && monthNum === currentMonth) {
+//           const summaryObj = summary.toObject(); // Convert to plain object
+          
+//           // Get corrected values
+//           const correctedPresent = Math.min(summary.presentDays, currentDay);
+//           const correctedLate = Math.min(summary.lateDays, currentDay);
+//           const correctedOnsite = Math.min(summary.onsiteDays, currentDay);
+//           const correctedHalf = Math.min(summary.halfDayWorking, currentDay);
+//           const correctedFullLeave = Math.min(summary.fullDayNotWorking, currentDay);
+//           const correctedTotal = correctedPresent + (correctedHalf * 0.5);
+          
+//           console.log(`🔧 Auto-correcting ${summary.employeeId}: present ${summary.presentDays} → ${correctedPresent}`);
+          
+//           return {
+//             ...summaryObj,
+//             presentDays: correctedPresent,
+//             lateDays: correctedLate,
+//             onsiteDays: correctedOnsite,
+//             halfDayWorking: correctedHalf,
+//             fullDayNotWorking: correctedFullLeave,
+//             totalWorkingDays: correctedTotal
+//           };
+//         }
+//       }
+//       return summary;
+//     });
+
+//     // Check if any correction happened
+//     const wasCorrected = JSON.stringify(data) !== JSON.stringify(correctedData);
+//     if (wasCorrected) {
+//       console.log("🔄 Summary data auto-corrected for current month");
+//     }
+
+//     res.json({
+//       success: true,
+//       count: correctedData.length,
+//       summary: correctedData,
+//       note: wasCorrected ? "Data auto-corrected for current month" : "Data is correct"
+//     });
+//   } catch (err) {
+//     console.error('❌ Error fetching summary:', err);
+//     res.status(500).json({ 
+//       success: false,
+//       message: err.message 
+//     });
+//   }
+// };
+
+// /**
+//  * 📌 Calculate Summary from Raw Data - COMPLETELY FIXED VERSION (November-December Separate)
+//  */
+// exports.calculateSummary = async (req, res) => {
+//   try {
+//     const { fromDate, toDate, month } = req.body;
+    
+//     let query = {};
+    
+//     console.log("📥 CalculateSummary called with:", { month, fromDate, toDate });
+
+//     // 🔍 Use a separate variable for processed month
+//     let processedMonth = month;
+    
+//     // 🔍 STRICT MONTH FILTERING
+//     if (processedMonth) {
+//       const [year, m] = processedMonth.split("-");
+//       const start = new Date(year, m - 1, 1);
+      
+//       // Month ka exact last day
+//       let end = new Date(year, m, 0, 23, 59, 59, 999);
+      
+//       // Agar current month hai, toh sirf aaj tak
+//       const today = new Date();
+//       const currentYear = today.getFullYear();
+//       const currentMonth = today.getMonth() + 1;
+      
+//       if (parseInt(year) === currentYear && parseInt(m) === currentMonth) {
+//         end = new Date(today);
+//         end.setHours(23, 59, 59, 999);
+//         console.log("✅ Current month detected. Limiting to today:", end);
+//       }
+      
+//       query.checkInTime = { $gte: start, $lte: end };
+//       console.log("📅 STRICT Month filter applied:", processedMonth, "from", start, "to", end);
+      
+//     } else if (fromDate && toDate) {
+//       query.checkInTime = {
+//         $gte: new Date(fromDate),
+//         $lte: new Date(toDate + "T23:59:59.999Z")
+//       };
+//       console.log("📅 Date range filter applied:", fromDate, toDate);
+      
+//       // If no month but date range, calculate month from fromDate
+//       if (fromDate) {
+//         const date = new Date(fromDate);
+//         processedMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+//       }
+//     } else {
+//       // Default: current month
+//       const today = new Date();
+//       const start = new Date(today.getFullYear(), today.getMonth(), 1);
+//       const end = new Date(today);
+//       end.setHours(23, 59, 59, 999);
+      
+//       query.checkInTime = { $gte: start, $lte: end };
+//       processedMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+//       console.log("📅 No filter, using current month:", processedMonth);
+//     }
+
+//     console.log("🔍 MongoDB Query:", JSON.stringify(query));
+//     console.log("📆 Processing month:", processedMonth);
+
+//     // 🟦 Fetch attendance + employees
+//     const attendanceRecords = await Attendance.find(query).sort({ checkInTime: -1 });
+//     const employees = await Employee.find({});
+
+//     console.log("📊 Attendance records found:", attendanceRecords.length);
+//     console.log("👥 Employees found:", employees.length);
+
+//     // DEBUG: Check months in fetched records
+//     if (attendanceRecords.length > 0) {
+//       const monthsInRecords = [...new Set(attendanceRecords.map(rec => {
+//         const d = new Date(rec.checkInTime);
+//         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+//       }))];
+//       console.log("📆 Months found in attendance records:", monthsInRecords);
+//     }
+
+//     // Constants
+//     const FULL_DAY_THRESHOLD = 8.80;
+//     const HALF_DAY_THRESHOLD = 4;
+
+//     const calculateDayType = (hrs) => {
+//       const h = parseFloat(hrs) || 0;
+
+//       if (h > FULL_DAY_THRESHOLD) {
+//         return "full";
+//       } else if (h >= HALF_DAY_THRESHOLD) {
+//         return "half";
+//       } else {
+//         return "full_leave";
+//       }
+//     };
+
+//     const summaryMap = {};
+//     const processedDates = {};
+
+//     // 🔴 MAIN FIX: Strict month filtering during processing
+//     attendanceRecords.forEach((rec) => {
+//       if (!rec.employeeId || !rec.checkInTime) return;
+
+//       const employeeId = rec.employeeId;
+//       const checkInDate = new Date(rec.checkInTime);
+//       const dateKey = checkInDate.toISOString().split("T")[0];
+      
+//       // ✅ STRICT CHECK: Record का month processedMonth से match होना चाहिए
+//       const recordMonth = `${checkInDate.getFullYear()}-${String(checkInDate.getMonth() + 1).padStart(2, "0")}`;
+      
+//       if (processedMonth && recordMonth !== processedMonth) {
+//         // Skip records from different months
+//         console.log(`⏩ SKIPPING: ${employeeId} - Record from ${recordMonth}, but processing ${processedMonth}`);
+//         return;
+//       }
+
+//       // Future date check
+//       const today = new Date();
+//       if (checkInDate > today) {
+//         console.log(`⏭️ Skipping future date: ${employeeId} - ${checkInDate}`);
+//         return;
+//       }
+
+//       // Initialize summary
+//       if (!summaryMap[employeeId]) {
+//         const emp = employees.find((e) => e.employeeId === employeeId) || {};
+
+//         summaryMap[employeeId] = {
+//   employeeId,
+//   name: emp.name || `Employee ${employeeId}`,
+//   month: processedMonth,
+
+//   presentDays: 0,
+//   lateDays: 0,
+//   onsiteDays: 0,
+
+//   onsiteYesDays: 0,
+//   onsiteNoDays: 0,
+
+//   reasonCount: {
+//     onsite: 0,
+//     fieldWork: 0,
+//     workFromHome: 0
+//   },
+
+//   halfDayWorking: 0,
+//   fullDayNotWorking: 0,
+//   totalWorkingDays: 0,
+
+//   overTimeHours: 0, // 👈 NEW
+
+//   workingDays: 0,
+//   calculatedSalary: 0,
+//   totalRecords: 0
+// };
+
+
+//         processedDates[employeeId] = new Set();
+//       }
+
+//       // Skip duplicate date
+//       if (processedDates[employeeId].has(dateKey)) {
+//         console.log(`⏩ Skipping duplicate date for ${employeeId}: ${dateKey}`);
+//         return;
+//       }
+//       processedDates[employeeId].add(dateKey);
+
+//       // Hours calculation
+//       let hours = 0;
+//       if (rec.totalHours !== undefined) {
+//         hours = parseFloat(rec.totalHours);
+//       } else if (rec.checkOutTime) {
+//         hours = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
+//       }
+
+//     const STANDARD_HOURS = 9;
+// const extraHours = Math.max(hours - STANDARD_HOURS, 0);
+
+// // OT accumulate
+// summaryMap[employeeId].overTimeHours += Number(extraHours.toFixed(2));
+
+
+//       // Day type
+//       const type = calculateDayType(hours);
+      
+//       console.log(`📊 ${employeeId} - ${dateKey}: ${hours.toFixed(2)}h = ${type}`);
+
+//       if (type === "full") {
+//         summaryMap[employeeId].presentDays += 1;
+//         summaryMap[employeeId].totalWorkingDays += 1;
+//       } else if (type === "half") {
+//         summaryMap[employeeId].halfDayWorking += 1;
+//         summaryMap[employeeId].totalWorkingDays += 0.5;
+//       } else if (type === "full_leave") {
+//         summaryMap[employeeId].fullDayNotWorking += 1;
+//       }
+
+//       // Late check-in
+//       const hour = checkInDate.getHours();
+//       const minute = checkInDate.getMinutes();
+//       if (hour > 10 || (hour === 10 && minute > 0)) {
+//         summaryMap[employeeId].lateDays += 1;
+//       }
+
+//       // Onsite days
+//      if (rec.onsite === true) {
+//   summaryMap[employeeId].onsiteDays += 1;
+//   summaryMap[employeeId].onsiteYesDays += 1;
+// } else {
+//   summaryMap[employeeId].onsiteNoDays += 1;
+// }
+
+
+//       summaryMap[employeeId].totalRecords += 1;
+//     });
+
+//     const summaryArray = Object.values(summaryMap);
+
+//     console.log("📋 Summary calculated for", processedMonth + ":", summaryArray.length, "employees");
+
+//     // Current month adjustment
+//     if (processedMonth) {
+//       const now = new Date();
+//       const [selectedYear, selectedMonth] = processedMonth.split('-').map(Number);
+//       const currentYear = now.getFullYear();
+//       const currentMonth = now.getMonth() + 1;
+//       const currentDay = now.getDate();
+      
+//       if (selectedYear === currentYear && selectedMonth === currentMonth) {
+//         console.log("✅ Adjusting for current month, max days:", currentDay);
+        
+//         summaryArray.forEach(emp => {
+//           const correctedPresent = Math.min(emp.presentDays, currentDay);
+//           const correctedLate = Math.min(emp.lateDays, currentDay);
+//           const correctedOnsite = Math.min(emp.onsiteDays, currentDay);
+//           const correctedHalf = Math.min(emp.halfDayWorking, currentDay);
+//           const correctedFullLeave = Math.min(emp.fullDayNotWorking, currentDay);
+//           const correctedTotal = correctedPresent + (correctedHalf * 0.5);
+          
+//           emp.presentDays = correctedPresent;
+//           emp.lateDays = correctedLate;
+//           emp.onsiteDays = correctedOnsite;
+//           emp.halfDayWorking = correctedHalf;
+//           emp.fullDayNotWorking = correctedFullLeave;
+//           emp.totalWorkingDays = correctedTotal;
+//         });
+//       }
+//     }
+
+//     // ✅ SAVE TO DATABASE (ONLY for this month)
+//     if (summaryArray.length > 0 && processedMonth) {
+//       // Delete ONLY summaries for this specific month
+//       const deleteFilter = { month: processedMonth };
+      
+//       console.log("🗑️ Deleting existing summaries for:", processedMonth);
+      
+//       const deleteResult = await AttendanceSummary.deleteMany(deleteFilter);
+//       console.log(`🗑️ Deleted ${deleteResult.deletedCount} existing summaries for ${processedMonth}`);
+
+//       // Save new summaries with CORRECT month
+//       const summariesToSave = summaryArray.map(summary => ({
+//         ...summary,
+//         month: processedMonth, // Ensure month is saved correctly
+//         fromDate: fromDate || null,
+//         toDate: toDate || null,
+//         calculatedAt: new Date(),
+//         createdAt: new Date()
+//       }));
+
+//       const savedSummaries = await AttendanceSummary.insertMany(summariesToSave);
+//       console.log(`💾 Saved ${savedSummaries.length} summaries for ${processedMonth}`);
+      
+//       // Verify what was saved
+//       const verifyData = await AttendanceSummary.find({ month: processedMonth });
+//       console.log(`✅ Verification: ${verifyData.length} records now in DB for ${processedMonth}`);
+//     }
+
+//     res.json({
+//       success: true,
+//       count: summaryArray.length,
+//       summary: summaryArray,
+//       month: processedMonth,
+//       message: `Summary calculated and saved successfully for ${processedMonth}`
+//     });
+
+//   } catch (err) {
+//     console.error('❌ Error calculating summary:', err);
+//     res.status(500).json({ 
+//       success: false,
+//       message: err.message 
+//     });
+//   }
+// };
+
+// /**
+//  * 📌 Get Employee Details for Specific Employee
+//  */
+// exports.getEmployeeDetails = async (req, res) => {
+//   try {
+//     const { employeeId, fromDate, toDate, month } = req.query;
+    
+//     if (!employeeId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Employee ID is required'
+//       });
+//     }
+    
+//     console.log('🔍 Fetching details for employee:', employeeId, { fromDate, toDate, month });
+    
+//     let query = { employeeId };
+    
+//     // Date range filter
+//     if (fromDate && toDate) {
+//       query.checkInTime = {
+//         $gte: new Date(fromDate),
+//         $lte: new Date(toDate + 'T23:59:59.999Z')
+//       };
+//     }
+    
+//     // Month filter
+//     if (month) {
+//       const [year, monthNum] = month.split('-');
+//       const startDate = new Date(year, monthNum - 1, 1);
+//       const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
+      
+//       query.checkInTime = {
+//         $gte: startDate,
+//         $lte: endDate
+//       };
+//     }
+    
+//     const details = await Attendance.find(query)
+//       .sort({ checkInTime: -1 })
+//       .lean();
+    
+//     console.log('📋 Details found:', details.length);
+    
+//     // Get employee info
+//     const employee = await Employee.findOne({ employeeId });
+    
+//     res.json({
+//       success: true,
+//       employee: employee || { employeeId, name: 'Unknown' },
+//       details: details,
+//       count: details.length
+//     });
+    
+//   } catch (error) {
+//     console.error('❌ Error fetching employee details:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error fetching employee details',
+//       error: error.message
+//     });
+//   }
+// };
+
+// /**
+//  * 📌 Fix Wrong Summary Data (Without Deleting) - ✅ NEW FUNCTION ADDED
+//  */
+// exports.fixSummaryData = async (req, res) => {
+//   try {
+//     const { month } = req.body;
+    
+//     if (!month) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Month is required (e.g., 2025-12)"
+//       });
+//     }
+    
+//     const today = new Date();
+//     const currentYear = today.getFullYear();
+//     const currentMonth = today.getMonth() + 1;
+//     const currentDay = today.getDate();
+    
+//     const [year, monthNum] = month.split('-').map(Number);
+    
+//     console.log(`🔧 Fixing summary data for ${month}, current day: ${currentDay}`);
+    
+//     let updateCount = 0;
+    
+//     if (year === currentYear && monthNum === currentMonth) {
+//       // Current month hai - limit to current day
+//       const summaries = await AttendanceSummary.find({ month });
+      
+//       for (const summary of summaries) {
+//         // Calculate new correct values
+//         const correctedPresent = Math.min(summary.presentDays, currentDay);
+//         const correctedLate = Math.min(summary.lateDays, currentDay);
+//         const correctedOnsite = Math.min(summary.onsiteDays, currentDay);
+//         const correctedHalf = Math.min(summary.halfDayWorking, currentDay);
+//         const correctedFullLeave = Math.min(summary.fullDayNotWorking, currentDay);
+//         const correctedTotal = correctedPresent + (correctedHalf * 0.5);
+        
+//         // Update if needed
+//         if (summary.presentDays !== correctedPresent || 
+//             summary.lateDays !== correctedLate ||
+//             summary.totalWorkingDays !== correctedTotal) {
+          
+//           await AttendanceSummary.findByIdAndUpdate(
+//             summary._id,
+//             {
+//               presentDays: correctedPresent,
+//               lateDays: correctedLate,
+//               onsiteDays: correctedOnsite,
+//               halfDayWorking: correctedHalf,
+//               fullDayNotWorking: correctedFullLeave,
+//               totalWorkingDays: correctedTotal
+//             }
+//           );
+          
+//           updateCount++;
+//           console.log(`✅ Fixed ${summary.employeeId}: present ${summary.presentDays} → ${correctedPresent} days`);
+//         }
+//       }
+//     } else {
+//       // Past month hai - kuch mat karo
+//       console.log(`ℹ️ ${month} is past month, no fix needed`);
+//     }
+    
+//     res.json({
+//       success: true,
+//       message: `Fixed ${updateCount} summary records for ${month}`,
+//       fixedCount: updateCount
+//     });
+    
+//   } catch (error) {
+//     console.error('❌ Error fixing summary:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error fixing summary data',
+//       error: error.message
+//     });
+//   }
+// };
+
+// /**
+//  * 📌 Get Salaries - ULTIMATE FIX (No Data Deletion)
+//  */
+// exports.getSalaries = async (req, res) => {
+//   try {
+//     let { month } = req.query;
+
+//     if (!month) {
+//       const today = new Date();
+//       month = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+//     }
+
+//     month = month.trim(); // ✅ IMPORTANT
+
+//     const [year, monthNum] = month.split("-").map(Number);
+//     const start = new Date(year, monthNum - 1, 1);
+//     const end = new Date(year, monthNum, 0, 23, 59, 59, 999);
+
+//     // 1️⃣ Employees
+//     const employees = await Employee.find({});
+
+//     // 2️⃣ Attendance (STRICT month)
+//     const attendanceSummaries = await AttendanceSummary.find({ month });
+
+//     // ✅ MAP attendance by employeeId
+//     const attendanceMap = {};
+//     attendanceSummaries.forEach(a => {
+//       attendanceMap[String(a.employeeId)] = a;
+//     });
+
+//     // 3️⃣ Approved leaves (display only)
+//     const allLeaves = await Leave.find({ status: "approved" });
+
+//     const monthLeaves = allLeaves.filter(leave => {
+//       const leaveStart = new Date(leave.startDate);
+//       const leaveEnd = new Date(leave.endDate || leave.startDate);
+//       return leaveStart <= end && leaveEnd >= start;
+//     });
+
+//     const leavesByEmployee = {};
+//     monthLeaves.forEach(l => {
+//       if (!leavesByEmployee[l.employeeId]) {
+//         leavesByEmployee[l.employeeId] = [];
+//       }
+//       leavesByEmployee[l.employeeId].push(l);
+//     });
+
+//     // 4️⃣ Salary calculation
+//     const salaryMap = {};
+
+//     employees.forEach(emp => {
+
+//       // ✅ CORRECT attendance for selected month
+//       const empAttendance = attendanceMap[String(emp.employeeId)];
+
+//       const weekOffs = emp.weekOffPerMonth || 0;
+//       const salaryPerMonth = emp.salaryPerMonth || 0;
+//       const dailyRate = salaryPerMonth / 30;
+
+//       const totalWorkingDays = empAttendance?.totalWorkingDays || 0;
+
+//       // ❌ No paid leave policy
+//       const paidDays = Math.max(0, totalWorkingDays + weekOffs);
+
+//       const calculatedSalary = Math.round(paidDays * dailyRate);
+
+//       const empLeaves = leavesByEmployee[emp.employeeId] || [];
+//       let totalLeaveDays = 0;
+//       const leaveTypes = {};
+
+//       empLeaves.forEach(leave => {
+//         const type = leave.leaveType?.toUpperCase() || "UNKNOWN";
+//         leaveTypes[type] = (leaveTypes[type] || 0) + 1;
+//         totalLeaveDays += 1;
+//       });
+
+//       salaryMap[emp.employeeId] = {
+//         employeeId: emp.employeeId,
+//         name: emp.name,
+//         month,
+
+//         presentDays: empAttendance?.presentDays || 0,
+//         halfDayWorking: empAttendance?.halfDayWorking || 0,
+//         totalWorkingDays,
+
+//         weekOffs,
+
+//         totalLeaves: totalLeaveDays,
+//         leaveTypes: totalLeaveDays ? leaveTypes : "No Leaves",
+
+//         salaryPerMonth,
+//         salaryPerDay: Number(dailyRate.toFixed(2)),
+//         paidDays,
+//         calculatedSalary,
+//         calculatedSalaryDisplay: `₹${calculatedSalary}`
+//       };
+//     });
+
+//     res.json({
+//       success: true,
+//       month,
+//       salaries: Object.values(salaryMap)
+//     });
+
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       error: error.message
+//     });
+//   }
+// };
+
+
+// /**
+//  * 📌 Check Month Data - Diagnostic Function
+//  */
+// exports.checkMonthData = async (req, res) => {
+//   try {
+//     const { month1, month2 } = req.query;
+    
+//     console.log(`🔍 Checking data for months: ${month1} and ${month2}`);
+    
+//     // Get summaries for both months
+//     const summaries1 = await AttendanceSummary.find({ month: month1 });
+//     const summaries2 = await AttendanceSummary.find({ month: month2 });
+    
+//     // Get leaves for both months
+//     const [year1, monthNum1] = month1.split("-").map(Number);
+//     const start1 = new Date(year1, monthNum1 - 1, 1);
+//     const end1 = new Date(year1, monthNum1, 0, 23, 59, 59, 999);
+    
+//     const [year2, monthNum2] = month2.split("-").map(Number);
+//     const start2 = new Date(year2, monthNum2 - 1, 1);
+//     const end2 = new Date(year2, monthNum2, 0, 23, 59, 59, 999);
+    
+//     const leaves1 = await Leave.find({
+//       status: 'approved',
+//       $or: [
+//         { startDate: { $gte: start1, $lte: end1 } },
+//         { endDate: { $gte: start1, $lte: end1 } },
+//         { $and: [
+//             { startDate: { $lte: start1 } },
+//             { endDate: { $gte: end1 } }
+//           ]
+//         }
+//       ]
+//     });
+    
+//     const leaves2 = await Leave.find({
+//       status: 'approved',
+//       $or: [
+//         { startDate: { $gte: start2, $lte: end2 } },
+//         { endDate: { $gte: start2, $lte: end2 } },
+//         { $and: [
+//             { startDate: { $lte: start2 } },
+//             { endDate: { $gte: end2 } }
+//           ]
+//         }
+//       ]
+//     });
+    
+//     // Find employees with data in both months
+//     const employees = await Employee.find({});
+//     const crossMonthEmployees = [];
+    
+//     employees.forEach(emp => {
+//       const inMonth1 = summaries1.find(s => s.employeeId === emp.employeeId);
+//       const inMonth2 = summaries2.find(s => s.employeeId === emp.employeeId);
+//       const leavesIn1 = leaves1.filter(l => l.employeeId === emp.employeeId);
+//       const leavesIn2 = leaves2.filter(l => l.employeeId === emp.employeeId);
+      
+//       if (inMonth1 && inMonth2) {
+//         crossMonthEmployees.push({
+//           employeeId: emp.employeeId,
+//           name: emp.name,
+//           [month1]: {
+//             presentDays: inMonth1.presentDays,
+//             totalWorkingDays: inMonth1.totalWorkingDays,
+//             leaves: leavesIn1.length
+//           },
+//           [month2]: {
+//             presentDays: inMonth2.presentDays,
+//             totalWorkingDays: inMonth2.totalWorkingDays,
+//             leaves: leavesIn2.length
+//           }
+//         });
+//       }
+//     });
+    
+//     res.json({
+//       success: true,
+//       months: { month1, month2 },
+//       summaries: {
+//         [month1]: summaries1.length,
+//         [month2]: summaries2.length
+//       },
+//       leaves: {
+//         [month1]: leaves1.length,
+//         [month2]: leaves2.length
+//       },
+//       crossMonthEmployees: crossMonthEmployees.length > 0 ? crossMonthEmployees : "No cross-month data found",
+//       note: "This is diagnostic only - no data changed"
+//     });
+    
+//   } catch (error) {
+//     console.error('❌ Check error:', error);
+//     res.status(500).json({ success: false, error: error.message });
+//   }
+// };
+
 const Attendance = require("../models/Attendance");
 const AttendanceSummary = require("../models/AttendanceSummary");
 const Employee = require("../models/Employee");
@@ -1050,7 +2064,6 @@ const calculateDayType = (hours) => {
   }
 };
 
-
 /**
  * 📌 Get All Attendance Records with Filters
  */
@@ -1067,22 +2080,6 @@ exports.getAllAttendance = async (req, res) => {
         $lte: new Date(toDate + 'T23:59:59.999Z')
       };
     }
-    // ✅ Reason count (INSIDE LOOP)
-if (rec.reason) {
-  const reason = rec.reason.toLowerCase();
-
-  if (reason.includes("onsite")) {
-    summaryMap[employeeId].reasonCount.onsite += 1;
-  } else if (reason.includes("field")) {
-    summaryMap[employeeId].reasonCount.fieldWork += 1;
-  } else if (
-    reason.includes("work from home") ||
-    reason.includes("wfh")
-  ) {
-    summaryMap[employeeId].reasonCount.workFromHome += 1;
-  }
-}
-
     
     // Month filter
     if (month) {
@@ -1120,10 +2117,6 @@ if (rec.reason) {
     });
   }
 };
-
-
-
-
 
 /**
  * 📌 Update Attendance Record (Hours, Region, Comment) - FIXED VERSION
@@ -1185,6 +2178,21 @@ exports.updateAttendance = async (req, res) => {
       dayType: updatedRecord.dayType
     });
     
+    // 🔥 AUTO RECALCULATE SUMMARY FOR THAT MONTH
+    const d = new Date(updatedRecord.checkInTime);
+    const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+    console.log("🔁 Auto recalculating summary for:", month);
+
+    // Delete old summary of that month
+    await AttendanceSummary.deleteMany({ month });
+
+    // Recalculate summary
+    await exports.calculateSummary(
+      { body: { month } },
+      { json: () => {} } // dummy response
+    );
+
     res.json({
       success: true,
       message: 'Attendance record updated successfully',
@@ -1200,7 +2208,6 @@ exports.updateAttendance = async (req, res) => {
     });
   }
 };
-
 
 /**
  * 📌 Save Attendance Summary
@@ -1253,14 +2260,13 @@ exports.saveSummary = async (req, res) => {
       calculatedSalary: summary.calculatedSalary || 0,
       workingDays: summary.workingDays || 0,
       overTimeHours: summary.overTimeHours || 0,
-onsiteYesDays: summary.onsiteYesDays || 0,
-onsiteNoDays: summary.onsiteNoDays || 0,
-reasonCount: summary.reasonCount || {
-  onsite: 0,
-  fieldWork: 0,
-  workFromHome: 0
-},
-
+      onsiteYesDays: summary.onsiteYesDays || 0,
+      onsiteNoDays: summary.onsiteNoDays || 0,
+      reasonCount: summary.reasonCount || {
+        onsite: 0,
+        fieldWork: 0,
+        workFromHome: 0
+      },
       createdAt: new Date()
     }));
 
@@ -1505,34 +2511,33 @@ exports.calculateSummary = async (req, res) => {
         const emp = employees.find((e) => e.employeeId === employeeId) || {};
 
         summaryMap[employeeId] = {
-  employeeId,
-  name: emp.name || `Employee ${employeeId}`,
-  month: processedMonth,
+          employeeId,
+          name: emp.name || `Employee ${employeeId}`,
+          month: processedMonth,
 
-  presentDays: 0,
-  lateDays: 0,
-  onsiteDays: 0,
+          presentDays: 0,
+          lateDays: 0,
+          onsiteDays: 0,
 
-  onsiteYesDays: 0,
-  onsiteNoDays: 0,
+          onsiteYesDays: 0,
+          onsiteNoDays: 0,
 
-  reasonCount: {
-    onsite: 0,
-    fieldWork: 0,
-    workFromHome: 0
-  },
+          reasonCount: {
+            onsite: 0,
+            fieldWork: 0,
+            workFromHome: 0
+          },
 
-  halfDayWorking: 0,
-  fullDayNotWorking: 0,
-  totalWorkingDays: 0,
+          halfDayWorking: 0,
+          fullDayNotWorking: 0,
+          totalWorkingDays: 0,
 
-  overTimeHours: 0, // 👈 NEW
+          overTimeHours: 0,
 
-  workingDays: 0,
-  calculatedSalary: 0,
-  totalRecords: 0
-};
-
+          workingDays: 0,
+          calculatedSalary: 0,
+          totalRecords: 0
+        };
 
         processedDates[employeeId] = new Set();
       }
@@ -1552,12 +2557,11 @@ exports.calculateSummary = async (req, res) => {
         hours = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
       }
 
-    const STANDARD_HOURS = 9;
-const extraHours = Math.max(hours - STANDARD_HOURS, 0);
+      const STANDARD_HOURS = 9;
+      const extraHours = Math.max(hours - STANDARD_HOURS, 0);
 
-// OT accumulate
-summaryMap[employeeId].overTimeHours += Number(extraHours.toFixed(2));
-
+      // OT accumulate
+      summaryMap[employeeId].overTimeHours += Number(extraHours.toFixed(2));
 
       // Day type
       const type = calculateDayType(hours);
@@ -1582,13 +2586,12 @@ summaryMap[employeeId].overTimeHours += Number(extraHours.toFixed(2));
       }
 
       // Onsite days
-     if (rec.onsite === true) {
-  summaryMap[employeeId].onsiteDays += 1;
-  summaryMap[employeeId].onsiteYesDays += 1;
-} else {
-  summaryMap[employeeId].onsiteNoDays += 1;
-}
-
+      if (rec.onsite === true) {
+        summaryMap[employeeId].onsiteDays += 1;
+        summaryMap[employeeId].onsiteYesDays += 1;
+      } else {
+        summaryMap[employeeId].onsiteNoDays += 1;
+      }
 
       summaryMap[employeeId].totalRecords += 1;
     });
@@ -1818,26 +2821,46 @@ exports.fixSummaryData = async (req, res) => {
 /**
  * 📌 Get Salaries - ULTIMATE FIX (No Data Deletion)
  */
+/**
+ * 📌 Get Salaries - CORRECTED VERSION (Calculate based on actual month days)
+ */
 exports.getSalaries = async (req, res) => {
   try {
     let { month } = req.query;
 
-    if (!month) {
+    // Agar month empty hai toh current month use karein
+    if (!month || month.trim() === "") {
       const today = new Date();
       month = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
     }
 
-    month = month.trim(); // ✅ IMPORTANT
+    month = month.trim();
+    console.log(`💰 Processing salaries for month: "${month}"`);
 
     const [year, monthNum] = month.split("-").map(Number);
+    
+    // Validate month
+    if (isNaN(year) || isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid month format. Use YYYY-MM"
+      });
+    }
+
     const start = new Date(year, monthNum - 1, 1);
     const end = new Date(year, monthNum, 0, 23, 59, 59, 999);
+    
+    // Calculate actual days in month
+    const daysInMonth = new Date(year, monthNum, 0).getDate();
+    console.log(`📅 Days in ${month}: ${daysInMonth}`);
 
     // 1️⃣ Employees
     const employees = await Employee.find({});
+    console.log(`👥 Total employees: ${employees.length}`);
 
-    // 2️⃣ Attendance (STRICT month)
+    // 2️⃣ Attendance for SPECIFIC month
     const attendanceSummaries = await AttendanceSummary.find({ month });
+    console.log(`📊 Attendance summaries for ${month}: ${attendanceSummaries.length}`);
 
     // ✅ MAP attendance by employeeId
     const attendanceMap = {};
@@ -1845,7 +2868,7 @@ exports.getSalaries = async (req, res) => {
       attendanceMap[String(a.employeeId)] = a;
     });
 
-    // 3️⃣ Approved leaves (display only)
+    // 3️⃣ Approved leaves for this month
     const allLeaves = await Leave.find({ status: "approved" });
 
     const monthLeaves = allLeaves.filter(leave => {
@@ -1853,6 +2876,8 @@ exports.getSalaries = async (req, res) => {
       const leaveEnd = new Date(leave.endDate || leave.startDate);
       return leaveStart <= end && leaveEnd >= start;
     });
+
+    console.log(`🍃 Approved leaves for ${month}: ${monthLeaves.length}`);
 
     const leavesByEmployee = {};
     monthLeaves.forEach(l => {
@@ -1862,23 +2887,29 @@ exports.getSalaries = async (req, res) => {
       leavesByEmployee[l.employeeId].push(l);
     });
 
-    // 4️⃣ Salary calculation
+    // 4️⃣ Salary calculation - CORRECTED VERSION
     const salaryMap = {};
 
     employees.forEach(emp => {
-
       // ✅ CORRECT attendance for selected month
       const empAttendance = attendanceMap[String(emp.employeeId)];
 
       const weekOffs = emp.weekOffPerMonth || 0;
       const salaryPerMonth = emp.salaryPerMonth || 0;
-      const dailyRate = salaryPerMonth / 30;
-
+      
+      // ✅ CORRECT DAILY RATE: Monthly salary divided by actual days in month
+      const dailyRate = salaryPerMonth / daysInMonth;
+      
+      // Agar attendance nahi hai is month ke liye, toh 0 consider karein
       const totalWorkingDays = empAttendance?.totalWorkingDays || 0;
 
-      // ❌ No paid leave policy
-      const paidDays = Math.max(0, totalWorkingDays + weekOffs);
+      // Calculate total present days (full + half days)
+      const presentDays = empAttendance?.presentDays || 0;
+      const halfDays = empAttendance?.halfDayWorking || 0;
+      const effectiveWorkingDays = presentDays + (halfDays * 0.5);
 
+      // ✅ CORRECT CALCULATION: (Working days + WeekOffs) * Daily rate
+      const paidDays = Math.max(0, effectiveWorkingDays + weekOffs);
       const calculatedSalary = Math.round(paidDays * dailyRate);
 
       const empLeaves = leavesByEmployee[emp.employeeId] || [];
@@ -1894,39 +2925,50 @@ exports.getSalaries = async (req, res) => {
       salaryMap[emp.employeeId] = {
         employeeId: emp.employeeId,
         name: emp.name,
-        month,
+        month: month, // Ensure correct month is returned
 
-        presentDays: empAttendance?.presentDays || 0,
-        halfDayWorking: empAttendance?.halfDayWorking || 0,
-        totalWorkingDays,
+        // Attendance data
+        presentDays: presentDays,
+        halfDayWorking: halfDays,
+        fullDayNotWorking: empAttendance?.fullDayNotWorking || 0,
+        totalWorkingDays: effectiveWorkingDays,
 
-        weekOffs,
+        // WeekOffs
+        weekOffs: weekOffs,
 
+        // Leaves
         totalLeaves: totalLeaveDays,
-        leaveTypes: totalLeaveDays ? leaveTypes : "No Leaves",
+        leaveTypes: totalLeaveDays > 0 ? leaveTypes : "No Leaves",
 
-        salaryPerMonth,
+        // Salary info
+        salaryPerMonth: salaryPerMonth,
         salaryPerDay: Number(dailyRate.toFixed(2)),
-        paidDays,
-        calculatedSalary,
-        calculatedSalaryDisplay: `₹${calculatedSalary}`
+        paidDays: paidDays,
+        calculatedSalary: calculatedSalary,
+        calculatedSalaryDisplay: `₹${calculatedSalary}`,
+        
+        // Month info
+        monthDays: daysInMonth,
+        monthName: `${year}-${String(monthNum).padStart(2, '0')}`
       };
     });
 
     res.json({
       success: true,
-      month,
-      salaries: Object.values(salaryMap)
+      month: month,
+      monthDays: daysInMonth,
+      salaries: Object.values(salaryMap),
+      count: Object.values(salaryMap).length
     });
 
   } catch (error) {
+    console.error("❌ Error in getSalaries:", error);
     res.status(500).json({
       success: false,
       error: error.message
     });
   }
 };
-
 
 /**
  * 📌 Check Month Data - Diagnostic Function
