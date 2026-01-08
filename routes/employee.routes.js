@@ -37,6 +37,7 @@ const {
   assignLocation,
   getAssignedLocationByEmployeeId, // ✅ add this instead
   updateEmployee, // ✅ ADD THIS
+  deleteEmployee, // ✅ ADD THIS
 } = require("../controller/employee.controller");
 
 const router = express.Router();
@@ -62,6 +63,7 @@ router.get("/mylocation/:employeeId", getAssignedLocationByEmployeeId);
 
 
 router.put("/update/:id", updateEmployee); // ✅ ADD THIS
+router.delete("/delete-employee/:id", deleteEmployee); // ✅ ADD THIS
 
 module.exports = router;
 
