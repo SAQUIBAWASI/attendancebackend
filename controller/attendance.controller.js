@@ -1273,22 +1273,28 @@ exports.checkIn = async (req, res) => {
 
     const attendance = await Attendance.create(attendanceData);
 
-    res.status(200).json({message: `✅ Check-In successful (${onsite ? "Inside" : "Outside"} assigned location: ${distance}m away)`,
-      attendance,});
+    // ✅ Add employee name to response (not to database)
+    const employeeName = employee.name || employeeEmail.split('@')[0];
+    
+    res.status(200).json({
+      message: onsite
+        ? `✅ Welcome to the office, ${employeeName}! Check-in successful (Inside assigned location: ${distance}m away)`
+        : `✅ Check-in successful, ${employeeName} (Outside assigned location: ${distance}m away)`,
+      attendance,
+      employeeName: employeeName, // ✅ Return employee name
+    });
   } catch (err) {
     console.error("Check-in error:", err);
     res.status(500).json({ message: "Check-In failed", error: err.message });
   }
 };
 
-
 exports.checkOut = async (req, res) => {
   try {
     const { employeeId, latitude, longitude, reason } = req.body;
-if (!employeeId || latitude == null || longitude == null) {
-  return res.status(400).json({ message: "Employee ID, email, and location are required" });
-}
-
+    if (!employeeId || latitude == null || longitude == null) {
+      return res.status(400).json({ message: "Employee ID and location are required" });
+    }
 
     // 1️⃣ Get Employee with assigned location
     const employee = await Employee.findOne({ employeeId }).populate("location");
@@ -1351,11 +1357,16 @@ if (!employeeId || latitude == null || longitude == null) {
       { new: true }
     );
 
+    // ✅ Add employee name to response
+    const employeeName = employee.name || "Employee";
+    
     res.status(200).json({
       message: onsite
-        ? `✅ Check-Out successful (Inside assigned location: ${distance}m away)`
-        : `✅ Check-Out successful (Outside assigned location: ${distance}m away)`,
+        ? `✅ Goodbye, ${employeeName}! Check-out successful. Total hours: ${totalHours} (Inside assigned location: ${distance}m away)`
+        : `✅ Goodbye, ${employeeName}! Check-out successful. Total hours: ${totalHours} (Outside assigned location: ${distance}m away)`,
       attendance,
+      employeeName: employeeName, // ✅ Return employee name
+      totalHours,
     });
   } catch (err) {
     console.error("Check-out error:", err);
@@ -1374,9 +1385,14 @@ exports.getEmployeeAttendance = async (req, res) => {
       checkInTime: -1,
     });
 
+    // ✅ Get employee name separately
+    const employee = await Employee.findOne({ employeeId });
+    const employeeName = employee ? employee.name : null;
+
     res.status(200).json({
       message: "Employee attendance fetched successfully",
       records,
+      employeeName: employeeName, // ✅ Return employee name
     });
   } catch (err) {
     console.error("Get Employee Attendance Error:", err);
@@ -1422,8 +1438,6 @@ exports.getAllAttendance = async (req, res) => {
     });
   }
 };
-
-
 
 // ---------------- Today's Attendance ----------------
 // ✅ Get Today's Attendance
@@ -1479,6 +1493,7 @@ exports.getAbsentToday = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch absent employees", error: err.message });
   }
 };
+
 // ---------------- Late Attendance ----------------
 exports.getLateAttendance = async (req, res) => {
   try {
@@ -1543,8 +1558,6 @@ exports.getAttendanceSummary = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch summary", error: err.message });
   }
 };
-
-
 
 exports.updateAttendance = async (req, res) => {
   try {
