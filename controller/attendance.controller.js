@@ -1189,6 +1189,7 @@
 
 const Attendance = require("../models/Attendance");
 const Employee = require("../models/Employee");
+const Shift = require("../models/Shift"); // Assuming Shift model exists
 const Location = require("../models/Location");
 
 // Constants
@@ -1203,8 +1204,8 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) ** 2;
+    Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return Math.round(R * c);
 }
@@ -1275,7 +1276,7 @@ exports.checkIn = async (req, res) => {
 
     // ✅ Add employee name to response (not to database)
     const employeeName = employee.name || employeeEmail.split('@')[0];
-    
+
     res.status(200).json({
       message: onsite
         ? `✅ Welcome to the office, ${employeeName}! Check-in successful (Inside assigned location: ${distance}m away)`
@@ -1359,7 +1360,7 @@ exports.checkOut = async (req, res) => {
 
     // ✅ Add employee name to response
     const employeeName = employee.name || "Employee";
-    
+
     res.status(200).json({
       message: onsite
         ? `✅ Goodbye, ${employeeName}! Check-out successful. Total hours: ${totalHours} (Inside assigned location: ${distance}m away)`
@@ -1497,15 +1498,54 @@ exports.getAbsentToday = async (req, res) => {
 // ---------------- Late Attendance ----------------
 exports.getLateAttendance = async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tenAM = new Date(today);
-    tenAM.setHours(10, 0, 0, 0);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
 
-    const lateRecords = await Attendance.find({
-      checkInTime: { $gte: tenAM },
-      createdAt: { $gte: today },
-    }).sort({ checkInTime: 1 });
+    // 1. Get all attendance for today
+    const activeAttendance = await Attendance.find({
+      checkInTime: { $gte: todayStart, $lte: todayEnd },
+    }).lean();
+
+    // 2. Get all shifts to map employee -> startTime
+    const allShifts = await Shift.find({}).lean();
+
+    // Map: employeeId -> shiftStartTime (e.g., "09:30")
+    // If multiple shifts exist for same emp, pick relevant one (assuming 1 active shift per employee for now)
+    const shiftMap = {};
+    allShifts.forEach((s) => {
+      shiftMap[s.employeeId] = s.startTime;
+    });
+
+    const lateRecords = [];
+
+    // 3. Filter latecomers
+    for (const record of activeAttendance) {
+      const empShiftStart = shiftMap[record.employeeId];
+      if (!empShiftStart) continue; // Skip if no shift found (or handle as default 10am?)
+
+      // Parse shift time
+      const [h, m] = empShiftStart.split(":").map(Number);
+      const shiftDate = new Date(record.checkInTime);
+      shiftDate.setHours(h, m, 0, 0);
+
+      // Add 10 mins grace period
+      const graceTime = new Date(shiftDate.getTime() + 10 * 60000);
+
+      if (record.checkInTime > graceTime) {
+        // Calculate raw minutes late
+        const diffMs = record.checkInTime - shiftDate;
+        const diffMins = Math.floor(diffMs / 60000);
+
+        lateRecords.push({
+          ...record,
+          shiftStart: empShiftStart,
+          actualCheckIn: record.checkInTime,
+          lateByMinutes: diffMins,
+        });
+      }
+    }
 
     res.status(200).json({
       message: "Late attendance fetched successfully",
@@ -1513,7 +1553,10 @@ exports.getLateAttendance = async (req, res) => {
     });
   } catch (err) {
     console.error("Get Late Attendance Error:", err);
-    res.status(500).json({ message: "Failed to fetch late attendance", error: err.message });
+    res.status(500).json({
+      message: "Failed to fetch late attendance",
+      error: err.message,
+    });
   }
 };
 
@@ -1574,7 +1617,7 @@ exports.updateAttendance = async (req, res) => {
     // Update totalHours and reason in database
     const updatedAttendance = await Attendance.findByIdAndUpdate(
       attendanceId,
-      { 
+      {
         totalHours: parseFloat(hours),
         reason: reason,
         updatedAt: new Date()
