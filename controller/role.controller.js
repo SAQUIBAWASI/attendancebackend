@@ -59,13 +59,7 @@ const getRoles = async (req, res) => {
   }
 };
 
-// ✅ Export properly
-module.exports = {
-  addRole,
-  getRoles,
-  updateRole,
-  deleteRole,
-};
+
 
 // Update role
 const updateRole = async (req, res) => {
@@ -112,3 +106,10 @@ const deleteRole = async (req, res) => {
   }
 };
 
+// ✅ Export properly
+module.exports = {
+  addRole,
+  getRoles,
+  updateRole,
+  deleteRole,
+};

@@ -37,13 +37,6 @@ const getDepartments = async (req, res) => {
   }
 };
 
-// ✅ EXPORT BOTH
-module.exports = {
-  addDepartment,
-  getDepartments,
-  updateDepartment,
-  deleteDepartment,
-};
 
 // PUT /api/department/update/:id
 const updateDepartment = async (req, res) => {
@@ -90,3 +83,11 @@ const deleteDepartment = async (req, res) => {
   }
 };
 
+
+// ✅ EXPORT BOTH
+module.exports = {
+  addDepartment,
+  getDepartments,
+  updateDepartment,
+  deleteDepartment,
+};

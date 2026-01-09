@@ -3,30 +3,46 @@ const Location = require("../models/Location");
 // ➕ Add a new employee
 exports.addEmployee = async (req, res) => {
   try {
-    const { name, email, password, department, role, joinDate, phone, address, employeeId } = req.body;
+    const { 
+      name, email, password, department, role, 
+      shiftType, // ✅ YE LINE ADD KARO
+      joinDate, phone, address, employeeId, location 
+    } = req.body;
 
-    const existingEmail = await Employee.findOne({ email });
-    if (existingEmail) return res.status(400).json({ message: "Email already exists" });
+    // Check if employee already exists
+    const existingEmployee = await Employee.findOne({ 
+      $or: [{ email }, { employeeId }] 
+    });
 
-    const existingId = await Employee.findOne({ employeeId });
-    if (existingId) return res.status(400).json({ message: "Employee ID already exists" });
+    if (existingEmployee) {
+      return res.status(400).json({ 
+        message: "Employee with this email or ID already exists" 
+      });
+    }
 
-    const employee = new Employee({
+    const newEmployee = new Employee({
       name,
       email,
       password,
-      role,
       department,
-      employeeId,
+      role,
+      shiftType: shiftType || "A", // ✅ YAHAN PE BHI ADD KARO
       joinDate,
-      address,
       phone,
+      address,
+      employeeId,
+     location
     });
 
-    await employee.save();
-    res.status(201).json({ message: "Employee added successfully", employee });
+    await newEmployee.save();
+    
+    res.status(201).json({ 
+      message: "Employee added successfully", 
+      employee: newEmployee 
+    });
   } catch (error) {
-    res.status(500).json({ message: "Server Error", error });
+    console.error("Add employee error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -226,19 +242,46 @@ exports.getAssignedLocationByEmployeeId = async (req, res) => {
 
 exports.updateEmployee = async (req, res) => {
   try {
+    const { 
+      name, email, password, department, role, 
+      shiftType, // ✅ YE LINE ADD KARO
+      joinDate, phone, address, location 
+    } = req.body;
+
+    const updateData = {
+      name,
+      email,
+      department,
+      role,
+      shiftType: shiftType || "A", // ✅ YAHAN PE BHI ADD KARO
+      joinDate,
+      phone,
+      address,
+      location
+    };
+
+    // Add password only if provided
+    if (password && password.trim() !== "") {
+      updateData.password = password;
+    }
+
     const updatedEmployee = await Employee.findByIdAndUpdate(
       req.params.id,
-      req.body,
-      { new: true }
+      updateData,
+      { new: true, runValidators: true }
     );
 
     if (!updatedEmployee) {
       return res.status(404).json({ message: "Employee not found" });
     }
 
-    res.json({ message: "Employee updated successfully", updatedEmployee });
+    res.status(200).json({ 
+      message: "Employee updated successfully", 
+      employee: updatedEmployee 
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Update employee error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
