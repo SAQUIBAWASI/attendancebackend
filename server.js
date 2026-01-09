@@ -47,8 +47,8 @@ mongoose
 app.use("/api/auth", require("./routes/auth.routes"));
 app.use("/api/employees", require("./routes/employee.routes"));
 app.use("/api/leaves", require("./routes/leave.routes"));
-app.use("/api/department", require("./routes/department.routes"));
-app.use("/api/roles", require("./routes/role.routes"));
+// app.use("/api/department", require("./routes/department.routes"));
+// app.use("/api/roles", require("./routes/role.routes"));
 app.use("/api/shifts", require("./routes/shift.routes"));
 app.use("/api/admin", require("./routes/adminroutes"));
 app.use("/api/empl", require("./routes/empl.routers"));
@@ -69,8 +69,8 @@ app.get("/", (req, res) => {
       admin: "/api/admin",
       empl: "/api/empl",
       leaves: "/api/leaves",
-      department: "/api/department",
-      roles: "/api/roles",
+      // department: "/api/department",
+      // roles: "/api/roles",
       shifts: "/api/shifts",
       location: "/api/location",
       salary: "/api/salary",
