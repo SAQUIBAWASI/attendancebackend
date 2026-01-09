@@ -124,6 +124,7 @@ const mongoose = require("mongoose");
 const attendanceSchema = new mongoose.Schema(
   {
     employeeId: { type: String, required: true },
+    name:{ type: String },
     employeeEmail: { type: String },
     checkInTime: { type: Date, required: true },   // MUST be required
     checkOutTime: { type: Date },
