@@ -162,9 +162,9 @@ exports.getAssignedLocationByEmployeeId = async (req, res) => {
     const { employeeId } = req.params;
 
     if (!employeeId) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Employee ID is required" 
+        message: "Employee ID is required"
       });
     }
 
@@ -174,9 +174,9 @@ exports.getAssignedLocationByEmployeeId = async (req, res) => {
       .select('name email employeeId location');
 
     if (!employee) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Employee not found" 
+        message: "Employee not found"
       });
     }
 
@@ -241,4 +241,21 @@ exports.updateEmployee = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// 🗑️ Delete Employee
+exports.deleteEmployee = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const employee = await Employee.findByIdAndDelete(id);
+
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    res.json({ message: "Employee deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error", error });
+  }
+};
+
 
