@@ -1191,6 +1191,7 @@ const Attendance = require("../models/Attendance");
 const Employee = require("../models/Employee");
 const Shift = require("../models/Shift"); // Assuming Shift model exists
 const Location = require("../models/Location");
+const { logActivity } = require("./userActivity.controller");
 
 // Constants
 const ONSITE_RADIUS_M = 50; // 50 meters
@@ -1360,6 +1361,25 @@ exports.checkOut = async (req, res) => {
 
     // ✅ Add employee name to response
     const employeeName = employee.name || "Employee";
+
+    // ✅ Log checkout activity
+    await logActivity({
+      userId: employeeId,
+      userName: employeeName,
+      userEmail: employee.email || "",
+      userRole: "employee",
+      action: "logout",
+      actionDetails: `Employee checked out after ${totalHours} hours`,
+      ipAddress: req.ip || req.connection.remoteAddress,
+      metadata: {
+        checkInTime: checkInTime,
+        checkOutTime: checkOutTime,
+        totalHours: totalHours,
+        location: assignedLocation.name,
+        onsite: onsite,
+        distance: distance
+      },
+    });
 
     res.status(200).json({
       message: onsite

@@ -11,7 +11,7 @@ const path = require("path");
 const app = express();
 
 // ✅ Middleware setup
-const allowedOrigins = ["http://localhost:5173", "http://localhost:3000","http://localhost:3001", 'https://attendancefrontend.vercel.app',"https://bm-frontend-lyart.vercel.app","https://www.timelyhealth.in",
+const allowedOrigins = ["http://localhost:5173", "http://localhost:3000", "http://localhost:3001", 'https://attendancefrontend.vercel.app', "https://bm-frontend-lyart.vercel.app", "https://www.timelyhealth.in",
   "https://timelyhealth.in"];
 
 app.use(
@@ -57,6 +57,7 @@ app.use("/api/location", require("./routes/location.routes"));
 app.use("/api/attendance", require("./routes/attendance.routes"));
 app.use("/api/attendancesummary", require("./routes/attendancesummary.routes"));
 app.use("/api/salary", require("./routes/salary.routes"));
+app.use("/api/user-activity", require("./routes/userActivity.routes"));
 
 
 // ✅ Default test route

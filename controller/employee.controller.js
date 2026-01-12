@@ -1,22 +1,23 @@
 const Employee = require("../models/Employee");
 const Location = require("../models/Location");
+const { logActivity } = require("./userActivity.controller");
 // ➕ Add a new employee
 exports.addEmployee = async (req, res) => {
   try {
-    const { 
-      name, email, password, department, role, 
+    const {
+      name, email, password, department, role,
       shiftType, // ✅ YE LINE ADD KARO
-      joinDate, phone, address, employeeId, location 
+      joinDate, phone, address, employeeId, location
     } = req.body;
 
     // Check if employee already exists
-    const existingEmployee = await Employee.findOne({ 
-      $or: [{ email }, { employeeId }] 
+    const existingEmployee = await Employee.findOne({
+      $or: [{ email }, { employeeId }]
     });
 
     if (existingEmployee) {
-      return res.status(400).json({ 
-        message: "Employee with this email or ID already exists" 
+      return res.status(400).json({
+        message: "Employee with this email or ID already exists"
       });
     }
 
@@ -31,14 +32,14 @@ exports.addEmployee = async (req, res) => {
       phone,
       address,
       employeeId,
-     location
+      location
     });
 
     await newEmployee.save();
-    
-    res.status(201).json({ 
-      message: "Employee added successfully", 
-      employee: newEmployee 
+
+    res.status(201).json({
+      message: "Employee added successfully",
+      employee: newEmployee
     });
   } catch (error) {
     console.error("Add employee error:", error);
@@ -89,6 +90,21 @@ exports.loginEmployee = async (req, res) => {
     if (!employee) return res.status(404).json({ message: "Employee not found" });
     if (employee.password !== password)
       return res.status(401).json({ message: "Invalid password" });
+
+    // ✅ Log login activity
+    await logActivity({
+      userId: employee.employeeId,
+      userName: employee.name,
+      userEmail: employee.email,
+      userRole: "employee",
+      action: "login",
+      actionDetails: `Employee logged in successfully`,
+      ipAddress: req.ip || req.connection.remoteAddress,
+      metadata: {
+        department: employee.department,
+        role: employee.role,
+      },
+    });
 
     res.json({
       message: "Login successful",
@@ -242,10 +258,10 @@ exports.getAssignedLocationByEmployeeId = async (req, res) => {
 
 exports.updateEmployee = async (req, res) => {
   try {
-    const { 
-      name, email, password, department, role, 
+    const {
+      name, email, password, department, role,
       shiftType, // ✅ YE LINE ADD KARO
-      joinDate, phone, address, location 
+      joinDate, phone, address, location
     } = req.body;
 
     const updateData = {
@@ -275,9 +291,9 @@ exports.updateEmployee = async (req, res) => {
       return res.status(404).json({ message: "Employee not found" });
     }
 
-    res.status(200).json({ 
-      message: "Employee updated successfully", 
-      employee: updatedEmployee 
+    res.status(200).json({
+      message: "Employee updated successfully",
+      employee: updatedEmployee
     });
   } catch (error) {
     console.error("Update employee error:", error);
