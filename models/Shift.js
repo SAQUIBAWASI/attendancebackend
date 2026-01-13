@@ -33,36 +33,69 @@
 
 
 // models/Shift.js - FINAL VERSION
+// models/Shift.js
 const mongoose = require("mongoose");
+
+// 🔥 IMPORTANT: delete old cached model
+if (mongoose.models.Shift) {
+  delete mongoose.models.Shift;
+}
 
 const shiftSchema = new mongoose.Schema(
   {
-    employeeId: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    employeeName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
     shiftType: {
       type: String,
       required: true,
-      // ❌ YE LINE COMMENT KAR DO YA HATA DO
-      // enum: ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+      uppercase: true
     },
-    startTime: {
+
+    shiftName: {
       type: String,
-      required: true,
+      required: true
     },
-    endTime: {
-      type: String,
-      required: true,
+
+    timeSlots: [
+      {
+        slotId: String,
+        timeRange: String,
+        description: String
+      }
+    ],
+
+    employeeAssignment: {
+      employeeId: String,
+      employeeName: String,
+      selectedSlotId: String,
+      selectedTimeRange: String,
+      selectedDescription: String,
+      startTime: String,
+      endTime: String,
+      assignedDate: Date
     },
+
+    // Legacy fields
+    employeeId: String,
+    employeeName: String,
+    startTime: String,
+    endTime: String,
+
+    isMasterShift: {
+      type: Boolean,
+      default: true
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true
+    }
   },
   { timestamps: true }
+);
+
+// index
+shiftSchema.index(
+  { "employeeAssignment.employeeId": 1 },
+  { unique: true, sparse: true }
 );
 
 module.exports = mongoose.model("Shift", shiftSchema);

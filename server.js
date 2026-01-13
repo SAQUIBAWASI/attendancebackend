@@ -58,8 +58,8 @@ app.use("/api/attendance", require("./routes/attendance.routes"));
 app.use("/api/attendancesummary", require("./routes/attendancesummary.routes"));
 app.use("/api/salary", require("./routes/salary.routes"));
 app.use("/api/user-activity", require("./routes/userActivity.routes"));
-
-
+app.use("/api/department", require("./routes/department.routes"));
+app.use("/api/roles", require("./routes/role.routes"));
 // ✅ Default test route
 app.get("/", (req, res) => {
   res.json({
@@ -70,8 +70,8 @@ app.get("/", (req, res) => {
       admin: "/api/admin",
       empl: "/api/empl",
       leaves: "/api/leaves",
-      // department: "/api/department",
-      // roles: "/api/roles",
+      department: "/api/department",
+      roles: "/api/roles",
       shifts: "/api/shifts",
       location: "/api/location",
       salary: "/api/salary",

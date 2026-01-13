@@ -1,3 +1,4 @@
+// models/Role.js
 const mongoose = require('mongoose');
 
 const roleSchema = new mongoose.Schema({
@@ -7,10 +8,9 @@ const roleSchema = new mongoose.Schema({
     unique: true,
     trim: true
   },
-  permissions: {
-    type: [String],
-    required: true,
-    validate: [arr => arr.length > 0, 'At least one permission is required']
+  description: {
+    type: String,
+    required: true
   }
 }, { timestamps: true });
 
