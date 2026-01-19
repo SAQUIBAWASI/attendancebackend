@@ -41,105 +41,48 @@
 // module.exports = router;
 
 
+// routes/shift.routes.js
 const express = require("express");
 const router = express.Router();
+const shiftController = require("../controller/shift.controller");
 
 console.log("✅ Shift Routes Loaded");
 
-// POST - Create master shift
-router.post("/create", async (req, res) => {
-  console.log("🟢 POST /create called");
+// ✅ Master Shifts
+router.post("/create", shiftController.createMasterShift);
+router.get("/master", shiftController.getMasterShifts);
+router.delete("/master/:id", shiftController.deleteMasterShift);
+
+// ✅ Employee Assignments
+router.get("/assignments", shiftController.getEmployeeAssignments);
+router.post("/assign", shiftController.assignShiftToEmployee);
+router.put("/assignments/:id", shiftController.updateAssignment);
+router.delete("/assignments/:id", shiftController.deleteAssignment);
+
+// ✅ Employee Dashboard
+router.get("/employee/:employeeId", shiftController.getShiftForEmployee);
+
+// ✅ Shift Type based
+router.get("/type/:shiftType/employees", shiftController.getEmployeesByShiftType);
+
+
+
+// GET - Get shift for specific employee (Employee Dashboard)
+router.get("/employee/:employeeId", async (req, res) => {
+  console.log("🟢 GET /employee/:employeeId called - ID:", req.params.employeeId);
   try {
     const controller = require("../controller/shift.controller");
-    return await controller.createMasterShift(req, res);
+    return await controller.getShiftForEmployee(req, res);
   } catch (error) {
-    console.error("POST /create error:", error);
-    return res.status(500).json({ success: false, message: "Route error", error: error.message });
+    console.error("GET /employee/:employeeId error:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Route error", 
+      error: error.message 
+    });
   }
 });
 
-// GET - All master shifts
-router.get("/master", async (req, res) => {
-  console.log("🟢 GET /master called");
-  try {
-    const controller = require("../controller/shift.controller");
-    return await controller.getMasterShifts(req, res);
-  } catch (error) {
-    console.error("GET /master error:", error);
-    return res.status(500).json({ success: false, message: "Route error" });
-  }
-});
-
-// GET - All employee assignments
-router.get("/assignments", async (req, res) => {
-  console.log("🟢 GET /assignments called");
-  try {
-    const controller = require("../controller/shift.controller");
-    return await controller.getEmployeeAssignments(req, res);
-  } catch (error) {
-    console.error("GET /assignments error:", error);
-    return res.status(500).json({ success: false, message: "Route error" });
-  }
-});
-
-// POST - Assign shift to employee
-router.post("/assign", async (req, res) => {
-  console.log("🟢 POST /assign called");
-  try {
-    const controller = require("../controller/shift.controller");
-    return await controller.assignShiftToEmployee(req, res);
-  } catch (error) {
-    console.error("POST /assign error:", error);
-    return res.status(500).json({ success: false, message: "Route error", error: error.message });
-  }
-});
-
-// PUT - Update assignment
-router.put("/assignments/:id", async (req, res) => {
-  console.log("🟢 PUT /assignments/:id called - ID:", req.params.id);
-  try {
-    const controller = require("../controller/shift.controller");
-    return await controller.updateAssignment(req, res);
-  } catch (error) {
-    console.error("PUT error:", error);
-    return res.status(500).json({ success: false, message: "Route error", error: error.message });
-  }
-});
-
-// DELETE - Delete master shift
-router.delete("/master/:id", async (req, res) => {
-  console.log("🟢 DELETE /master/:id called - ID:", req.params.id);
-  try {
-    const controller = require("../controller/shift.controller");
-    return await controller.deleteMasterShift(req, res);
-  } catch (error) {
-    console.error("DELETE master error:", error);
-    return res.status(500).json({ success: false, message: "Route error", error: error.message });
-  }
-});
-
-// DELETE - Delete assignment
-router.delete("/assignments/:id", async (req, res) => {
-  console.log("🟢 DELETE /assignments/:id called - ID:", req.params.id);
-  try {
-    const controller = require("../controller/shift.controller");
-    return await controller.deleteAssignment(req, res);
-  } catch (error) {
-    console.error("DELETE assignment error:", error);
-    return res.status(500).json({ success: false, message: "Route error", error: error.message });
-  }
-});
-
-// GET - Employees by shift type
-router.get("/type/:shiftType/employees", async (req, res) => {
-  console.log("🟢 GET /type/:shiftType/employees called");
-  try {
-    const controller = require("../controller/shift.controller");
-    return await controller.getEmployeesByShiftType(req, res);
-  } catch (error) {
-    console.error("GET employees error:", error);
-    return res.status(500).json({ success: false, message: "Route error", error: error.message });
-  }
-});
+module.exports = router;
 
 module.exports = router;

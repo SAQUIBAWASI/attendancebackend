@@ -114,7 +114,11 @@ exports.createMasterShift = async (req, res) => {
           { slotId: "A1", timeRange: "06:00 - 14:00", description: "Morning 6 to 2" },
           { slotId: "A2", timeRange: "07:00 - 15:00", description: "Morning 7 to 3" },
           { slotId: "A3", timeRange: "08:00 - 16:00", description: "Morning 8 to 4" },
-          { slotId: "A4", timeRange: "09:00 - 17:00", description: "Morning 9 to 5" }
+          { slotId: "A4", timeRange: "09:00 - 21:00", description: "Morning 9 to 9" },
+          { slotId: "A5", timeRange: "10:00 - 18:00", description: "Morning 10 to 6" },
+          { slotId: "A6", timeRange: "10:00 - 19:00", description: "Morning 10 to 7" },
+          { slotId: "A7", timeRange: "10:00 - 20:00", description: "Morning 10 to 8" },
+          { slotId: "A8", timeRange: "10:00 - 21:00", description: "Morning 10 to 9" },
         ],
         "B": [
           { slotId: "B1", timeRange: "14:00 - 22:00", description: "Evening 2 to 10" },
@@ -584,6 +588,103 @@ exports.deleteAssignment = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error"
+    });
+  }
+};
+
+// ✅ 10. GET SHIFT FOR SPECIFIC EMPLOYEE (Employee Dashboard)
+// controller/shift.controller.js में नीचे ये function add करें
+// controller/shift.controller.js के अंत में ये function add करें
+
+// ✅ 10. GET SHIFT FOR SPECIFIC EMPLOYEE (Employee Dashboard) - NEW FUNCTION
+exports.getShiftForEmployee = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    
+    console.log("📝 GET SHIFT FOR EMPLOYEE:", employeeId);
+    
+    if (!employeeId) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Employee ID is required" 
+      });
+    }
+
+    // Find employee shift in new format
+    let employeeShift = await Shift.findOne({ 
+      "employeeAssignment.employeeId": employeeId,
+      isActive: true,
+      isMasterShift: false
+    });
+
+    console.log("🔍 Found shift in new format:", employeeShift ? "Yes" : "No");
+
+    // If not found, check legacy format
+    if (!employeeShift) {
+      employeeShift = await Shift.findOne({ 
+        employeeId: employeeId,
+        isMasterShift: { $exists: false }
+      });
+      console.log("🔍 Found shift in legacy format:", employeeShift ? "Yes" : "No");
+    }
+
+    if (!employeeShift) {
+      return res.status(404).json({ 
+        success: false,
+        message: "No shift assigned to this employee",
+        data: null
+      });
+    }
+
+    // Prepare response based on format
+    let responseData = {
+      _id: employeeShift._id,
+      shiftType: employeeShift.shiftType,
+      shiftName: employeeShift.shiftName || `Shift ${employeeShift.shiftType}`,
+      isAssigned: true
+    };
+
+    // New format (with employeeAssignment)
+    if (employeeShift.employeeAssignment) {
+      const timeRange = employeeShift.employeeAssignment.selectedTimeRange || "10:00 - 19:00";
+      const [startTime, endTime] = timeRange.split(" - ");
+      
+      responseData.startTime = startTime ? startTime.trim() : "10:00";
+      responseData.endTime = endTime ? endTime.trim() : "19:00";
+      responseData.timeRange = timeRange;
+      responseData.description = employeeShift.employeeAssignment.selectedDescription || "Shift timing";
+      responseData.assignedDate = employeeShift.employeeAssignment.assignedDate;
+    } 
+    // Legacy format
+    else if (employeeShift.startTime && employeeShift.endTime) {
+      responseData.startTime = employeeShift.startTime;
+      responseData.endTime = employeeShift.endTime;
+      responseData.timeRange = `${employeeShift.startTime} - ${employeeShift.endTime}`;
+      responseData.description = "Legacy shift assignment";
+      responseData.assignedDate = employeeShift.createdAt;
+    }
+    // Default
+    else {
+      responseData.startTime = "10:00";
+      responseData.endTime = "19:00";
+      responseData.timeRange = "10:00 - 19:00";
+      responseData.description = "Shift timing";
+      responseData.assignedDate = employeeShift.createdAt;
+    }
+
+    console.log("✅ Sending response for employee:", employeeId);
+
+    res.status(200).json({ 
+      success: true,
+      data: responseData
+    });
+    
+  } catch (error) {
+    console.error("❌ GET SHIFT FOR EMPLOYEE ERROR:", error);
+    res.status(500).json({ 
+      success: false,
+      message: "Server error",
+      error: error.message 
     });
   }
 };
