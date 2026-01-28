@@ -80,6 +80,7 @@ router.get("/lateattendance", attendanceController.getLateAttendance);
 router.get("/absenttoday", attendanceController.getAbsentToday);
 router.get("/summary", attendanceController.getAttendanceSummary);
 router.put("/update", attendanceController.updateAttendance);
+router.get("/monthly-absence", attendanceController.getMonthlyAbsenceSummary);
 
 
 module.exports = router;

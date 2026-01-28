@@ -1500,9 +1500,10 @@ exports.getAbsentToday = async (req, res) => {
 
     const presentEmployeeIds = attendanceToday.map((rec) => rec.employeeId);
 
-    // Employees who are NOT present today
+    // Employees who are NOT present today AND are ACTIVE
     const absentEmployees = await Employee.find({
-      _id: { $nin: presentEmployeeIds },
+      employeeId: { $nin: presentEmployeeIds },
+      status: { $ne: 'inactive' } // ✅ Filter out inactive
     });
 
     res.status(200).json({
@@ -1550,8 +1551,8 @@ exports.getLateAttendance = async (req, res) => {
       const shiftDate = new Date(record.checkInTime);
       shiftDate.setHours(h, m, 0, 0);
 
-      // Add 10 mins grace period
-      const graceTime = new Date(shiftDate.getTime() + 10 * 60000);
+      // Add 5 mins grace period
+      const graceTime = new Date(shiftDate.getTime() + 5 * 60000);
 
       if (record.checkInTime > graceTime) {
         // Calculate raw minutes late
@@ -1588,7 +1589,8 @@ exports.getAttendanceSummary = async (req, res) => {
     const endOfDay = new Date();
     endOfDay.setHours(23, 59, 59, 999);
 
-    const totalEmployees = await Employee.countDocuments();
+    // 1️⃣ Count all ACTIVE employees
+    const totalEmployees = await Employee.countDocuments({ status: { $ne: 'inactive' } });
     const todayRecords = await Attendance.find({
       checkInTime: { $gte: today, $lte: endOfDay },
     });
@@ -1664,5 +1666,79 @@ exports.updateAttendance = async (req, res) => {
       success: false,
       message: 'Server error'
     });
+  }
+};
+
+// ✅ Monthly Absence Summary
+exports.getMonthlyAbsenceSummary = async (req, res) => {
+  try {
+    const year = new Date().getFullYear();
+    const months = [
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ];
+
+    const monthlyData = [];
+
+    // Get all attendance for the current year to minimize queries
+    const startYear = new Date(year, 0, 1);
+    const endYear = new Date(year, 11, 31, 23, 59, 59);
+    
+    // Aggregate attendance per month
+    const attendanceByMonth = await Attendance.aggregate([
+        { 
+            $match: { 
+                checkInTime: { $gte: startYear, $lte: endYear } 
+            } 
+        },
+        {
+            $group: {
+                _id: { $month: "$checkInTime" },
+                count: { $sum: 1 }
+            }
+        }
+    ]);
+
+    const attMap = {};
+    attendanceByMonth.forEach(a => attMap[a._id] = a.count);
+
+    const totalEmployees = await Employee.countDocuments({ status: { $ne: 'inactive' } });
+
+    for (let i = 0; i < 12; i++) {
+        const monthIndex = i + 1; // 1-based for aggregation
+        const startOfMonth = new Date(year, i, 1);
+        const endOfMonth = new Date(year, i + 1, 0);
+        
+        // Skip future months
+        if (startOfMonth > new Date()) {
+            monthlyData.push({ month: months[i], absent: 0 });
+            continue;
+        }
+
+        // Calculate working days (excluding Sundays) 
+        let workingDays = 0;
+        let d = new Date(startOfMonth);
+        const now = new Date();
+        const effectiveEnd = (endOfMonth > now) ? now : endOfMonth;
+
+        while (d <= effectiveEnd) {
+            if (d.getDay() !== 0) workingDays++;
+            d.setDate(d.getDate() + 1);
+        }
+
+        const expectedAttendance = totalEmployees * workingDays;
+        const presentCount = attMap[monthIndex] || 0;
+        const absentCount = Math.max(expectedAttendance - presentCount, 0);
+
+        monthlyData.push({ month: months[i], absent: absentCount });
+    }
+
+    res.status(200).json({
+      message: "Monthly absence summary fetched",
+      data: monthlyData
+    });
+  } catch (err) {
+    console.error("Monthly Absence Error:", err);
+    res.status(500).json({ message: "Failed to fetch monthly absence", error: err.message });
   }
 };

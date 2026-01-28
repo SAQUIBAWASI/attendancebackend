@@ -42,47 +42,112 @@
 
 
 // routes/shift.routes.js
-const express = require("express");
+// const express = require("express");
+// const router = express.Router();
+// const shiftController = require("../controller/shift.controller");
+
+// console.log("✅ Shift Routes Loaded");
+
+// // ✅ Master Shifts
+// router.post("/create", shiftController.createMasterShift);
+// router.get("/master", shiftController.getMasterShifts);
+// router.delete("/master/:id", shiftController.deleteMasterShift);
+
+// // ✅ Employee Assignments
+// router.get("/assignments", shiftController.getEmployeeAssignments);
+// router.post("/assign", shiftController.assignShiftToEmployee);
+// router.put("/assignments/:id", shiftController.updateAssignment);
+// router.delete("/assignments/:id", shiftController.deleteAssignment);
+
+// // ✅ Employee Dashboard
+// router.get("/employee/:employeeId", shiftController.getShiftForEmployee);
+
+// // ✅ Shift Type based
+// router.get("/type/:shiftType/employees", shiftController.getEmployeesByShiftType);
+
+
+
+// // GET - Get shift for specific employee (Employee Dashboard)
+// router.get("/employee/:employeeId", async (req, res) => {
+//   console.log("🟢 GET /employee/:employeeId called - ID:", req.params.employeeId);
+//   try {
+//     const controller = require("../controller/shift.controller");
+//     return await controller.getShiftForEmployee(req, res);
+//   } catch (error) {
+//     console.error("GET /employee/:employeeId error:", error);
+//     return res.status(500).json({ 
+//       success: false, 
+//       message: "Route error", 
+//       error: error.message 
+//     });
+//   }
+// });
+
+// module.exports = router;
+
+// routes/shift.routes.js
+// const express = require('express');
+// const router = express.Router();
+// const shiftController = require('../controller/shift.controller');
+
+// // Master Shifts
+// router.post('/create', shiftController.createMasterShift);
+// router.get('/master', shiftController.getMasterShifts);
+// router.delete('/master/:id', shiftController.deleteMasterShift);
+
+// // Employee Assignments
+// router.post('/assign', shiftController.assignShiftToEmployee);
+// router.get('/assignments', shiftController.getEmployeeAssignments);
+// router.put('/assignments/:id', shiftController.updateAssignment);
+// router.delete('/assignments/:id', shiftController.deleteAssignment);
+
+// // Get by Shift Type
+// router.get('/type/:shiftType/employees', shiftController.getEmployeesByShiftType);
+
+// // New endpoint for employee count by shift
+// router.get('/employee-count', shiftController.getEmployeeCountByShift);
+
+// // Employee Dashboard
+// router.get('/employee/:employeeId', shiftController.getShiftForEmployee);
+
+// // Migration
+// router.post('/migrate-legacy', shiftController.migrateLegacyData);
+
+// // Default Shifts Creation
+// router.post('/create-defaults', shiftController.createDefaultShifts);
+
+// module.exports = router;
+
+
+const express = require('express');
 const router = express.Router();
-const shiftController = require("../controller/shift.controller");
+const shiftController = require('../controller/shift.controller');
 
-console.log("✅ Shift Routes Loaded");
+// Master Shifts
+router.post('/create', shiftController.createMasterShift);
+router.get('/master', shiftController.getMasterShifts);
+router.get('/details/:shiftType', shiftController.getShiftDetails); // ✅ NEW
+router.delete('/master/:id', shiftController.deleteMasterShift);
 
-// ✅ Master Shifts
-router.post("/create", shiftController.createMasterShift);
-router.get("/master", shiftController.getMasterShifts);
-router.delete("/master/:id", shiftController.deleteMasterShift);
+// Employee Assignments
+router.post('/assign', shiftController.assignShiftToEmployee);
+router.get('/assignments', shiftController.getEmployeeAssignments);
+router.put('/assignments/:id', shiftController.updateAssignment);
+router.delete('/assignments/:id', shiftController.deleteAssignment);
 
-// ✅ Employee Assignments
-router.get("/assignments", shiftController.getEmployeeAssignments);
-router.post("/assign", shiftController.assignShiftToEmployee);
-router.put("/assignments/:id", shiftController.updateAssignment);
-router.delete("/assignments/:id", shiftController.deleteAssignment);
+// Get by Shift Type
+router.get('/type/:shiftType/employees', shiftController.getEmployeesByShiftType);
 
-// ✅ Employee Dashboard
-router.get("/employee/:employeeId", shiftController.getShiftForEmployee);
+// New endpoint for employee count by shift
+router.get('/employee-count', shiftController.getEmployeeCountByShift);
 
-// ✅ Shift Type based
-router.get("/type/:shiftType/employees", shiftController.getEmployeesByShiftType);
+// Employee Dashboard
+router.get('/employee/:employeeId', shiftController.getShiftForEmployee);
 
+// Migration
+router.post('/migrate-legacy', shiftController.migrateLegacyData);
 
-
-// GET - Get shift for specific employee (Employee Dashboard)
-router.get("/employee/:employeeId", async (req, res) => {
-  console.log("🟢 GET /employee/:employeeId called - ID:", req.params.employeeId);
-  try {
-    const controller = require("../controller/shift.controller");
-    return await controller.getShiftForEmployee(req, res);
-  } catch (error) {
-    console.error("GET /employee/:employeeId error:", error);
-    return res.status(500).json({ 
-      success: false, 
-      message: "Route error", 
-      error: error.message 
-    });
-  }
-});
-
-module.exports = router;
+// Default Shifts Creation
+router.post('/create-defaults', shiftController.createDefaultShifts);
 
 module.exports = router;

@@ -89,7 +89,7 @@ exports.getSalary = async (req, res) => {
 // -------------------------------------------------------
 exports.getAllSalaries = async (req, res) => {
   try {
-    const employees = await Employee.find();
+    const employees = await Employee.find({ status: { $ne: 'inactive' } });
 
     const salaryList = employees.map((emp) => ({
       employeeId: emp.employeeId,
