@@ -270,6 +270,12 @@ const employeeSchema = new mongoose.Schema({
     default: 'active' 
   },
   
+  // Permissions
+  permissions: {
+    type: [String],
+    default: []
+  },
+  
   // Timestamps
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

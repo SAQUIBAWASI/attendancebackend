@@ -405,7 +405,8 @@ exports.addEmployee = async (req, res) => {
       weekOffType, weekOffCount,
       shiftType, shiftHours,
       joinDate, phone, employeeId, locationId,
-      parentsName, alternateNumber, salaryPerMonth, weekOffPerMonth
+      parentsName, alternateNumber, salaryPerMonth, weekOffPerMonth,
+      permissions // ✅ Added permissions
     } = req.body;
 
     // Combine first name and last name
@@ -449,7 +450,8 @@ exports.addEmployee = async (req, res) => {
       parentsName,
       alternateNumber,
       salaryPerMonth: Number(salaryPerMonth) || 0,
-      weekOffPerMonth: Number(weekOffPerMonth) || 0
+      weekOffPerMonth: Number(weekOffPerMonth) || 0,
+      permissions: permissions || [] // ✅ Added permissions
     });
 
     await newEmployee.save();
@@ -572,7 +574,9 @@ exports.loginEmployee = async (req, res) => {
         role: employee.role,
         department: employee.department,
         employeeId: employee.employeeId,
+        employeeId: employee.employeeId,
         joinDate: employee.joinDate,
+        permissions: employee.permissions || [] // ✅ Return permissions
       },
     });
   } catch (error) {
