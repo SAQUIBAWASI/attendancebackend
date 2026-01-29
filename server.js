@@ -59,7 +59,10 @@ app.use("/api/attendancesummary", require("./routes/attendancesummary.routes"));
 app.use("/api/salary", require("./routes/salary.routes"));
 app.use("/api/user-activity", require("./routes/userActivity.routes"));
 app.use("/api/department", require("./routes/department.routes"));
-app.use("/api/roles", require("./routes/role.routes"));
+// app.use("/api/roles", require("./routes/role.routes"));
+app.use("/api/permissions", require("./routes/permission.routes"));
+
+
 // ✅ Default test route
 app.get("/", (req, res) => {
   res.json({

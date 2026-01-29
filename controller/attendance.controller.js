@@ -1193,6 +1193,7 @@ const Shift = require("../models/Shift"); // Assuming Shift model exists
 const Location = require("../models/Location");
 const { logActivity } = require("./userActivity.controller");
 
+
 // Constants
 const ONSITE_RADIUS_M = 50; // 50 meters
 
@@ -1674,7 +1675,7 @@ exports.getMonthlyAbsenceSummary = async (req, res) => {
   try {
     const year = new Date().getFullYear();
     const months = [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     ];
 
@@ -1683,20 +1684,20 @@ exports.getMonthlyAbsenceSummary = async (req, res) => {
     // Get all attendance for the current year to minimize queries
     const startYear = new Date(year, 0, 1);
     const endYear = new Date(year, 11, 31, 23, 59, 59);
-    
+
     // Aggregate attendance per month
     const attendanceByMonth = await Attendance.aggregate([
-        { 
-            $match: { 
-                checkInTime: { $gte: startYear, $lte: endYear } 
-            } 
-        },
-        {
-            $group: {
-                _id: { $month: "$checkInTime" },
-                count: { $sum: 1 }
-            }
+      {
+        $match: {
+          checkInTime: { $gte: startYear, $lte: endYear }
         }
+      },
+      {
+        $group: {
+          _id: { $month: "$checkInTime" },
+          count: { $sum: 1 }
+        }
+      }
     ]);
 
     const attMap = {};
@@ -1705,32 +1706,32 @@ exports.getMonthlyAbsenceSummary = async (req, res) => {
     const totalEmployees = await Employee.countDocuments({ status: { $ne: 'inactive' } });
 
     for (let i = 0; i < 12; i++) {
-        const monthIndex = i + 1; // 1-based for aggregation
-        const startOfMonth = new Date(year, i, 1);
-        const endOfMonth = new Date(year, i + 1, 0);
-        
-        // Skip future months
-        if (startOfMonth > new Date()) {
-            monthlyData.push({ month: months[i], absent: 0 });
-            continue;
-        }
+      const monthIndex = i + 1; // 1-based for aggregation
+      const startOfMonth = new Date(year, i, 1);
+      const endOfMonth = new Date(year, i + 1, 0);
 
-        // Calculate working days (excluding Sundays) 
-        let workingDays = 0;
-        let d = new Date(startOfMonth);
-        const now = new Date();
-        const effectiveEnd = (endOfMonth > now) ? now : endOfMonth;
+      // Skip future months
+      if (startOfMonth > new Date()) {
+        monthlyData.push({ month: months[i], absent: 0 });
+        continue;
+      }
 
-        while (d <= effectiveEnd) {
-            if (d.getDay() !== 0) workingDays++;
-            d.setDate(d.getDate() + 1);
-        }
+      // Calculate working days (excluding Sundays) 
+      let workingDays = 0;
+      let d = new Date(startOfMonth);
+      const now = new Date();
+      const effectiveEnd = (endOfMonth > now) ? now : endOfMonth;
 
-        const expectedAttendance = totalEmployees * workingDays;
-        const presentCount = attMap[monthIndex] || 0;
-        const absentCount = Math.max(expectedAttendance - presentCount, 0);
+      while (d <= effectiveEnd) {
+        if (d.getDay() !== 0) workingDays++;
+        d.setDate(d.getDate() + 1);
+      }
 
-        monthlyData.push({ month: months[i], absent: absentCount });
+      const expectedAttendance = totalEmployees * workingDays;
+      const presentCount = attMap[monthIndex] || 0;
+      const absentCount = Math.max(expectedAttendance - presentCount, 0);
+
+      monthlyData.push({ month: months[i], absent: absentCount });
     }
 
     res.status(200).json({
