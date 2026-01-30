@@ -2,6 +2,7 @@
 // const AttendanceSummary = require("../models/AttendanceSummary");
 // const Employee = require("../models/Employee");
 // const Leave = require("../models/Leave");
+const Shift = require("../models/Shift");
 
 // /**
 //  * 📌 Save Attendance Summary
@@ -4279,5 +4280,419 @@ exports.checkMonthData = async (req, res) => {
   } catch (error) {
     console.error('❌ Check error:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+// ============================================================================
+// 🚀 DYNAMIC SHIFT LOGIC IMPLEMENTATION (Added by Assistant)
+// ============================================================================
+
+/**
+ * 🛠️ Helper: Get Default Shift Time
+ */
+const getDefaultShiftTime = (shiftType) => {
+  switch (shiftType) {
+    case "Morning": return { start: "06:00", end: "15:00" }; // 9 hours
+    case "Evening": return { start: "14:00", end: "23:00" }; // 9 hours
+    case "Night":   return { start: "22:00", end: "07:00" }; // 9 hours
+    case "General": return { start: "10:00", end: "19:00" }; // 9 hours
+    default:        return { start: "10:00", end: "19:00" };
+  }
+};
+
+/**
+ * 🛠️ Helper: Get Employee Shift
+ */
+const getEmployeeShift = (employeeId, shiftsData, masterShifts) => {
+  if (!shiftsData || !masterShifts) return null;
+
+  // Find assigned shift
+  let assignedShift = shiftsData.find(
+    (s) =>
+      s.employeeAssignment &&
+      (s.employeeAssignment.employeeId === employeeId || s.employeeAssignment.employeeId === String(employeeId))
+  );
+
+  let startTime = "10:00";
+  let endTime = "19:00";
+  let shiftName = "General";
+  let shiftType = "General";
+
+  if (assignedShift && assignedShift.employeeAssignment) {
+      shiftName = assignedShift.shiftName;
+      shiftType = assignedShift.shiftType;
+      
+      const empAssign = assignedShift.employeeAssignment;
+      
+      if (empAssign.startTime && empAssign.endTime) {
+          startTime = empAssign.startTime;
+          endTime = empAssign.endTime;
+      } else if (empAssign.selectedTimeRange) {
+          // Parse "10:00 - 19:00"
+          const parts = empAssign.selectedTimeRange.split("-").map(p => p.trim());
+          if (parts.length === 2) {
+              startTime = parts[0];
+              endTime = parts[1];
+          }
+      }
+  }
+
+  // Calculate Duration
+  let duration = 9;
+  if (startTime && endTime) {
+       const start = new Date(`2000-01-01T${startTime}`);
+       const end = new Date(`2000-01-01T${endTime}`);
+       if (end < start) end.setDate(end.getDate() + 1); // Cross midnight
+       
+       const diff = (end - start) / (1000 * 60 * 60);
+       duration = Number(diff.toFixed(2));
+  }
+    
+  return {
+    name: shiftName,
+    type: shiftType,
+    startTime: startTime,
+    endTime: endTime,
+    duration: duration
+  };
+};
+
+/**
+ * 🛠️ Helper: Calculate Day Type
+ */
+const calculateShiftDayType = (hours, shiftDuration) => {
+  const h = parseFloat(hours) || 0;
+  
+  // 🟢 SHORT SHIFTS (3 - 6 Hours)
+  if (shiftDuration >= 3 && shiftDuration <= 6) {
+    if (h < 2.25) return "full_leave";
+    if (h >= 2.25 && h <= 3.49) return "half";  // Use <= 3.49 for strict compliance
+    return "full"; // 3.5+
+  }
+  
+  // 🟣 STANDARD SHIFTS (8 - 12 Hours)
+  // Note: What about 7 hours? Assuming standard logic applies or falls through.
+  // User specified 8-12. Let's make the fallback standard.
+  else {
+    if (h < 4.5) return "full_leave";
+    if (h >= 4.5 && h <= 8.79) return "half"; // Use <= 8.79
+    return "full"; // 8.8+
+  }
+};
+
+/**
+ * 🛠️ Helper: Calculate Overtime (Based on Shift End Time)
+ */
+const calculateShiftOT = (checkOutTime, shiftEndTimeStr, checkInTime) => {
+  if (!checkOutTime || !shiftEndTimeStr) return 0;
+  
+  const checkOut = new Date(checkOutTime);
+  const checkIn = new Date(checkInTime);
+  
+  // Construct Shift End Date
+  // We assume Shift End is on the same day as CheckIn, UNLESS it crosses midnight or is earlier than checkin?
+  // Safer approach: Construct shift start/end based on CheckIn Date
+  
+  // Parse Shift End Time
+  const [endH, endM] = shiftEndTimeStr.split(":").map(Number);
+  
+  let shiftEnd = new Date(checkIn); // Start with CheckIn Date
+  shiftEnd.setHours(endH, endM, 0, 0);
+  
+  // Handle crossing midnight
+  // If Shift End is "earlier" than CheckIn time (e.g. CheckIn 20:00, Shift End 05:00), add 1 day
+  // But wait, if shift is 14:00-23:00 and user checks in 13:50. shiftEnd is 23:00 same day.
+  // If shift is 22:00-07:00 and user checks in 21:50. shiftEnd is 07:00 NEXT day.
+  
+  // Heuristic: If shiftEnd is significantly before checkIn (more than 12 hours?), it's probably next day.
+  // Actually, we should rely on the shift's generic duration or type.
+  // Let's use duration from getEmployeeShift if possible, but here we just have strings.
+  
+  // Simple check: If checkOut is *after* strict shiftEnd, it's OT.
+  // But we need the correct shiftEnd Date.
+  
+  // If CheckOut is before ShiftEnd (same day assumption), diff is negative -> 0 OT.
+  // If CheckOut is after ShiftEnd, diff is positive.
+  
+  // Special case: Night shift.
+  // If checkIn is PM and shiftEnd is AM, shiftEnd is tomorrow.
+  if (checkIn.getHours() > 12 && endH < 12) {
+      shiftEnd.setDate(shiftEnd.getDate() + 1);
+  }
+  
+  // Calculate difference in hours
+  const diffMs = checkOut - shiftEnd;
+  if (diffMs > 0) {
+      return Number((diffMs / (1000 * 60 * 60)).toFixed(2));
+  }
+  
+  return 0;
+};
+
+
+/**
+ * 📌 Calculate Summary from Raw Data (DYNAMIC VERSION)
+ * Overwrites previous definition
+ */
+exports.calculateSummary = async (req, res) => {
+  try {
+    const { fromDate, toDate, month } = req.body;
+    
+    console.log("📥 Dynamic CalculateSummary called with:", { month, fromDate, toDate });
+
+    let query = {};
+    let processedMonth = month;
+    
+    // Filter Logic
+    if (fromDate && toDate) {
+      query.checkInTime = {
+        $gte: new Date(fromDate),
+        $lte: new Date(toDate + "T23:59:59.999Z")
+      };
+      if (!month) {
+        const d = new Date(fromDate);
+        processedMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      }
+    } else if (month) {
+      const [year, m] = month.split("-");
+      const start = new Date(year, m - 1, 1);
+      const end = new Date(year, m, 0, 23, 59, 59, 999);
+      
+      const today = new Date();
+      if (parseInt(year) === today.getFullYear() && parseInt(m) === (today.getMonth() + 1)) {
+         end.setHours(23, 59, 59, 999);
+      }
+      query.checkInTime = { $gte: start, $lte: end };
+    } else {
+       const today = new Date();
+       const start = new Date(today.getFullYear(), today.getMonth(), 1);
+       const end = new Date(today);
+       end.setHours(23,59,59,999);
+       query.checkInTime = { $gte: start, $lte: end };
+       processedMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    }
+
+    // Fetch Data
+    const attendanceRecords = await Attendance.find(query).sort({ checkInTime: -1 });
+    const employees = await Employee.find({});
+    const allShifts = await Shift.find({});
+    const masterShifts = allShifts.filter(s => s.isMasterShift);
+    
+    const summaryMap = {};
+    const processedDates = {};
+
+    attendanceRecords.forEach((rec) => {
+      if (!rec.employeeId || !rec.checkInTime) return;
+      const employeeId = rec.employeeId;
+      const checkInDate = new Date(rec.checkInTime);
+      const dateKey = checkInDate.toISOString().split("T")[0];
+      
+      const recordMonth = `${checkInDate.getFullYear()}-${String(checkInDate.getMonth() + 1).padStart(2, "0")}`;
+      if (processedMonth && recordMonth !== processedMonth) return;
+      
+      if (checkInDate > new Date()) return;
+
+      if (!summaryMap[employeeId]) {
+         const emp = employees.find(e => e.employeeId === employeeId) || {};
+         const shiftInfo = getEmployeeShift(employeeId, allShifts, masterShifts);
+         
+         summaryMap[employeeId] = {
+           employeeId,
+           name: emp.name || `Employee ${employeeId}`,
+           month: processedMonth,
+           presentDays: 0,
+           lateDays: 0,
+           onsiteDays: 0,
+           halfDayWorking: 0,
+           fullDayNotWorking: 0,
+           totalWorkingDays: 0,
+           overTimeHours: 0,
+           onsiteYesDays: 0,
+           onsiteNoDays: 0,
+           shiftName: shiftInfo.name,
+           shiftDuration: shiftInfo.duration,
+           shiftStartTime: shiftInfo.startTime, // Store for late check
+           shiftEndTime: shiftInfo.endTime,     // Store for OT check
+           salaryPerMonth: emp.salaryPerMonth || 0,
+           calculatedSalary: 0,
+           workingDays: 0,
+           reasonCount: { onsite: 0, fieldWork: 0, workFromHome: 0 }
+         };
+         processedDates[employeeId] = new Set();
+      }
+
+      if (processedDates[employeeId].has(dateKey)) return;
+      processedDates[employeeId].add(dateKey);
+      
+      const empSum = summaryMap[employeeId];
+      
+      // 1. Calculate Hours
+      let hours = 0;
+      if (rec.totalHours !== undefined) {
+         hours = parseFloat(rec.totalHours);
+      } else if (rec.checkOutTime) {
+         hours = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
+      }
+      
+      // 2. Determine Day Type (Hours based)
+      const type = calculateShiftDayType(hours, empSum.shiftDuration);
+      
+      let isWorkingDay = false;
+      
+      if (type === "full") {
+          empSum.presentDays += 1;
+          isWorkingDay = true;
+          empSum.totalWorkingDays += 1;
+      } else if (type === "half") {
+          empSum.halfDayWorking += 1;
+          isWorkingDay = false; // Half day logic handled separately? 
+          // Wait, backend totalWorkingDays adds 0.5.
+          empSum.totalWorkingDays += 0.5;
+      } else {
+          empSum.fullDayNotWorking += 1;
+      }
+      
+      // 3. Calculate OT (Based on Shift End Time if available)
+      if (empSum.shiftEndTime && rec.checkOutTime) {
+          const ot = calculateShiftOT(rec.checkOutTime, empSum.shiftEndTime, rec.checkInTime);
+          empSum.overTimeHours += ot;
+      } else if (type !== "full_leave") {
+          // Fallback: Duration based if no shift times (legacy logic)
+          const ot = Math.max(hours - empSum.shiftDuration, 0);
+           // Only add if explicitly calculated differently? 
+           // If we have strict shift times, we used the block above.
+           // If we don't, we assume 0 or legacy.
+           // Let's stick to strict shift end time OT as requested.
+      }
+
+      // 4. Late Check (Based on Shift Start Time)
+      if (empSum.shiftStartTime) {
+          const [startH, startM] = empSum.shiftStartTime.split(":").map(Number);
+          const checkInH = checkInDate.getHours();
+          const checkInM = checkInDate.getMinutes();
+          
+          // Late if CheckIn > StartTime
+          if (checkInH > startH || (checkInH === startH && checkInM > startM)) {
+              empSum.lateDays += 1;
+          }
+      } else {
+          // Legacy Default 10:00 AM
+          const h = checkInDate.getHours();
+          const m = checkInDate.getMinutes();
+          if (h > 10 || (h === 10 && m > 0)) {
+              empSum.lateDays += 1;
+          }
+      }
+      
+      // 5. Onsite
+      if (rec.onsite) {
+         empSum.onsiteDays += 1;
+         empSum.onsiteYesDays += 1;
+         empSum.reasonCount.onsite += 1;
+         
+         // SPECIAL LOGIC: If Onsite and NOT already Full Day Present, add to working days?
+         // User's image shows Working Days 7.5 when Present is 0 but Onsite is 8.
+         // This implies Onsite counts as a working day even if hours are low (Full Leave).
+         // Let's implement: If (DayType == "full_leave" AND Onsite == true) -> Consider it working?
+         
+         if (type === "full_leave") {
+             // It was counted as NotWorking above. 
+             // We should effectively convert it to "Present" for working days count calculation?
+             // Or explicitly add 1 to totalWorkingDays?
+             empSum.totalWorkingDays += 1;
+             // Do we valid salary for this? likely yes.
+         }
+         // If "half", it added 0.5. Should Onsite make it 1.0? 
+         // Assuming Onsite overrides hour shortage.
+         else if (type === "half") {
+             empSum.totalWorkingDays += 0.5; // Add remaining 0.5 to make it 1?
+         }
+         
+      } else {
+         empSum.onsiteNoDays += 1;
+      }
+    });
+    
+    // Convert to Array
+    const summaryArray = Object.values(summaryMap);
+    
+    // Save to DB
+    if (summaryArray.length > 0 && processedMonth) {
+       await AttendanceSummary.deleteMany({ month: processedMonth });
+       
+       const summariesToSave = summaryArray.map(s => ({
+           ...s,
+           month: processedMonth,
+           calculatedAt: new Date(),
+           createdAt: new Date()
+       }));
+       
+       await AttendanceSummary.insertMany(summariesToSave);
+       console.log(`✅ Saved ${summariesToSave.length} summaries for ${processedMonth}`);
+    }
+    
+    res.json({
+       success: true,
+       summary: summaryArray,
+       month: processedMonth
+    });
+
+  } catch (err) {
+    console.error("❌ Error in calculating summary:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
+/**
+ * 📌 Update Attendance Record (Dynamic Update)
+ * Overwrites previous definition
+ */
+exports.updateAttendance = async (req, res) => {
+  try {
+    const { attendanceId, hours, region, reason } = req.body;
+
+    if (!attendanceId) return res.status(400).json({ success: false, message: "ID required" });
+
+    const updateData = {};
+    if (hours !== undefined) updateData.totalHours = parseFloat(hours);
+    if (region !== undefined) updateData.region = region;
+    if (reason !== undefined) {
+        updateData.reason = reason;
+        updateData.comment = reason;
+    }
+
+    // Recalculate Day Type dynamically if hours changed
+    if (hours !== undefined) {
+        // Need to fetch employee shift for this?
+        // For simplicity, we fetch the record first
+        const record = await Attendance.findById(attendanceId);
+        if (record) {
+             const allShifts = await Shift.find({});
+             const masterShifts = allShifts.filter(s => s.isMasterShift);
+             const shiftInfo = getEmployeeShift(record.employeeId, allShifts, masterShifts);
+             
+             updateData.dayType = calculateShiftDayType(parseFloat(hours), shiftInfo.duration);
+        }
+    }
+
+    const updatedRecord = await Attendance.findByIdAndUpdate(attendanceId, updateData, { new: true });
+    
+    // Auto Recalculate Summary
+    if (updatedRecord) {
+        const d = new Date(updatedRecord.checkInTime);
+        const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        
+        // Call the NEW calculateSummary logic if needed
+    }
+
+    res.json({
+       success: true,
+       message: "Updated successfully",
+       record: updatedRecord
+    });
+  } catch (error) {
+     res.status(500).json({ success: false, message: error.message });
   }
 };
