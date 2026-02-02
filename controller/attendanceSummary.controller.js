@@ -65,7 +65,7 @@ const Shift = require("../models/Shift");
 
 //     // Build query based on filters
 //     let query = {};
-    
+
 //     if (fromDate && toDate) {
 //       query.checkInTime = {
 //         $gte: new Date(fromDate),
@@ -75,7 +75,7 @@ const Shift = require("../models/Shift");
 //       const [year, monthNum] = month.split('-');
 //       const startDate = new Date(year, monthNum - 1, 1);
 //       const endDate = new Date(year, monthNum, 0, 23, 59, 59);
-      
+
 //       query.checkInTime = {
 //         $gte: startDate,
 //         $lte: endDate
@@ -84,7 +84,7 @@ const Shift = require("../models/Shift");
 
 //     // Fetch all attendance records with filters
 //     const attendanceRecords = await Attendance.find(query).sort({ checkInTime: -1 });
-    
+
 //     // Fetch all employees
 //     const employees = await Employee.find({});
 
@@ -102,7 +102,7 @@ const Shift = require("../models/Shift");
 //       const [year, monthNum] = month.split('-');
 //       const startDate = new Date(year, monthNum - 1, 1);
 //       const endDate = new Date(year, monthNum, 0, 23, 59, 59);
-      
+
 //       leaveQuery = {
 //         status: 'approved',
 //         $or: [
@@ -173,7 +173,7 @@ const Shift = require("../models/Shift");
 
 //       // ✅ Calculate leaves based on totalHours
 //       const totalHours = rec.totalHours || 0;
-      
+
 //       if (totalHours > 0) {
 //         if (totalHours < 4) {
 //           // Less than 4 hours = Full day leave
@@ -196,7 +196,7 @@ const Shift = require("../models/Shift");
 //       const employee = employees.find(
 //         (e) => e.employeeId === leave.employeeId || e._id.toString() === leave.employeeId
 //       );
-      
+
 //       if (employee && summaryMap[employee.employeeId]) {
 //         summaryMap[employee.employeeId].approvedLeaves += leave.days || 1;
 //       }
@@ -208,7 +208,7 @@ const Shift = require("../models/Shift");
 //       const [monthName, year] = emp.month.split(' ');
 //       const monthIndex = new Date(Date.parse(monthName + " 1, " + year)).getMonth();
 //       const totalDaysInMonth = new Date(year, monthIndex + 1, 0).getDate();
-      
+
 //       // Calculate total working days in month (excluding weekends and week offs)
 //       let totalWorkingDaysInMonth = 0;
 //       for (let day = 1; day <= totalDaysInMonth; day++) {
@@ -225,26 +225,26 @@ const Shift = require("../models/Shift");
 
 //       // Calculate actual working days (present - leaves from attendance)
 //       emp.workingDays = emp.presentDays - emp.fullDayLeaves - emp.halfDayLeaves;
-      
+
 //       // Adjust for approved leaves
 //       const totalLeaves = emp.approvedLeaves + emp.fullDayLeaves;
 //       emp.workingDays = Math.max(emp.workingDays - emp.approvedLeaves, 0);
 
 //       emp.halfDays = emp.halfDayLeaves;
-      
+
 //       // Calculate total working days for display (with half days as 0.5)
 //       emp.totalWorkingDays = emp.workingDays + (emp.halfDays * 0.5);
 //       emp.totalWorkingDays = Math.max(emp.totalWorkingDays, 0);
 
 //       // Calculate salary based on working days
 //       const dailySalary = emp.salaryPerMonth / totalWorkingDaysInMonth;
-      
+
 //       // Calculate effective working days (full days + half days as 0.5)
 //       const effectiveWorkingDays = emp.workingDays + (emp.halfDays * 0.5);
-      
+
 //       // Calculate final salary (considering total working days in month)
 //       emp.calculatedSalary = Math.round((effectiveWorkingDays / totalWorkingDaysInMonth) * emp.salaryPerMonth);
-      
+
 //       // Ensure salary doesn't exceed monthly salary and is not negative
 //       emp.calculatedSalary = Math.max(0, Math.min(emp.calculatedSalary, emp.salaryPerMonth));
 //     });
@@ -272,7 +272,7 @@ const Shift = require("../models/Shift");
 
 //     // Build query based on filters
 //     let query = {};
-    
+
 //     if (fromDate && toDate) {
 //       query.checkInTime = {
 //         $gte: new Date(fromDate),
@@ -282,7 +282,7 @@ const Shift = require("../models/Shift");
 //       const [year, monthNum] = month.split('-');
 //       const startDate = new Date(year, monthNum - 1, 1);
 //       const endDate = new Date(year, monthNum, 0, 23, 59, 59);
-      
+
 //       query.checkInTime = {
 //         $gte: startDate,
 //         $lte: endDate
@@ -410,9 +410,9 @@ const Shift = require("../models/Shift");
 // exports.getAllAttendance = async (req, res) => {
 //   try {
 //     const { fromDate, toDate, month, employeeId } = req.query;
-    
+
 //     let query = {};
-    
+
 //     // Date range filter
 //     if (fromDate && toDate) {
 //       query.checkInTime = {
@@ -420,34 +420,34 @@ const Shift = require("../models/Shift");
 //         $lte: new Date(toDate + 'T23:59:59.999Z')
 //       };
 //     }
-    
+
 //     // Month filter
 //     if (month) {
 //       const [year, monthNum] = month.split('-');
 //       const startDate = new Date(year, monthNum - 1, 1);
 //       const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
-      
+
 //       query.checkInTime = {
 //         $gte: startDate,
 //         $lte: endDate
 //       };
 //     }
-    
+
 //     // Employee filter
 //     if (employeeId) {
 //       query.employeeId = employeeId;
 //     }
-    
+
 //     const records = await Attendance.find(query)
 //       .sort({ checkInTime: -1 })
 //       .lean();
-    
+
 //     res.json({
 //       success: true,
 //       records: records,
 //       count: records.length
 //     });
-    
+
 //   } catch (error) {
 //     console.error('❌ Error fetching attendance:', error);
 //     res.status(500).json({
@@ -464,23 +464,23 @@ const Shift = require("../models/Shift");
 // exports.updateAttendance = async (req, res) => {
 //   try {
 //     const { attendanceId, hours, region, reason } = req.body;
-    
+
 //     console.log('📝 Update request received:', { attendanceId, hours, region, reason });
-    
+
 //     if (!attendanceId) {
 //       return res.status(400).json({
 //         success: false,
 //         message: 'Attendance ID is required'
 //       });
 //     }
-    
+
 //     if (hours === undefined && !region && !reason) {
 //       return res.status(400).json({
 //         success: false,
 //         message: 'At least one field (hours, region, or reason) is required to update'
 //       });
 //     }
-    
+
 //     const updateData = {};
 //     if (hours !== undefined) updateData.totalHours = parseFloat(hours);
 //     if (region !== undefined) updateData.region = region;
@@ -488,28 +488,28 @@ const Shift = require("../models/Shift");
 //       updateData.reason = reason;
 //       updateData.comment = reason; // Also update comment field for compatibility
 //     }
-    
+
 //     // Recalculate day type based on new hours
 //     if (hours !== undefined) {
 //       const calculatedDayType = calculateDayType(parseFloat(hours));
 //       updateData.dayType = calculatedDayType;
 //     }
-    
+
 //     console.log('🔄 Update data:', updateData);
-    
+
 //     const updatedRecord = await Attendance.findByIdAndUpdate(
 //       attendanceId,
 //       updateData,
 //       { new: true, runValidators: true }
 //     );
-    
+
 //     if (!updatedRecord) {
 //       return res.status(404).json({
 //         success: false,
 //         message: 'Attendance record not found'
 //       });
 //     }
-    
+
 //     console.log('✅ Attendance record updated:', {
 //       id: attendanceId,
 //       hours: hours,
@@ -517,13 +517,13 @@ const Shift = require("../models/Shift");
 //       reason: reason,
 //       dayType: updatedRecord.dayType
 //     });
-    
+
 //     res.json({
 //       success: true,
 //       message: 'Attendance record updated successfully',
 //       record: updatedRecord
 //     });
-    
+
 //   } catch (error) {
 //     console.error('❌ Error updating attendance:', error);
 //     res.status(500).json({
@@ -597,7 +597,7 @@ const Shift = require("../models/Shift");
 //       count: result.length,
 //       data: result
 //     });
-    
+
 //   } catch (err) {
 //     console.error('❌ Error saving summary:', err);
 //     res.status(500).json({ 
@@ -808,18 +808,18 @@ const Shift = require("../models/Shift");
 // exports.getEmployeeDetails = async (req, res) => {
 //   try {
 //     const { employeeId, fromDate, toDate, month } = req.query;
-    
+
 //     if (!employeeId) {
 //       return res.status(400).json({
 //         success: false,
 //         message: 'Employee ID is required'
 //       });
 //     }
-    
+
 //     console.log('🔍 Fetching details for employee:', employeeId, { fromDate, toDate, month });
-    
+
 //     let query = { employeeId };
-    
+
 //     // Date range filter
 //     if (fromDate && toDate) {
 //       query.checkInTime = {
@@ -827,39 +827,39 @@ const Shift = require("../models/Shift");
 //         $lte: new Date(toDate + 'T23:59:59.999Z')
 //       };
 //     }
-    
+
 //     // Month filter
 //     if (month) {
 //       const [year, monthNum] = month.split('-');
 //       const startDate = new Date(year, monthNum - 1, 1);
 //       const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
-      
+
 //       query.checkInTime = {
 //         $gte: startDate,
 //         $lte: endDate
 //       };
 //     }
-    
+
 //     const details = await Attendance.find(query)
 //       .sort({ checkInTime: -1 })
 //       .lean();
-    
+
 //     console.log('📋 Details found:', details.length);
-    
+
 //     // Log onsite records for debugging
 //     const onsiteRecords = details.filter(rec => rec.region === "Onsite" || rec.region === "onsite");
 //     console.log('🏢 Onsite records in details:', onsiteRecords.length);
-    
+
 //     // Get employee info
 //     const employee = await Employee.findOne({ employeeId });
-    
+
 //     res.json({
 //       success: true,
 //       employee: employee || { employeeId, name: 'Unknown' },
 //       details: details,
 //       count: details.length
 //     });
-    
+
 //   } catch (error) {
 //     console.error('❌ Error fetching employee details:', error);
 //     res.status(500).json({
@@ -877,7 +877,7 @@ const Shift = require("../models/Shift");
 //   const FULL_DAY_LEAVE_THRESHOLD = 4;
 
 //   const numericHours = parseFloat(hours) || 0;
-  
+
 //   if (numericHours >= FULL_DAY_HOURS) {
 //     return "full";
 //   } else if (numericHours >= HALF_DAY_THRESHOLD) {
@@ -1037,7 +1037,7 @@ const Shift = require("../models/Shift");
 // // ✅ YEHI ADD KARNA HAI - Calculate Day Type Function
 // const calculateDayType = (hours) => {
 //   const h = parseFloat(hours) || 0;
-  
+
 //   // Same logic as in calculateSummary
 //   const FULL_DAY_THRESHOLD = 8.80;
 //   const HALF_DAY_THRESHOLD = 4;
@@ -1058,9 +1058,9 @@ const Shift = require("../models/Shift");
 // exports.getAllAttendance = async (req, res) => {
 //   try {
 //     const { fromDate, toDate, month, employeeId } = req.query;
-    
+
 //     let query = {};
-    
+
 //     // Date range filter
 //     if (fromDate && toDate) {
 //       query.checkInTime = {
@@ -1084,34 +1084,34 @@ const Shift = require("../models/Shift");
 // //   }
 // // }
 
-    
+
 //     // Month filter
 //     if (month) {
 //       const [year, monthNum] = month.split('-');
 //       const startDate = new Date(year, monthNum - 1, 1);
 //       const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
-      
+
 //       query.checkInTime = {
 //         $gte: startDate,
 //         $lte: endDate
 //       };
 //     }
-    
+
 //     // Employee filter
 //     if (employeeId) {
 //       query.employeeId = employeeId;
 //     }
-    
+
 //     const records = await Attendance.find(query)
 //       .sort({ checkInTime: -1 })
 //       .lean();
-    
+
 //     res.json({
 //       success: true,
 //       records: records,
 //       count: records.length
 //     });
-    
+
 //   } catch (error) {
 //     console.error('❌ Error fetching attendance:', error);
 //     res.status(500).json({
@@ -1132,23 +1132,23 @@ const Shift = require("../models/Shift");
 // exports.updateAttendance = async (req, res) => {
 //   try {
 //     const { attendanceId, hours, region, reason } = req.body;
-    
+
 //     console.log('📝 Update request received:', { attendanceId, hours, region, reason });
-    
+
 //     if (!attendanceId) {
 //       return res.status(400).json({
 //         success: false,
 //         message: 'Attendance ID is required'
 //       });
 //     }
-    
+
 //     if (hours === undefined && !region && !reason) {
 //       return res.status(400).json({
 //         success: false,
 //         message: 'At least one field (hours, region, or reason) is required to update'
 //       });
 //     }
-    
+
 //     const updateData = {};
 //     if (hours !== undefined) updateData.totalHours = parseFloat(hours);
 //     if (region !== undefined) updateData.region = region;
@@ -1156,28 +1156,28 @@ const Shift = require("../models/Shift");
 //       updateData.reason = reason;
 //       updateData.comment = reason; // Also update comment field for compatibility
 //     }
-    
+
 //     // Recalculate day type based on new hours
 //     if (hours !== undefined) {
 //       const calculatedDayType = calculateDayType(parseFloat(hours));
 //       updateData.dayType = calculatedDayType;
 //     }
-    
+
 //     console.log('🔄 Update data:', updateData);
-    
+
 //     const updatedRecord = await Attendance.findByIdAndUpdate(
 //       attendanceId,
 //       updateData,
 //       { new: true, runValidators: true }
 //     );
-    
+
 //     if (!updatedRecord) {
 //       return res.status(404).json({
 //         success: false,
 //         message: 'Attendance record not found'
 //       });
 //     }
-    
+
 //     console.log('✅ Attendance record updated:', {
 //       id: attendanceId,
 //       hours: hours,
@@ -1185,7 +1185,7 @@ const Shift = require("../models/Shift");
 //       reason: reason,
 //       dayType: updatedRecord.dayType
 //     });
-    
+
 //     // 🔥 AUTO RECALCULATE SUMMARY FOR THAT MONTH
 // const d = new Date(updatedRecord.checkInTime);
 // const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -1206,7 +1206,7 @@ const Shift = require("../models/Shift");
 //       message: 'Attendance record updated successfully',
 //       record: updatedRecord
 //     });
-    
+
 //   } catch (error) {
 //     console.error('❌ Error updating attendance:', error);
 //     res.status(500).json({
@@ -1292,7 +1292,7 @@ const Shift = require("../models/Shift");
 //       count: result.length,
 //       data: result
 //     });
-    
+
 //   } catch (err) {
 //     console.error('❌ Error saving summary:', err);
 //     res.status(500).json({ 
@@ -1312,7 +1312,7 @@ const Shift = require("../models/Shift");
 //     console.log("📥 GetSummary API Called with:", { month, fromDate, toDate, employeeId });
 
 //     let filter = {};
-    
+
 //     // Date range filter
 //     if (fromDate && toDate) {
 //       filter.createdAt = {
@@ -1320,12 +1320,12 @@ const Shift = require("../models/Shift");
 //         $lte: new Date(toDate + "T23:59:59.999Z")
 //       };
 //     }
-    
+
 //     // Month filter
 //     if (month) {
 //       filter.month = month;
 //     }
-    
+
 //     // Employee filter
 //     if (employeeId) {
 //       filter.employeeId = employeeId;
@@ -1342,15 +1342,15 @@ const Shift = require("../models/Shift");
 //     const currentYear = today.getFullYear();
 //     const currentMonth = today.getMonth() + 1;
 //     const currentDay = today.getDate();
-    
+
 //     const correctedData = data.map(summary => {
 //       if (summary.month) {
 //         const [year, monthNum] = summary.month.split('-').map(Number);
-        
+
 //         // Only correct if current month
 //         if (year === currentYear && monthNum === currentMonth) {
 //           const summaryObj = summary.toObject(); // Convert to plain object
-          
+
 //           // Get corrected values
 //           const correctedPresent = Math.min(summary.presentDays, currentDay);
 //           const correctedLate = Math.min(summary.lateDays, currentDay);
@@ -1358,9 +1358,9 @@ const Shift = require("../models/Shift");
 //           const correctedHalf = Math.min(summary.halfDayWorking, currentDay);
 //           const correctedFullLeave = Math.min(summary.fullDayNotWorking, currentDay);
 //           const correctedTotal = correctedPresent + (correctedHalf * 0.5);
-          
+
 //           console.log(`🔧 Auto-correcting ${summary.employeeId}: present ${summary.presentDays} → ${correctedPresent}`);
-          
+
 //           return {
 //             ...summaryObj,
 //             presentDays: correctedPresent,
@@ -1402,43 +1402,43 @@ const Shift = require("../models/Shift");
 // exports.calculateSummary = async (req, res) => {
 //   try {
 //     const { fromDate, toDate, month } = req.body;
-    
+
 //     let query = {};
-    
+
 //     console.log("📥 CalculateSummary called with:", { month, fromDate, toDate });
 
 //     // 🔍 Use a separate variable for processed month
 //     let processedMonth = month;
-    
+
 //     // 🔍 STRICT MONTH FILTERING
 //     if (processedMonth) {
 //       const [year, m] = processedMonth.split("-");
 //       const start = new Date(year, m - 1, 1);
-      
+
 //       // Month ka exact last day
 //       let end = new Date(year, m, 0, 23, 59, 59, 999);
-      
+
 //       // Agar current month hai, toh sirf aaj tak
 //       const today = new Date();
 //       const currentYear = today.getFullYear();
 //       const currentMonth = today.getMonth() + 1;
-      
+
 //       if (parseInt(year) === currentYear && parseInt(m) === currentMonth) {
 //         end = new Date(today);
 //         end.setHours(23, 59, 59, 999);
 //         console.log("✅ Current month detected. Limiting to today:", end);
 //       }
-      
+
 //       query.checkInTime = { $gte: start, $lte: end };
 //       console.log("📅 STRICT Month filter applied:", processedMonth, "from", start, "to", end);
-      
+
 //     } else if (fromDate && toDate) {
 //       query.checkInTime = {
 //         $gte: new Date(fromDate),
 //         $lte: new Date(toDate + "T23:59:59.999Z")
 //       };
 //       console.log("📅 Date range filter applied:", fromDate, toDate);
-      
+
 //       // If no month but date range, calculate month from fromDate
 //       if (fromDate) {
 //         const date = new Date(fromDate);
@@ -1450,7 +1450,7 @@ const Shift = require("../models/Shift");
 //       const start = new Date(today.getFullYear(), today.getMonth(), 1);
 //       const end = new Date(today);
 //       end.setHours(23, 59, 59, 999);
-      
+
 //       query.checkInTime = { $gte: start, $lte: end };
 //       processedMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 //       console.log("📅 No filter, using current month:", processedMonth);
@@ -1501,10 +1501,10 @@ const Shift = require("../models/Shift");
 //       const employeeId = rec.employeeId;
 //       const checkInDate = new Date(rec.checkInTime);
 //       const dateKey = checkInDate.toISOString().split("T")[0];
-      
+
 //       // ✅ STRICT CHECK: Record का month processedMonth से match होना चाहिए
 //       const recordMonth = `${checkInDate.getFullYear()}-${String(checkInDate.getMonth() + 1).padStart(2, "0")}`;
-      
+
 //       if (processedMonth && recordMonth !== processedMonth) {
 //         // Skip records from different months
 //         console.log(`⏩ SKIPPING: ${employeeId} - Record from ${recordMonth}, but processing ${processedMonth}`);
@@ -1579,7 +1579,7 @@ const Shift = require("../models/Shift");
 
 //       // Day type
 //       const type = calculateDayType(hours);
-      
+
 //       console.log(`📊 ${employeeId} - ${dateKey}: ${hours.toFixed(2)}h = ${type}`);
 
 //       if (type === "full") {
@@ -1622,10 +1622,10 @@ const Shift = require("../models/Shift");
 //       const currentYear = now.getFullYear();
 //       const currentMonth = now.getMonth() + 1;
 //       const currentDay = now.getDate();
-      
+
 //       if (selectedYear === currentYear && selectedMonth === currentMonth) {
 //         console.log("✅ Adjusting for current month, max days:", currentDay);
-        
+
 //         summaryArray.forEach(emp => {
 //           const correctedPresent = Math.min(emp.presentDays, currentDay);
 //           const correctedLate = Math.min(emp.lateDays, currentDay);
@@ -1633,7 +1633,7 @@ const Shift = require("../models/Shift");
 //           const correctedHalf = Math.min(emp.halfDayWorking, currentDay);
 //           const correctedFullLeave = Math.min(emp.fullDayNotWorking, currentDay);
 //           const correctedTotal = correctedPresent + (correctedHalf * 0.5);
-          
+
 //           emp.presentDays = correctedPresent;
 //           emp.lateDays = correctedLate;
 //           emp.onsiteDays = correctedOnsite;
@@ -1648,9 +1648,9 @@ const Shift = require("../models/Shift");
 //     if (summaryArray.length > 0 && processedMonth) {
 //       // Delete ONLY summaries for this specific month
 //       const deleteFilter = { month: processedMonth };
-      
+
 //       console.log("🗑️ Deleting existing summaries for:", processedMonth);
-      
+
 //       const deleteResult = await AttendanceSummary.deleteMany(deleteFilter);
 //       console.log(`🗑️ Deleted ${deleteResult.deletedCount} existing summaries for ${processedMonth}`);
 
@@ -1666,7 +1666,7 @@ const Shift = require("../models/Shift");
 
 //       const savedSummaries = await AttendanceSummary.insertMany(summariesToSave);
 //       console.log(`💾 Saved ${savedSummaries.length} summaries for ${processedMonth}`);
-      
+
 //       // Verify what was saved
 //       const verifyData = await AttendanceSummary.find({ month: processedMonth });
 //       console.log(`✅ Verification: ${verifyData.length} records now in DB for ${processedMonth}`);
@@ -1695,18 +1695,18 @@ const Shift = require("../models/Shift");
 // exports.getEmployeeDetails = async (req, res) => {
 //   try {
 //     const { employeeId, fromDate, toDate, month } = req.query;
-    
+
 //     if (!employeeId) {
 //       return res.status(400).json({
 //         success: false,
 //         message: 'Employee ID is required'
 //       });
 //     }
-    
+
 //     console.log('🔍 Fetching details for employee:', employeeId, { fromDate, toDate, month });
-    
+
 //     let query = { employeeId };
-    
+
 //     // Date range filter
 //     if (fromDate && toDate) {
 //       query.checkInTime = {
@@ -1714,35 +1714,35 @@ const Shift = require("../models/Shift");
 //         $lte: new Date(toDate + 'T23:59:59.999Z')
 //       };
 //     }
-    
+
 //     // Month filter
 //     if (month) {
 //       const [year, monthNum] = month.split('-');
 //       const startDate = new Date(year, monthNum - 1, 1);
 //       const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
-      
+
 //       query.checkInTime = {
 //         $gte: startDate,
 //         $lte: endDate
 //       };
 //     }
-    
+
 //     const details = await Attendance.find(query)
 //       .sort({ checkInTime: -1 })
 //       .lean();
-    
+
 //     console.log('📋 Details found:', details.length);
-    
+
 //     // Get employee info
 //     const employee = await Employee.findOne({ employeeId });
-    
+
 //     res.json({
 //       success: true,
 //       employee: employee || { employeeId, name: 'Unknown' },
 //       details: details,
 //       count: details.length
 //     });
-    
+
 //   } catch (error) {
 //     console.error('❌ Error fetching employee details:', error);
 //     res.status(500).json({
@@ -1759,29 +1759,29 @@ const Shift = require("../models/Shift");
 // exports.fixSummaryData = async (req, res) => {
 //   try {
 //     const { month } = req.body;
-    
+
 //     if (!month) {
 //       return res.status(400).json({
 //         success: false,
 //         message: "Month is required (e.g., 2025-12)"
 //       });
 //     }
-    
+
 //     const today = new Date();
 //     const currentYear = today.getFullYear();
 //     const currentMonth = today.getMonth() + 1;
 //     const currentDay = today.getDate();
-    
+
 //     const [year, monthNum] = month.split('-').map(Number);
-    
+
 //     console.log(`🔧 Fixing summary data for ${month}, current day: ${currentDay}`);
-    
+
 //     let updateCount = 0;
-    
+
 //     if (year === currentYear && monthNum === currentMonth) {
 //       // Current month hai - limit to current day
 //       const summaries = await AttendanceSummary.find({ month });
-      
+
 //       for (const summary of summaries) {
 //         // Calculate new correct values
 //         const correctedPresent = Math.min(summary.presentDays, currentDay);
@@ -1790,12 +1790,12 @@ const Shift = require("../models/Shift");
 //         const correctedHalf = Math.min(summary.halfDayWorking, currentDay);
 //         const correctedFullLeave = Math.min(summary.fullDayNotWorking, currentDay);
 //         const correctedTotal = correctedPresent + (correctedHalf * 0.5);
-        
+
 //         // Update if needed
 //         if (summary.presentDays !== correctedPresent || 
 //             summary.lateDays !== correctedLate ||
 //             summary.totalWorkingDays !== correctedTotal) {
-          
+
 //           await AttendanceSummary.findByIdAndUpdate(
 //             summary._id,
 //             {
@@ -1807,7 +1807,7 @@ const Shift = require("../models/Shift");
 //               totalWorkingDays: correctedTotal
 //             }
 //           );
-          
+
 //           updateCount++;
 //           console.log(`✅ Fixed ${summary.employeeId}: present ${summary.presentDays} → ${correctedPresent} days`);
 //         }
@@ -1816,13 +1816,13 @@ const Shift = require("../models/Shift");
 //       // Past month hai - kuch mat karo
 //       console.log(`ℹ️ ${month} is past month, no fix needed`);
 //     }
-    
+
 //     res.json({
 //       success: true,
 //       message: `Fixed ${updateCount} summary records for ${month}`,
 //       fixedCount: updateCount
 //     });
-    
+
 //   } catch (error) {
 //     console.error('❌ Error fixing summary:', error);
 //     res.status(500).json({
@@ -1952,22 +1952,22 @@ const Shift = require("../models/Shift");
 // exports.checkMonthData = async (req, res) => {
 //   try {
 //     const { month1, month2 } = req.query;
-    
+
 //     console.log(`🔍 Checking data for months: ${month1} and ${month2}`);
-    
+
 //     // Get summaries for both months
 //     const summaries1 = await AttendanceSummary.find({ month: month1 });
 //     const summaries2 = await AttendanceSummary.find({ month: month2 });
-    
+
 //     // Get leaves for both months
 //     const [year1, monthNum1] = month1.split("-").map(Number);
 //     const start1 = new Date(year1, monthNum1 - 1, 1);
 //     const end1 = new Date(year1, monthNum1, 0, 23, 59, 59, 999);
-    
+
 //     const [year2, monthNum2] = month2.split("-").map(Number);
 //     const start2 = new Date(year2, monthNum2 - 1, 1);
 //     const end2 = new Date(year2, monthNum2, 0, 23, 59, 59, 999);
-    
+
 //     const leaves1 = await Leave.find({
 //       status: 'approved',
 //       $or: [
@@ -1980,7 +1980,7 @@ const Shift = require("../models/Shift");
 //         }
 //       ]
 //     });
-    
+
 //     const leaves2 = await Leave.find({
 //       status: 'approved',
 //       $or: [
@@ -1993,17 +1993,17 @@ const Shift = require("../models/Shift");
 //         }
 //       ]
 //     });
-    
+
 //     // Find employees with data in both months
 //     const employees = await Employee.find({});
 //     const crossMonthEmployees = [];
-    
+
 //     employees.forEach(emp => {
 //       const inMonth1 = summaries1.find(s => s.employeeId === emp.employeeId);
 //       const inMonth2 = summaries2.find(s => s.employeeId === emp.employeeId);
 //       const leavesIn1 = leaves1.filter(l => l.employeeId === emp.employeeId);
 //       const leavesIn2 = leaves2.filter(l => l.employeeId === emp.employeeId);
-      
+
 //       if (inMonth1 && inMonth2) {
 //         crossMonthEmployees.push({
 //           employeeId: emp.employeeId,
@@ -2021,7 +2021,7 @@ const Shift = require("../models/Shift");
 //         });
 //       }
 //     });
-    
+
 //     res.json({
 //       success: true,
 //       months: { month1, month2 },
@@ -2036,7 +2036,7 @@ const Shift = require("../models/Shift");
 //       crossMonthEmployees: crossMonthEmployees.length > 0 ? crossMonthEmployees : "No cross-month data found",
 //       note: "This is diagnostic only - no data changed"
 //     });
-    
+
 //   } catch (error) {
 //     console.error('❌ Check error:', error);
 //     res.status(500).json({ success: false, error: error.message });
@@ -2051,7 +2051,7 @@ const Shift = require("../models/Shift");
 // // ✅ YEHI ADD KARNA HAI - Calculate Day Type Function
 // const calculateDayType = (hours) => {
 //   const h = parseFloat(hours) || 0;
-  
+
 //   // Same logic as in calculateSummary
 //   const FULL_DAY_THRESHOLD = 8.80;
 //   const HALF_DAY_THRESHOLD = 4;
@@ -2069,7 +2069,7 @@ const Shift = require("../models/Shift");
 // const calculateWeekOffsForMonth = (year, month) => {
 //   const monthNum = parseInt(month) - 1; // JavaScript में 0-based month
 //   const daysInMonth = new Date(year, monthNum + 1, 0).getDate();
-  
+
 //   let sundayCount = 0;
 //   for (let day = 1; day <= daysInMonth; day++) {
 //     const currentDate = new Date(year, monthNum, day);
@@ -2077,7 +2077,7 @@ const Shift = require("../models/Shift");
 //       sundayCount++;
 //     }
 //   }
-  
+
 //   return {
 //     weekOffs: sundayCount,
 //     daysInMonth: daysInMonth,
@@ -2092,9 +2092,9 @@ const Shift = require("../models/Shift");
 // exports.getAllAttendance = async (req, res) => {
 //   try {
 //     const { fromDate, toDate, month, employeeId } = req.query;
-    
+
 //     let query = {};
-    
+
 //     // Date range filter
 //     if (fromDate && toDate) {
 //       query.checkInTime = {
@@ -2102,34 +2102,34 @@ const Shift = require("../models/Shift");
 //         $lte: new Date(toDate + 'T23:59:59.999Z')
 //       };
 //     }
-    
+
 //     // Month filter
 //     if (month) {
 //       const [year, monthNum] = month.split('-');
 //       const startDate = new Date(year, monthNum - 1, 1);
 //       const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
-      
+
 //       query.checkInTime = {
 //         $gte: startDate,
 //         $lte: endDate
 //       };
 //     }
-    
+
 //     // Employee filter
 //     if (employeeId) {
 //       query.employeeId = employeeId;
 //     }
-    
+
 //     const records = await Attendance.find(query)
 //       .sort({ checkInTime: -1 })
 //       .lean();
-    
+
 //     res.json({
 //       success: true,
 //       records: records,
 //       count: records.length
 //     });
-    
+
 //   } catch (error) {
 //     console.error('❌ Error fetching attendance:', error);
 //     res.status(500).json({
@@ -2146,23 +2146,23 @@ const Shift = require("../models/Shift");
 // exports.updateAttendance = async (req, res) => {
 //   try {
 //     const { attendanceId, hours, region, reason } = req.body;
-    
+
 //     console.log('📝 Update request received:', { attendanceId, hours, region, reason });
-    
+
 //     if (!attendanceId) {
 //       return res.status(400).json({
 //         success: false,
 //         message: 'Attendance ID is required'
 //       });
 //     }
-    
+
 //     if (hours === undefined && !region && !reason) {
 //       return res.status(400).json({
 //         success: false,
 //         message: 'At least one field (hours, region, or reason) is required to update'
 //       });
 //     }
-    
+
 //     const updateData = {};
 //     if (hours !== undefined) updateData.totalHours = parseFloat(hours);
 //     if (region !== undefined) updateData.region = region;
@@ -2170,28 +2170,28 @@ const Shift = require("../models/Shift");
 //       updateData.reason = reason;
 //       updateData.comment = reason; // Also update comment field for compatibility
 //     }
-    
+
 //     // Recalculate day type based on new hours
 //     if (hours !== undefined) {
 //       const calculatedDayType = calculateDayType(parseFloat(hours));
 //       updateData.dayType = calculatedDayType;
 //     }
-    
+
 //     console.log('🔄 Update data:', updateData);
-    
+
 //     const updatedRecord = await Attendance.findByIdAndUpdate(
 //       attendanceId,
 //       updateData,
 //       { new: true, runValidators: true }
 //     );
-    
+
 //     if (!updatedRecord) {
 //       return res.status(404).json({
 //         success: false,
 //         message: 'Attendance record not found'
 //       });
 //     }
-    
+
 //     console.log('✅ Attendance record updated:', {
 //       id: attendanceId,
 //       hours: hours,
@@ -2199,7 +2199,7 @@ const Shift = require("../models/Shift");
 //       reason: reason,
 //       dayType: updatedRecord.dayType
 //     });
-    
+
 //     // 🔥 AUTO RECALCULATE SUMMARY FOR THAT MONTH
 //     const d = new Date(updatedRecord.checkInTime);
 //     const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -2220,7 +2220,7 @@ const Shift = require("../models/Shift");
 //       message: 'Attendance record updated successfully',
 //       record: updatedRecord
 //     });
-    
+
 //   } catch (error) {
 //     console.error('❌ Error updating attendance:', error);
 //     res.status(500).json({
@@ -2302,7 +2302,7 @@ const Shift = require("../models/Shift");
 //       count: result.length,
 //       data: result
 //     });
-    
+
 //   } catch (err) {
 //     console.error('❌ Error saving summary:', err);
 //     res.status(500).json({ 
@@ -2322,7 +2322,7 @@ const Shift = require("../models/Shift");
 //     console.log("📥 GetSummary API Called with:", { month, fromDate, toDate, employeeId });
 
 //     let filter = {};
-    
+
 //     // Date range filter
 //     if (fromDate && toDate) {
 //       filter.createdAt = {
@@ -2330,12 +2330,12 @@ const Shift = require("../models/Shift");
 //         $lte: new Date(toDate + "T23:59:59.999Z")
 //       };
 //     }
-    
+
 //     // Month filter
 //     if (month) {
 //       filter.month = month;
 //     }
-    
+
 //     // Employee filter
 //     if (employeeId) {
 //       filter.employeeId = employeeId;
@@ -2352,15 +2352,15 @@ const Shift = require("../models/Shift");
 //     const currentYear = today.getFullYear();
 //     const currentMonth = today.getMonth() + 1;
 //     const currentDay = today.getDate();
-    
+
 //     const correctedData = data.map(summary => {
 //       if (summary.month) {
 //         const [year, monthNum] = summary.month.split('-').map(Number);
-        
+
 //         // Only correct if current month
 //         if (year === currentYear && monthNum === currentMonth) {
 //           const summaryObj = summary.toObject(); // Convert to plain object
-          
+
 //           // Get corrected values
 //           const correctedPresent = Math.min(summary.presentDays, currentDay);
 //           const correctedLate = Math.min(summary.lateDays, currentDay);
@@ -2368,9 +2368,9 @@ const Shift = require("../models/Shift");
 //           const correctedHalf = Math.min(summary.halfDayWorking, currentDay);
 //           const correctedFullLeave = Math.min(summary.fullDayNotWorking, currentDay);
 //           const correctedTotal = correctedPresent + (correctedHalf * 0.5);
-          
+
 //           console.log(`🔧 Auto-correcting ${summary.employeeId}: present ${summary.presentDays} → ${correctedPresent}`);
-          
+
 //           return {
 //             ...summaryObj,
 //             presentDays: correctedPresent,
@@ -2412,43 +2412,43 @@ const Shift = require("../models/Shift");
 // exports.calculateSummary = async (req, res) => {
 //   try {
 //     const { fromDate, toDate, month } = req.body;
-    
+
 //     let query = {};
-    
+
 //     console.log("📥 CalculateSummary called with:", { month, fromDate, toDate });
 
 //     // 🔍 Use a separate variable for processed month
 //     let processedMonth = month;
-    
+
 //     // 🔍 STRICT MONTH FILTERING
 //     if (processedMonth) {
 //       const [year, m] = processedMonth.split("-");
 //       const start = new Date(year, m - 1, 1);
-      
+
 //       // Month ka exact last day
 //       let end = new Date(year, m, 0, 23, 59, 59, 999);
-      
+
 //       // Agar current month hai, toh sirf aaj tak
 //       const today = new Date();
 //       const currentYear = today.getFullYear();
 //       const currentMonth = today.getMonth() + 1;
-      
+
 //       if (parseInt(year) === currentYear && parseInt(m) === currentMonth) {
 //         end = new Date(today);
 //         end.setHours(23, 59, 59, 999);
 //         console.log("✅ Current month detected. Limiting to today:", end);
 //       }
-      
+
 //       query.checkInTime = { $gte: start, $lte: end };
 //       console.log("📅 STRICT Month filter applied:", processedMonth, "from", start, "to", end);
-      
+
 //     } else if (fromDate && toDate) {
 //       query.checkInTime = {
 //         $gte: new Date(fromDate),
 //         $lte: new Date(toDate + "T23:59:59.999Z")
 //       };
 //       console.log("📅 Date range filter applied:", fromDate, toDate);
-      
+
 //       // If no month but date range, calculate month from fromDate
 //       if (fromDate) {
 //         const date = new Date(fromDate);
@@ -2460,7 +2460,7 @@ const Shift = require("../models/Shift");
 //       const start = new Date(today.getFullYear(), today.getMonth(), 1);
 //       const end = new Date(today);
 //       end.setHours(23, 59, 59, 999);
-      
+
 //       query.checkInTime = { $gte: start, $lte: end };
 //       processedMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 //       console.log("📅 No filter, using current month:", processedMonth);
@@ -2511,10 +2511,10 @@ const Shift = require("../models/Shift");
 //       const employeeId = rec.employeeId;
 //       const checkInDate = new Date(rec.checkInTime);
 //       const dateKey = checkInDate.toISOString().split("T")[0];
-      
+
 //       // ✅ STRICT CHECK: Record का month processedMonth से match होना चाहिए
 //       const recordMonth = `${checkInDate.getFullYear()}-${String(checkInDate.getMonth() + 1).padStart(2, "0")}`;
-      
+
 //       if (processedMonth && recordMonth !== processedMonth) {
 //         // Skip records from different months
 //         console.log(`⏩ SKIPPING: ${employeeId} - Record from ${recordMonth}, but processing ${processedMonth}`);
@@ -2587,7 +2587,7 @@ const Shift = require("../models/Shift");
 
 //       // Day type
 //       const type = calculateDayType(hours);
-      
+
 //       console.log(`📊 ${employeeId} - ${dateKey}: ${hours.toFixed(2)}h = ${type}`);
 
 //       if (type === "full") {
@@ -2629,10 +2629,10 @@ const Shift = require("../models/Shift");
 //       const currentYear = now.getFullYear();
 //       const currentMonth = now.getMonth() + 1;
 //       const currentDay = now.getDate();
-      
+
 //       if (selectedYear === currentYear && selectedMonth === currentMonth) {
 //         console.log("✅ Adjusting for current month, max days:", currentDay);
-        
+
 //         summaryArray.forEach(emp => {
 //           const correctedPresent = Math.min(emp.presentDays, currentDay);
 //           const correctedLate = Math.min(emp.lateDays, currentDay);
@@ -2640,7 +2640,7 @@ const Shift = require("../models/Shift");
 //           const correctedHalf = Math.min(emp.halfDayWorking, currentDay);
 //           const correctedFullLeave = Math.min(emp.fullDayNotWorking, currentDay);
 //           const correctedTotal = correctedPresent + (correctedHalf * 0.5);
-          
+
 //           emp.presentDays = correctedPresent;
 //           emp.lateDays = correctedLate;
 //           emp.onsiteDays = correctedOnsite;
@@ -2655,9 +2655,9 @@ const Shift = require("../models/Shift");
 //     if (summaryArray.length > 0 && processedMonth) {
 //       // Delete ONLY summaries for this specific month
 //       const deleteFilter = { month: processedMonth };
-      
+
 //       console.log("🗑️ Deleting existing summaries for:", processedMonth);
-      
+
 //       const deleteResult = await AttendanceSummary.deleteMany(deleteFilter);
 //       console.log(`🗑️ Deleted ${deleteResult.deletedCount} existing summaries for ${processedMonth}`);
 
@@ -2673,7 +2673,7 @@ const Shift = require("../models/Shift");
 
 //       const savedSummaries = await AttendanceSummary.insertMany(summariesToSave);
 //       console.log(`💾 Saved ${savedSummaries.length} summaries for ${processedMonth}`);
-      
+
 //       // Verify what was saved
 //       const verifyData = await AttendanceSummary.find({ month: processedMonth });
 //       console.log(`✅ Verification: ${verifyData.length} records now in DB for ${processedMonth}`);
@@ -2702,18 +2702,18 @@ const Shift = require("../models/Shift");
 // exports.getEmployeeDetails = async (req, res) => {
 //   try {
 //     const { employeeId, fromDate, toDate, month } = req.query;
-    
+
 //     if (!employeeId) {
 //       return res.status(400).json({
 //         success: false,
 //         message: 'Employee ID is required'
 //       });
 //     }
-    
+
 //     console.log('🔍 Fetching details for employee:', employeeId, { fromDate, toDate, month });
-    
+
 //     let query = { employeeId };
-    
+
 //     // Date range filter
 //     if (fromDate && toDate) {
 //       query.checkInTime = {
@@ -2721,35 +2721,35 @@ const Shift = require("../models/Shift");
 //         $lte: new Date(toDate + 'T23:59:59.999Z')
 //       };
 //     }
-    
+
 //     // Month filter
 //     if (month) {
 //       const [year, monthNum] = month.split('-');
 //       const startDate = new Date(year, monthNum - 1, 1);
 //       const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
-      
+
 //       query.checkInTime = {
 //         $gte: startDate,
 //         $lte: endDate
 //       };
 //     }
-    
+
 //     const details = await Attendance.find(query)
 //       .sort({ checkInTime: -1 })
 //       .lean();
-    
+
 //     console.log('📋 Details found:', details.length);
-    
+
 //     // Get employee info
 //     const employee = await Employee.findOne({ employeeId });
-    
+
 //     res.json({
 //       success: true,
 //       employee: employee || { employeeId, name: 'Unknown' },
 //       details: details,
 //       count: details.length
 //     });
-    
+
 //   } catch (error) {
 //     console.error('❌ Error fetching employee details:', error);
 //     res.status(500).json({
@@ -2766,29 +2766,29 @@ const Shift = require("../models/Shift");
 // exports.fixSummaryData = async (req, res) => {
 //   try {
 //     const { month } = req.body;
-    
+
 //     if (!month) {
 //       return res.status(400).json({
 //         success: false,
 //         message: "Month is required (e.g., 2025-12)"
 //       });
 //     }
-    
+
 //     const today = new Date();
 //     const currentYear = today.getFullYear();
 //     const currentMonth = today.getMonth() + 1;
 //     const currentDay = today.getDate();
-    
+
 //     const [year, monthNum] = month.split('-').map(Number);
-    
+
 //     console.log(`🔧 Fixing summary data for ${month}, current day: ${currentDay}`);
-    
+
 //     let updateCount = 0;
-    
+
 //     if (year === currentYear && monthNum === currentMonth) {
 //       // Current month hai - limit to current day
 //       const summaries = await AttendanceSummary.find({ month });
-      
+
 //       for (const summary of summaries) {
 //         // Calculate new correct values
 //         const correctedPresent = Math.min(summary.presentDays, currentDay);
@@ -2797,12 +2797,12 @@ const Shift = require("../models/Shift");
 //         const correctedHalf = Math.min(summary.halfDayWorking, currentDay);
 //         const correctedFullLeave = Math.min(summary.fullDayNotWorking, currentDay);
 //         const correctedTotal = correctedPresent + (correctedHalf * 0.5);
-        
+
 //         // Update if needed
 //         if (summary.presentDays !== correctedPresent || 
 //             summary.lateDays !== correctedLate ||
 //             summary.totalWorkingDays !== correctedTotal) {
-          
+
 //           await AttendanceSummary.findByIdAndUpdate(
 //             summary._id,
 //             {
@@ -2814,7 +2814,7 @@ const Shift = require("../models/Shift");
 //               totalWorkingDays: correctedTotal
 //             }
 //           );
-          
+
 //           updateCount++;
 //           console.log(`✅ Fixed ${summary.employeeId}: present ${summary.presentDays} → ${correctedPresent} days`);
 //         }
@@ -2823,13 +2823,13 @@ const Shift = require("../models/Shift");
 //       // Past month hai - kuch mat karo
 //       console.log(`ℹ️ ${month} is past month, no fix needed`);
 //     }
-    
+
 //     res.json({
 //       success: true,
 //       message: `Fixed ${updateCount} summary records for ${month}`,
 //       fixedCount: updateCount
 //     });
-    
+
 //   } catch (error) {
 //     console.error('❌ Error fixing summary:', error);
 //     res.status(500).json({
@@ -2866,7 +2866,7 @@ const Shift = require("../models/Shift");
 //     console.log(`💰 Processing salaries for month: "${month}"`);
 
 //     const [year, monthNum] = month.split("-").map(Number);
-    
+
 //     // Validate month
 //     if (isNaN(year) || isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
 //       return res.status(400).json({
@@ -2877,10 +2877,10 @@ const Shift = require("../models/Shift");
 
 //     const start = new Date(year, monthNum - 1, 1);
 //     const end = new Date(year, monthNum, 0, 23, 59, 59, 999);
-    
+
 //     // ✅ DYNAMIC: Calculate actual days and weekoffs for this month
 //     const { weekOffs: dynamicWeekOffs, daysInMonth } = calculateWeekOffsForMonth(year, monthNum);
-    
+
 //     console.log(`📅 ${month}: ${daysInMonth} days, ${dynamicWeekOffs} Sundays (Weekoffs)`);
 
 //     // 1️⃣ Employees
@@ -2922,15 +2922,15 @@ const Shift = require("../models/Shift");
 //     employees.forEach(emp => {
 //       // ✅ USE DYNAMIC WEEKOFFS FOR EVERYONE (Ignore database weekOffPerMonth)
 //       const weekOffs = dynamicWeekOffs; // सभी को same weekoffs मिलेंगे (month के based)
-      
+
 //       // ✅ CORRECT attendance for selected month
 //       const empAttendance = attendanceMap[String(emp.employeeId)];
 
 //       const salaryPerMonth = emp.salaryPerMonth || 0;
-      
+
 //       // ✅ CORRECT DAILY RATE: Monthly salary divided by ACTUAL days in month
 //       const dailyRate = salaryPerMonth / daysInMonth;
-      
+
 //       // Agar attendance nahi hai is month ke liye, toh 0 consider karein
 //       const presentDays = empAttendance?.presentDays || 0;
 //       const halfDays = empAttendance?.halfDayWorking || 0;
@@ -2976,7 +2976,7 @@ const Shift = require("../models/Shift");
 //         paidDays: paidDays,
 //         calculatedSalary: calculatedSalary,
 //         calculatedSalaryDisplay: `₹${calculatedSalary}`,
-        
+
 //         // Month info
 //         monthDays: daysInMonth,
 //         monthName: `${year}-${String(monthNum).padStart(2, '0')}`,
@@ -3009,22 +3009,22 @@ const Shift = require("../models/Shift");
 // exports.checkMonthData = async (req, res) => {
 //   try {
 //     const { month1, month2 } = req.query;
-    
+
 //     console.log(`🔍 Checking data for months: ${month1} and ${month2}`);
-    
+
 //     // Get summaries for both months
 //     const summaries1 = await AttendanceSummary.find({ month: month1 });
 //     const summaries2 = await AttendanceSummary.find({ month: month2 });
-    
+
 //     // Get leaves for both months
 //     const [year1, monthNum1] = month1.split("-").map(Number);
 //     const start1 = new Date(year1, monthNum1 - 1, 1);
 //     const end1 = new Date(year1, monthNum1, 0, 23, 59, 59, 999);
-    
+
 //     const [year2, monthNum2] = month2.split("-").map(Number);
 //     const start2 = new Date(year2, monthNum2 - 1, 1);
 //     const end2 = new Date(year2, monthNum2, 0, 23, 59, 59, 999);
-    
+
 //     const leaves1 = await Leave.find({
 //       status: 'approved',
 //       $or: [
@@ -3037,7 +3037,7 @@ const Shift = require("../models/Shift");
 //         }
 //       ]
 //     });
-    
+
 //     const leaves2 = await Leave.find({
 //       status: 'approved',
 //       $or: [
@@ -3050,17 +3050,17 @@ const Shift = require("../models/Shift");
 //         }
 //       ]
 //     });
-    
+
 //     // Find employees with data in both months
 //     const employees = await Employee.find({});
 //     const crossMonthEmployees = [];
-    
+
 //     employees.forEach(emp => {
 //       const inMonth1 = summaries1.find(s => s.employeeId === emp.employeeId);
 //       const inMonth2 = summaries2.find(s => s.employeeId === emp.employeeId);
 //       const leavesIn1 = leaves1.filter(l => l.employeeId === emp.employeeId);
 //       const leavesIn2 = leaves2.filter(l => l.employeeId === emp.employeeId);
-      
+
 //       if (inMonth1 && inMonth2) {
 //         crossMonthEmployees.push({
 //           employeeId: emp.employeeId,
@@ -3078,7 +3078,7 @@ const Shift = require("../models/Shift");
 //         });
 //       }
 //     });
-    
+
 //     res.json({
 //       success: true,
 //       months: { month1, month2 },
@@ -3093,7 +3093,7 @@ const Shift = require("../models/Shift");
 //       crossMonthEmployees: crossMonthEmployees.length > 0 ? crossMonthEmployees : "No cross-month data found",
 //       note: "This is diagnostic only - no data changed"
 //     });
-    
+
 //   } catch (error) {
 //     console.error('❌ Check error:', error);
 //     res.status(500).json({ success: false, error: error.message });
@@ -3108,7 +3108,7 @@ const Leave = require("../models/Leave");
 // ✅ YEHI ADD KARNA HAI - Calculate Day Type Function
 const calculateDayType = (hours) => {
   const h = parseFloat(hours) || 0;
-  
+
   // Same logic as in calculateSummary
   const FULL_DAY_THRESHOLD = 8.80;
   const HALF_DAY_THRESHOLD = 4;
@@ -3126,12 +3126,12 @@ const calculateDayType = (hours) => {
 const calculateWeekOffsForDay = (year, month, targetDay) => {
   // targetDay: 0=Sunday, 1=Monday, ..., 6=Saturday
   // month: 1-12 (January = 1, December = 12)
-  
+
   const monthIndex = month - 1; // JavaScript month: 0-11
   const daysInMonth = new Date(year, month, 0).getDate();
-  
+
   console.log(`🔢 calculateWeekOffsForDay(${year}, ${month}, ${targetDay}) - Days in month: ${daysInMonth}`);
-  
+
   let count = 0;
   for (let day = 1; day <= daysInMonth; day++) {
     const currentDate = new Date(year, monthIndex, day);
@@ -3139,9 +3139,9 @@ const calculateWeekOffsForDay = (year, month, targetDay) => {
       count++;
     }
   }
-  
+
   console.log(`📊 ${year}-${month.toString().padStart(2, '0')}: ${count} days with day=${targetDay}`);
-  
+
   return count;
 };
 
@@ -3160,11 +3160,11 @@ const EMPLOYEE_WEEKOFF_MAP = {
   'EMP004': { weekOffDay: 'Sunday', dayNum: 0, weekOffType: '0+4', weekOffPerMonth: 4 },
   'EMP005': { weekOffDay: 'Sunday', dayNum: 0, weekOffType: '0+4', weekOffPerMonth: 4 },
   'EMP008': { weekOffDay: 'Sunday', dayNum: 0, weekOffType: '0+4', weekOffPerMonth: 4 },
-  
+
   // ❌ Kisi aur din weekoff wale employees (Unka count wahi rahega)
   'EMP006': { weekOffDay: 'Tuesday', dayNum: 2, weekOffType: '0+2', weekOffPerMonth: 2 }, // Example: 2 Tuesdays in Nov 2025
   'EMP007': { weekOffDay: 'Friday', dayNum: 5, weekOffType: '0+4', weekOffPerMonth: 4 },  // Example: 4 Fridays in Nov 2025
-  
+
   // Add all your employees here with their ACTUAL weekoff days
   // Default Sunday if not specified
 };
@@ -3175,9 +3175,9 @@ const EMPLOYEE_WEEKOFF_MAP = {
 exports.getAllAttendance = async (req, res) => {
   try {
     const { fromDate, toDate, month, employeeId } = req.query;
-    
+
     let query = {};
-    
+
     // Date range filter
     if (fromDate && toDate) {
       query.checkInTime = {
@@ -3185,34 +3185,34 @@ exports.getAllAttendance = async (req, res) => {
         $lte: new Date(toDate + 'T23:59:59.999Z')
       };
     }
-    
+
     // Month filter
     if (month) {
       const [year, monthNum] = month.split('-');
       const startDate = new Date(year, monthNum - 1, 1);
       const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
-      
+
       query.checkInTime = {
         $gte: startDate,
         $lte: endDate
       };
     }
-    
+
     // Employee filter
     if (employeeId) {
       query.employeeId = employeeId;
     }
-    
+
     const records = await Attendance.find(query)
       .sort({ checkInTime: -1 })
       .lean();
-    
+
     res.json({
       success: true,
       records: records,
       count: records.length
     });
-    
+
   } catch (error) {
     console.error('❌ Error fetching attendance:', error);
     res.status(500).json({
@@ -3229,23 +3229,23 @@ exports.getAllAttendance = async (req, res) => {
 exports.updateAttendance = async (req, res) => {
   try {
     const { attendanceId, hours, region, reason } = req.body;
-    
+
     console.log('📝 Update request received:', { attendanceId, hours, region, reason });
-    
+
     if (!attendanceId) {
       return res.status(400).json({
         success: false,
         message: 'Attendance ID is required'
       });
     }
-    
+
     if (hours === undefined && !region && !reason) {
       return res.status(400).json({
         success: false,
         message: 'At least one field (hours, region, or reason) is required to update'
       });
     }
-    
+
     const updateData = {};
     if (hours !== undefined) updateData.totalHours = parseFloat(hours);
     if (region !== undefined) updateData.region = region;
@@ -3253,28 +3253,28 @@ exports.updateAttendance = async (req, res) => {
       updateData.reason = reason;
       updateData.comment = reason; // Also update comment field for compatibility
     }
-    
+
     // Recalculate day type based on new hours
     if (hours !== undefined) {
       const calculatedDayType = calculateDayType(parseFloat(hours));
       updateData.dayType = calculatedDayType;
     }
-    
+
     console.log('🔄 Update data:', updateData);
-    
+
     const updatedRecord = await Attendance.findByIdAndUpdate(
       attendanceId,
       updateData,
       { new: true, runValidators: true }
     );
-    
+
     if (!updatedRecord) {
       return res.status(404).json({
         success: false,
         message: 'Attendance record not found'
       });
     }
-    
+
     console.log('✅ Attendance record updated:', {
       id: attendanceId,
       hours: hours,
@@ -3282,7 +3282,7 @@ exports.updateAttendance = async (req, res) => {
       reason: reason,
       dayType: updatedRecord.dayType
     });
-    
+
     // 🔥 AUTO RECALCULATE SUMMARY FOR THAT MONTH
     const d = new Date(updatedRecord.checkInTime);
     const monthForSummary = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -3295,7 +3295,7 @@ exports.updateAttendance = async (req, res) => {
     // Recalculate summary
     await exports.calculateSummary(
       { body: { month: monthForSummary } },
-      { json: () => {} } // dummy response
+      { json: () => { } } // dummy response
     );
 
     res.json({
@@ -3303,7 +3303,7 @@ exports.updateAttendance = async (req, res) => {
       message: 'Attendance record updated successfully',
       record: updatedRecord
     });
-    
+
   } catch (error) {
     console.error('❌ Error updating attendance:', error);
     res.status(500).json({
@@ -3322,9 +3322,9 @@ exports.saveSummary = async (req, res) => {
     const { summaries, fromDate, toDate, month } = req.body;
 
     if (!summaries || !Array.isArray(summaries)) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Invalid summary data" 
+        message: "Invalid summary data"
       });
     }
 
@@ -3385,12 +3385,12 @@ exports.saveSummary = async (req, res) => {
       count: result.length,
       data: result
     });
-    
+
   } catch (err) {
     console.error('❌ Error saving summary:', err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: err.message 
+      message: err.message
     });
   }
 };
@@ -3405,7 +3405,7 @@ exports.getSummary = async (req, res) => {
     console.log("📥 GetSummary API Called with:", { month, fromDate, toDate, employeeId });
 
     let filter = {};
-    
+
     // Date range filter
     if (fromDate && toDate) {
       filter.createdAt = {
@@ -3413,12 +3413,12 @@ exports.getSummary = async (req, res) => {
         $lte: new Date(toDate + "T23:59:59.999Z")
       };
     }
-    
+
     // Month filter
     if (month) {
       filter.month = month;
     }
-    
+
     // Employee filter
     if (employeeId) {
       filter.employeeId = employeeId;
@@ -3435,15 +3435,15 @@ exports.getSummary = async (req, res) => {
     const currentYear = today.getFullYear();
     const currentMonth = today.getMonth() + 1;
     const currentDay = today.getDate();
-    
+
     const correctedData = data.map(summary => {
       if (summary.month) {
         const [year, monthNum] = summary.month.split('-').map(Number);
-        
+
         // Only correct if current month
         if (year === currentYear && monthNum === currentMonth) {
           const summaryObj = summary.toObject(); // Convert to plain object
-          
+
           // Get corrected values
           const correctedPresent = Math.min(summary.presentDays, currentDay);
           const correctedLate = Math.min(summary.lateDays, currentDay);
@@ -3451,9 +3451,9 @@ exports.getSummary = async (req, res) => {
           const correctedHalf = Math.min(summary.halfDayWorking, currentDay);
           const correctedFullLeave = Math.min(summary.fullDayNotWorking, currentDay);
           const correctedTotal = correctedPresent + (correctedHalf * 0.5);
-          
+
           console.log(`🔧 Auto-correcting ${summary.employeeId}: present ${summary.presentDays} → ${correctedPresent}`);
-          
+
           return {
             ...summaryObj,
             presentDays: correctedPresent,
@@ -3482,9 +3482,9 @@ exports.getSummary = async (req, res) => {
     });
   } catch (err) {
     console.error('❌ Error fetching summary:', err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: err.message 
+      message: err.message
     });
   }
 };
@@ -3495,43 +3495,43 @@ exports.getSummary = async (req, res) => {
 exports.calculateSummary = async (req, res) => {
   try {
     const { fromDate, toDate, month } = req.body;
-    
+
     let query = {};
-    
+
     console.log("📥 CalculateSummary called with:", { month, fromDate, toDate });
 
     // 🔍 Use a separate variable for processed month
     let processedMonth = month;
-    
+
     // 🔍 STRICT MONTH FILTERING
     if (processedMonth) {
       const [year, m] = processedMonth.split("-");
       const start = new Date(year, m - 1, 1);
-      
+
       // Month ka exact last day
       let end = new Date(year, m, 0, 23, 59, 59, 999);
-      
+
       // Agar current month hai, toh sirf aaj tak
       const today = new Date();
       const currentYear = today.getFullYear();
       const currentMonth = today.getMonth() + 1;
-      
+
       if (parseInt(year) === currentYear && parseInt(m) === currentMonth) {
         end = new Date(today);
         end.setHours(23, 59, 59, 999);
         console.log("✅ Current month detected. Limiting to today:", end);
       }
-      
+
       query.checkInTime = { $gte: start, $lte: end };
       console.log("📅 STRICT Month filter applied:", processedMonth, "from", start, "to", end);
-      
+
     } else if (fromDate && toDate) {
       query.checkInTime = {
         $gte: new Date(fromDate),
         $lte: new Date(toDate + "T23:59:59.999Z")
       };
       console.log("📅 Date range filter applied:", fromDate, toDate);
-      
+
       // If no month but date range, calculate month from fromDate
       if (fromDate) {
         const date = new Date(fromDate);
@@ -3543,7 +3543,7 @@ exports.calculateSummary = async (req, res) => {
       const start = new Date(today.getFullYear(), today.getMonth(), 1);
       const end = new Date(today);
       end.setHours(23, 59, 59, 999);
-      
+
       query.checkInTime = { $gte: start, $lte: end };
       processedMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
       console.log("📅 No filter, using current month:", processedMonth);
@@ -3594,10 +3594,10 @@ exports.calculateSummary = async (req, res) => {
       const employeeId = rec.employeeId;
       const checkInDate = new Date(rec.checkInTime);
       const dateKey = checkInDate.toISOString().split("T")[0];
-      
+
       // ✅ STRICT CHECK: Record का month processedMonth से match होना चाहिए
       const recordMonth = `${checkInDate.getFullYear()}-${String(checkInDate.getMonth() + 1).padStart(2, "0")}`;
-      
+
       if (processedMonth && recordMonth !== processedMonth) {
         // Skip records from different months
         console.log(`⏩ SKIPPING: ${employeeId} - Record from ${recordMonth}, but processing ${processedMonth}`);
@@ -3670,7 +3670,7 @@ exports.calculateSummary = async (req, res) => {
 
       // Day type
       const type = calculateDayType(hours);
-      
+
       console.log(`📊 ${employeeId} - ${dateKey}: ${hours.toFixed(2)}h = ${type}`);
 
       if (type === "full") {
@@ -3712,10 +3712,10 @@ exports.calculateSummary = async (req, res) => {
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth() + 1;
       const currentDay = now.getDate();
-      
+
       if (selectedYear === currentYear && selectedMonth === currentMonth) {
         console.log("✅ Adjusting for current month, max days:", currentDay);
-        
+
         summaryArray.forEach(emp => {
           const correctedPresent = Math.min(emp.presentDays, currentDay);
           const correctedLate = Math.min(emp.lateDays, currentDay);
@@ -3723,7 +3723,7 @@ exports.calculateSummary = async (req, res) => {
           const correctedHalf = Math.min(emp.halfDayWorking, currentDay);
           const correctedFullLeave = Math.min(emp.fullDayNotWorking, currentDay);
           const correctedTotal = correctedPresent + (correctedHalf * 0.5);
-          
+
           emp.presentDays = correctedPresent;
           emp.lateDays = correctedLate;
           emp.onsiteDays = correctedOnsite;
@@ -3738,9 +3738,9 @@ exports.calculateSummary = async (req, res) => {
     if (summaryArray.length > 0 && processedMonth) {
       // Delete ONLY summaries for this specific month
       const deleteFilter = { month: processedMonth };
-      
+
       console.log("🗑️ Deleting existing summaries for:", processedMonth);
-      
+
       const deleteResult = await AttendanceSummary.deleteMany(deleteFilter);
       console.log(`🗑️ Deleted ${deleteResult.deletedCount} existing summaries for ${processedMonth}`);
 
@@ -3756,7 +3756,7 @@ exports.calculateSummary = async (req, res) => {
 
       const savedSummaries = await AttendanceSummary.insertMany(summariesToSave);
       console.log(`💾 Saved ${savedSummaries.length} summaries for ${processedMonth}`);
-      
+
       // Verify what was saved
       const verifyData = await AttendanceSummary.find({ month: processedMonth });
       console.log(`✅ Verification: ${verifyData.length} records now in DB for ${processedMonth}`);
@@ -3772,9 +3772,9 @@ exports.calculateSummary = async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error calculating summary:', err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: err.message 
+      message: err.message
     });
   }
 };
@@ -3785,18 +3785,18 @@ exports.calculateSummary = async (req, res) => {
 exports.getEmployeeDetails = async (req, res) => {
   try {
     const { employeeId, fromDate, toDate, month } = req.query;
-    
+
     if (!employeeId) {
       return res.status(400).json({
         success: false,
         message: 'Employee ID is required'
       });
     }
-    
+
     console.log('🔍 Fetching details for employee:', employeeId, { fromDate, toDate, month });
-    
+
     let query = { employeeId };
-    
+
     // Date range filter
     if (fromDate && toDate) {
       query.checkInTime = {
@@ -3804,35 +3804,35 @@ exports.getEmployeeDetails = async (req, res) => {
         $lte: new Date(toDate + 'T23:59:59.999Z')
       };
     }
-    
+
     // Month filter
     if (month) {
       const [year, monthNum] = month.split('-');
       const startDate = new Date(year, monthNum - 1, 1);
       const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
-      
+
       query.checkInTime = {
         $gte: startDate,
         $lte: endDate
       };
     }
-    
+
     const details = await Attendance.find(query)
       .sort({ checkInTime: -1 })
       .lean();
-    
+
     console.log('📋 Details found:', details.length);
-    
+
     // Get employee info
     const employee = await Employee.findOne({ employeeId });
-    
+
     res.json({
       success: true,
       employee: employee || { employeeId, name: 'Unknown' },
       details: details,
       count: details.length
     });
-    
+
   } catch (error) {
     console.error('❌ Error fetching employee details:', error);
     res.status(500).json({
@@ -3849,29 +3849,29 @@ exports.getEmployeeDetails = async (req, res) => {
 exports.fixSummaryData = async (req, res) => {
   try {
     const { month } = req.body;
-    
+
     if (!month) {
       return res.status(400).json({
         success: false,
         message: "Month is required (e.g., 2025-12)"
       });
     }
-    
+
     const today = new Date();
     const currentYear = today.getFullYear();
     const currentMonth = today.getMonth() + 1;
     const currentDay = today.getDate();
-    
+
     const [year, monthNum] = month.split('-').map(Number);
-    
+
     console.log(`🔧 Fixing summary data for ${month}, current day: ${currentDay}`);
-    
+
     let updateCount = 0;
-    
+
     if (year === currentYear && monthNum === currentMonth) {
       // Current month hai - limit to current day
       const summaries = await AttendanceSummary.find({ month });
-      
+
       for (const summary of summaries) {
         // Calculate new correct values
         const correctedPresent = Math.min(summary.presentDays, currentDay);
@@ -3880,12 +3880,12 @@ exports.fixSummaryData = async (req, res) => {
         const correctedHalf = Math.min(summary.halfDayWorking, currentDay);
         const correctedFullLeave = Math.min(summary.fullDayNotWorking, currentDay);
         const correctedTotal = correctedPresent + (correctedHalf * 0.5);
-        
+
         // Update if needed
-        if (summary.presentDays !== correctedPresent || 
-            summary.lateDays !== correctedLate ||
-            summary.totalWorkingDays !== correctedTotal) {
-          
+        if (summary.presentDays !== correctedPresent ||
+          summary.lateDays !== correctedLate ||
+          summary.totalWorkingDays !== correctedTotal) {
+
           await AttendanceSummary.findByIdAndUpdate(
             summary._id,
             {
@@ -3897,7 +3897,7 @@ exports.fixSummaryData = async (req, res) => {
               totalWorkingDays: correctedTotal
             }
           );
-          
+
           updateCount++;
           console.log(`✅ Fixed ${summary.employeeId}: present ${summary.presentDays} → ${correctedPresent} days`);
         }
@@ -3906,13 +3906,13 @@ exports.fixSummaryData = async (req, res) => {
       // Past month hai - kuch mat karo
       console.log(`ℹ️ ${month} is past month, no fix needed`);
     }
-    
+
     res.json({
       success: true,
       message: `Fixed ${updateCount} summary records for ${month}`,
       fixedCount: updateCount
     });
-    
+
   } catch (error) {
     console.error('❌ Error fixing summary:', error);
     res.status(500).json({
@@ -3977,7 +3977,7 @@ exports.getSalaries = async (req, res) => {
         // Fixed 2 days
         weekOffs = 2;
         weekOffSource = "0+2_fixed";
-      } 
+      }
       else if (emp.weekOffType === '0+4') {
         // Fixed 4 days
         weekOffs = 4;
@@ -3993,17 +3993,17 @@ exports.getSalaries = async (req, res) => {
         // ✅ 4 Sunday → 5 only if 5 Sundays exist
         weekOffs = sundaysInMonth === 5 ? 5 : 4;
         weekOffSource = "0+4_sunday_auto";
-      } 
+      }
       else if (emp.weekOffPerMonth === 2) {
         // ❌ NEVER increase
         weekOffs = 2;
         weekOffSource = "0+2_fixed_no_increment";
-      } 
+      }
       else if (typeof emp.weekOffPerMonth === "number") {
         // Any other fixed value
         weekOffs = emp.weekOffPerMonth;
         weekOffSource = "fixed_from_db";
-      } 
+      }
       else {
         // Fully dynamic (fallback)
         weekOffs = calculateWeekOffsForDay(year, monthNum, weekOffDayNum);
@@ -4061,15 +4061,15 @@ exports.getSalaries = async (req, res) => {
  */
 exports.updateWeekOffConfig = async (req, res) => {
   try {
-   const { employeeId, weekOffDay, weekOffPerMonth, weekOffType } = req.body;
-    
+    const { employeeId, weekOffDay, weekOffPerMonth, weekOffType } = req.body;
+
     if (!employeeId || !weekOffDay) {
       return res.status(400).json({
         success: false,
         message: "Employee ID and WeekOff Day are required"
       });
     }
-    
+
     // Day name to number mapping
     const dayMap = {
       'Sunday': 0,
@@ -4080,14 +4080,14 @@ exports.updateWeekOffConfig = async (req, res) => {
       'Friday': 5,
       'Saturday': 6
     };
-    
+
     if (!dayMap.hasOwnProperty(weekOffDay)) {
       return res.status(400).json({
         success: false,
         message: "Invalid weekoff day. Use: Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday"
       });
     }
-    
+
     const updateData = {
       weekOffDay
     };
@@ -4096,7 +4096,7 @@ exports.updateWeekOffConfig = async (req, res) => {
     if (weekOffType === '0+2') {
       updateData.weekOffPerMonth = 2;
       updateData.weekOffType = '0+2';
-    } 
+    }
     else if (weekOffType === '0+4') {
       updateData.weekOffPerMonth = 4;
       updateData.weekOffType = '0+4';
@@ -4131,30 +4131,30 @@ exports.updateWeekOffConfig = async (req, res) => {
       weekOffType: updateData.weekOffType
     };
 
-   const updatedEmp = await Employee.findOneAndUpdate(
-  { employeeId },
-  updateData,
-  { new: true }
-);
+    const updatedEmp = await Employee.findOneAndUpdate(
+      { employeeId },
+      updateData,
+      { new: true }
+    );
 
-if (!updatedEmp) {
-  return res.status(404).json({
-    success: false,
-    message: "Employee not found"
-  });
-}
+    if (!updatedEmp) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found"
+      });
+    }
 
 
-    
+
     console.log(`✅ Updated weekoff for ${employeeId}: ${weekOffDay}, type: ${updateData.weekOffType}, days: ${updateData.weekOffPerMonth}`);
-    
+
     res.json({
       success: true,
       message: `WeekOff updated for ${employeeId}`,
       config: EMPLOYEE_WEEKOFF_MAP[employeeId],
       updatedEmp: updatedEmp
     });
-    
+
   } catch (error) {
     console.error('❌ Error updating weekoff config:', error);
     res.status(500).json({
@@ -4192,58 +4192,60 @@ exports.getWeekOffConfig = async (req, res) => {
 exports.checkMonthData = async (req, res) => {
   try {
     const { month1, month2 } = req.query;
-    
+
     console.log(`🔍 Checking data for months: ${month1} and ${month2}`);
-    
+
     // Get summaries for both months
     const summaries1 = await AttendanceSummary.find({ month: month1 });
     const summaries2 = await AttendanceSummary.find({ month: month2 });
-    
+
     // Get leaves for both months
     const [year1, monthNum1] = month1.split("-").map(Number);
     const start1 = new Date(year1, monthNum1 - 1, 1);
     const end1 = new Date(year1, monthNum1, 0, 23, 59, 59, 999);
-    
+
     const [year2, monthNum2] = month2.split("-").map(Number);
     const start2 = new Date(year2, monthNum2 - 1, 1);
     const end2 = new Date(year2, monthNum2, 0, 23, 59, 59, 999);
-    
+
     const leaves1 = await Leave.find({
       status: 'approved',
       $or: [
         { startDate: { $gte: start1, $lte: end1 } },
         { endDate: { $gte: start1, $lte: end1 } },
-        { $and: [
+        {
+          $and: [
             { startDate: { $lte: start1 } },
             { endDate: { $gte: end1 } }
           ]
         }
       ]
     });
-    
+
     const leaves2 = await Leave.find({
       status: 'approved',
       $or: [
         { startDate: { $gte: start2, $lte: end2 } },
         { endDate: { $gte: start2, $lte: end2 } },
-        { $and: [
+        {
+          $and: [
             { startDate: { $lte: start2 } },
             { endDate: { $gte: end2 } }
           ]
         }
       ]
     });
-    
+
     // Find employees with data in both months
     const employees = await Employee.find({});
     const crossMonthEmployees = [];
-    
+
     employees.forEach(emp => {
       const inMonth1 = summaries1.find(s => s.employeeId === emp.employeeId);
       const inMonth2 = summaries2.find(s => s.employeeId === emp.employeeId);
       const leavesIn1 = leaves1.filter(l => l.employeeId === emp.employeeId);
       const leavesIn2 = leaves2.filter(l => l.employeeId === emp.employeeId);
-      
+
       if (inMonth1 && inMonth2) {
         crossMonthEmployees.push({
           employeeId: emp.employeeId,
@@ -4261,7 +4263,7 @@ exports.checkMonthData = async (req, res) => {
         });
       }
     });
-    
+
     res.json({
       success: true,
       months: { month1, month2 },
@@ -4276,7 +4278,7 @@ exports.checkMonthData = async (req, res) => {
       crossMonthEmployees: crossMonthEmployees.length > 0 ? crossMonthEmployees : "No cross-month data found",
       note: "This is diagnostic only - no data changed"
     });
-    
+
   } catch (error) {
     console.error('❌ Check error:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -4295,9 +4297,9 @@ const getDefaultShiftTime = (shiftType) => {
   switch (shiftType) {
     case "Morning": return { start: "06:00", end: "15:00" }; // 9 hours
     case "Evening": return { start: "14:00", end: "23:00" }; // 9 hours
-    case "Night":   return { start: "22:00", end: "07:00" }; // 9 hours
+    case "Night": return { start: "22:00", end: "07:00" }; // 9 hours
     case "General": return { start: "10:00", end: "19:00" }; // 9 hours
-    default:        return { start: "10:00", end: "19:00" };
+    default: return { start: "10:00", end: "19:00" };
   }
 };
 
@@ -4320,35 +4322,35 @@ const getEmployeeShift = (employeeId, shiftsData, masterShifts) => {
   let shiftType = "General";
 
   if (assignedShift && assignedShift.employeeAssignment) {
-      shiftName = assignedShift.shiftName;
-      shiftType = assignedShift.shiftType;
-      
-      const empAssign = assignedShift.employeeAssignment;
-      
-      if (empAssign.startTime && empAssign.endTime) {
-          startTime = empAssign.startTime;
-          endTime = empAssign.endTime;
-      } else if (empAssign.selectedTimeRange) {
-          // Parse "10:00 - 19:00"
-          const parts = empAssign.selectedTimeRange.split("-").map(p => p.trim());
-          if (parts.length === 2) {
-              startTime = parts[0];
-              endTime = parts[1];
-          }
+    shiftName = assignedShift.shiftName;
+    shiftType = assignedShift.shiftType;
+
+    const empAssign = assignedShift.employeeAssignment;
+
+    if (empAssign.startTime && empAssign.endTime) {
+      startTime = empAssign.startTime;
+      endTime = empAssign.endTime;
+    } else if (empAssign.selectedTimeRange) {
+      // Parse "10:00 - 19:00"
+      const parts = empAssign.selectedTimeRange.split("-").map(p => p.trim());
+      if (parts.length === 2) {
+        startTime = parts[0];
+        endTime = parts[1];
       }
+    }
   }
 
   // Calculate Duration
   let duration = 9;
   if (startTime && endTime) {
-       const start = new Date(`2000-01-01T${startTime}`);
-       const end = new Date(`2000-01-01T${endTime}`);
-       if (end < start) end.setDate(end.getDate() + 1); // Cross midnight
-       
-       const diff = (end - start) / (1000 * 60 * 60);
-       duration = Number(diff.toFixed(2));
+    const start = new Date(`2000-01-01T${startTime}`);
+    const end = new Date(`2000-01-01T${endTime}`);
+    if (end < start) end.setDate(end.getDate() + 1); // Cross midnight
+
+    const diff = (end - start) / (1000 * 60 * 60);
+    duration = Number(diff.toFixed(2));
   }
-    
+
   return {
     name: shiftName,
     type: shiftType,
@@ -4363,14 +4365,14 @@ const getEmployeeShift = (employeeId, shiftsData, masterShifts) => {
  */
 const calculateShiftDayType = (hours, shiftDuration) => {
   const h = parseFloat(hours) || 0;
-  
+
   // 🟢 SHORT SHIFTS (3 - 6 Hours)
   if (shiftDuration >= 3 && shiftDuration <= 6) {
     if (h < 2.25) return "full_leave";
     if (h >= 2.25 && h <= 3.49) return "half";  // Use <= 3.49 for strict compliance
     return "full"; // 3.5+
   }
-  
+
   // 🟣 STANDARD SHIFTS (8 - 12 Hours)
   // Note: What about 7 hours? Assuming standard logic applies or falls through.
   // User specified 8-12. Let's make the fallback standard.
@@ -4386,47 +4388,47 @@ const calculateShiftDayType = (hours, shiftDuration) => {
  */
 const calculateShiftOT = (checkOutTime, shiftEndTimeStr, checkInTime) => {
   if (!checkOutTime || !shiftEndTimeStr) return 0;
-  
+
   const checkOut = new Date(checkOutTime);
   const checkIn = new Date(checkInTime);
-  
+
   // Construct Shift End Date
   // We assume Shift End is on the same day as CheckIn, UNLESS it crosses midnight or is earlier than checkin?
   // Safer approach: Construct shift start/end based on CheckIn Date
-  
+
   // Parse Shift End Time
   const [endH, endM] = shiftEndTimeStr.split(":").map(Number);
-  
+
   let shiftEnd = new Date(checkIn); // Start with CheckIn Date
   shiftEnd.setHours(endH, endM, 0, 0);
-  
+
   // Handle crossing midnight
   // If Shift End is "earlier" than CheckIn time (e.g. CheckIn 20:00, Shift End 05:00), add 1 day
   // But wait, if shift is 14:00-23:00 and user checks in 13:50. shiftEnd is 23:00 same day.
   // If shift is 22:00-07:00 and user checks in 21:50. shiftEnd is 07:00 NEXT day.
-  
+
   // Heuristic: If shiftEnd is significantly before checkIn (more than 12 hours?), it's probably next day.
   // Actually, we should rely on the shift's generic duration or type.
   // Let's use duration from getEmployeeShift if possible, but here we just have strings.
-  
+
   // Simple check: If checkOut is *after* strict shiftEnd, it's OT.
   // But we need the correct shiftEnd Date.
-  
+
   // If CheckOut is before ShiftEnd (same day assumption), diff is negative -> 0 OT.
   // If CheckOut is after ShiftEnd, diff is positive.
-  
+
   // Special case: Night shift.
   // If checkIn is PM and shiftEnd is AM, shiftEnd is tomorrow.
   if (checkIn.getHours() > 12 && endH < 12) {
-      shiftEnd.setDate(shiftEnd.getDate() + 1);
+    shiftEnd.setDate(shiftEnd.getDate() + 1);
   }
-  
+
   // Calculate difference in hours
   const diffMs = checkOut - shiftEnd;
   if (diffMs > 0) {
-      return Number((diffMs / (1000 * 60 * 60)).toFixed(2));
+    return Number((diffMs / (1000 * 60 * 60)).toFixed(2));
   }
-  
+
   return 0;
 };
 
@@ -4438,12 +4440,12 @@ const calculateShiftOT = (checkOutTime, shiftEndTimeStr, checkInTime) => {
 exports.calculateSummary = async (req, res) => {
   try {
     const { fromDate, toDate, month } = req.body;
-    
+
     console.log("📥 Dynamic CalculateSummary called with:", { month, fromDate, toDate });
 
     let query = {};
     let processedMonth = month;
-    
+
     // Filter Logic
     if (fromDate && toDate) {
       query.checkInTime = {
@@ -4458,19 +4460,19 @@ exports.calculateSummary = async (req, res) => {
       const [year, m] = month.split("-");
       const start = new Date(year, m - 1, 1);
       const end = new Date(year, m, 0, 23, 59, 59, 999);
-      
+
       const today = new Date();
       if (parseInt(year) === today.getFullYear() && parseInt(m) === (today.getMonth() + 1)) {
-         end.setHours(23, 59, 59, 999);
+        end.setHours(23, 59, 59, 999);
       }
       query.checkInTime = { $gte: start, $lte: end };
     } else {
-       const today = new Date();
-       const start = new Date(today.getFullYear(), today.getMonth(), 1);
-       const end = new Date(today);
-       end.setHours(23,59,59,999);
-       query.checkInTime = { $gte: start, $lte: end };
-       processedMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+      const today = new Date();
+      const start = new Date(today.getFullYear(), today.getMonth(), 1);
+      const end = new Date(today);
+      end.setHours(23, 59, 59, 999);
+      query.checkInTime = { $gte: start, $lte: end };
+      processedMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
     }
 
     // Fetch Data
@@ -4478,7 +4480,7 @@ exports.calculateSummary = async (req, res) => {
     const employees = await Employee.find({});
     const allShifts = await Shift.find({});
     const masterShifts = allShifts.filter(s => s.isMasterShift);
-    
+
     const summaryMap = {};
     const processedDates = {};
 
@@ -4487,155 +4489,162 @@ exports.calculateSummary = async (req, res) => {
       const employeeId = rec.employeeId;
       const checkInDate = new Date(rec.checkInTime);
       const dateKey = checkInDate.toISOString().split("T")[0];
-      
+
       const recordMonth = `${checkInDate.getFullYear()}-${String(checkInDate.getMonth() + 1).padStart(2, "0")}`;
       if (processedMonth && recordMonth !== processedMonth) return;
-      
+
       if (checkInDate > new Date()) return;
 
       if (!summaryMap[employeeId]) {
-         const emp = employees.find(e => e.employeeId === employeeId) || {};
-         const shiftInfo = getEmployeeShift(employeeId, allShifts, masterShifts);
-         
-         summaryMap[employeeId] = {
-           employeeId,
-           name: emp.name || `Employee ${employeeId}`,
-           month: processedMonth,
-           presentDays: 0,
-           lateDays: 0,
-           onsiteDays: 0,
-           halfDayWorking: 0,
-           fullDayNotWorking: 0,
-           totalWorkingDays: 0,
-           overTimeHours: 0,
-           onsiteYesDays: 0,
-           onsiteNoDays: 0,
-           shiftName: shiftInfo.name,
-           shiftDuration: shiftInfo.duration,
-           shiftStartTime: shiftInfo.startTime, // Store for late check
-           shiftEndTime: shiftInfo.endTime,     // Store for OT check
-           salaryPerMonth: emp.salaryPerMonth || 0,
-           calculatedSalary: 0,
-           workingDays: 0,
-           reasonCount: { onsite: 0, fieldWork: 0, workFromHome: 0 }
-         };
-         processedDates[employeeId] = new Set();
+        const emp = employees.find(e => e.employeeId === employeeId) || {};
+        const shiftInfo = getEmployeeShift(employeeId, allShifts, masterShifts);
+
+        summaryMap[employeeId] = {
+          employeeId,
+          name: emp.name || `Employee ${employeeId}`,
+          month: processedMonth,
+          presentDays: 0,
+          lateDays: 0,
+          onsiteDays: 0,
+          halfDayWorking: 0,
+          fullDayNotWorking: 0,
+          totalWorkingDays: 0,
+          overTimeHours: 0,
+          onsiteYesDays: 0,
+          onsiteNoDays: 0,
+          shiftName: shiftInfo.name,
+          shiftDuration: shiftInfo.duration,
+          shiftStartTime: shiftInfo.startTime, // Store for late check
+          shiftEndTime: shiftInfo.endTime,     // Store for OT check
+          salaryPerMonth: emp.salaryPerMonth || 0,
+          calculatedSalary: 0,
+          workingDays: 0,
+          reasonCount: { onsite: 0, fieldWork: 0, workFromHome: 0 }
+        };
+        processedDates[employeeId] = new Set();
       }
 
       if (processedDates[employeeId].has(dateKey)) return;
       processedDates[employeeId].add(dateKey);
-      
+
       const empSum = summaryMap[employeeId];
-      
+
       // 1. Calculate Hours
       let hours = 0;
       if (rec.totalHours !== undefined) {
-         hours = parseFloat(rec.totalHours);
+        hours = parseFloat(rec.totalHours);
       } else if (rec.checkOutTime) {
-         hours = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
+        hours = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
       }
-      
+
       // 2. Determine Day Type (Hours based)
       const type = calculateShiftDayType(hours, empSum.shiftDuration);
-      
+
       let isWorkingDay = false;
-      
+
       if (type === "full") {
-          empSum.presentDays += 1;
-          isWorkingDay = true;
-          empSum.totalWorkingDays += 1;
+        empSum.presentDays += 1;
+        isWorkingDay = true;
+        empSum.totalWorkingDays += 1;
       } else if (type === "half") {
-          empSum.halfDayWorking += 1;
-          isWorkingDay = false; // Half day logic handled separately? 
-          // Wait, backend totalWorkingDays adds 0.5.
-          empSum.totalWorkingDays += 0.5;
+        empSum.halfDayWorking += 1;
+        isWorkingDay = false; // Half day logic handled separately? 
+        // Wait, backend totalWorkingDays adds 0.5.
+        empSum.totalWorkingDays += 0.5;
       } else {
-          empSum.fullDayNotWorking += 1;
+        empSum.fullDayNotWorking += 1;
       }
-      
+
       // 3. Calculate OT (Based on Shift End Time if available)
       if (empSum.shiftEndTime && rec.checkOutTime) {
-          const ot = calculateShiftOT(rec.checkOutTime, empSum.shiftEndTime, rec.checkInTime);
-          empSum.overTimeHours += ot;
+        const ot = calculateShiftOT(rec.checkOutTime, empSum.shiftEndTime, rec.checkInTime);
+        empSum.overTimeHours += ot;
       } else if (type !== "full_leave") {
-          // Fallback: Duration based if no shift times (legacy logic)
-          const ot = Math.max(hours - empSum.shiftDuration, 0);
-           // Only add if explicitly calculated differently? 
-           // If we have strict shift times, we used the block above.
-           // If we don't, we assume 0 or legacy.
-           // Let's stick to strict shift end time OT as requested.
+        // Fallback: Duration based if no shift times (legacy logic)
+        const ot = Math.max(hours - empSum.shiftDuration, 0);
+        // Only add if explicitly calculated differently? 
+        // If we have strict shift times, we used the block above.
+        // If we don't, we assume 0 or legacy.
+        // Let's stick to strict shift end time OT as requested.
       }
 
       // 4. Late Check (Based on Shift Start Time)
       if (empSum.shiftStartTime) {
-          const [startH, startM] = empSum.shiftStartTime.split(":").map(Number);
-          const checkInH = checkInDate.getHours();
-          const checkInM = checkInDate.getMinutes();
-          
-          // Late if CheckIn > StartTime
-          if (checkInH > startH || (checkInH === startH && checkInM > startM)) {
-              empSum.lateDays += 1;
-          }
+        const [startH, startM] = empSum.shiftStartTime.split(":").map(Number);
+        const checkInH = checkInDate.getHours();
+        const checkInM = checkInDate.getMinutes();
+
+        // Late if CheckIn > StartTime
+        if (checkInH > startH || (checkInH === startH && checkInM > startM)) {
+          empSum.lateDays += 1;
+        }
       } else {
-          // Legacy Default 10:00 AM
-          const h = checkInDate.getHours();
-          const m = checkInDate.getMinutes();
-          if (h > 10 || (h === 10 && m > 0)) {
-              empSum.lateDays += 1;
-          }
+        // Legacy Default 10:00 AM
+        const h = checkInDate.getHours();
+        const m = checkInDate.getMinutes();
+        if (h > 10 || (h === 10 && m > 0)) {
+          empSum.lateDays += 1;
+        }
       }
-      
+
       // 5. Onsite
       if (rec.onsite) {
-         empSum.onsiteDays += 1;
-         empSum.onsiteYesDays += 1;
-         empSum.reasonCount.onsite += 1;
-         
-         // SPECIAL LOGIC: If Onsite and NOT already Full Day Present, add to working days?
-         // User's image shows Working Days 7.5 when Present is 0 but Onsite is 8.
-         // This implies Onsite counts as a working day even if hours are low (Full Leave).
-         // Let's implement: If (DayType == "full_leave" AND Onsite == true) -> Consider it working?
-         
-         if (type === "full_leave") {
-             // It was counted as NotWorking above. 
-             // We should effectively convert it to "Present" for working days count calculation?
-             // Or explicitly add 1 to totalWorkingDays?
-             empSum.totalWorkingDays += 1;
-             // Do we valid salary for this? likely yes.
-         }
-         // If "half", it added 0.5. Should Onsite make it 1.0? 
-         // Assuming Onsite overrides hour shortage.
-         else if (type === "half") {
-             empSum.totalWorkingDays += 0.5; // Add remaining 0.5 to make it 1?
-         }
-         
+        empSum.onsiteDays += 1;
+        empSum.onsiteYesDays += 1;
+        empSum.reasonCount.onsite += 1;
+
+        // SPECIAL LOGIC: If Onsite and NOT already Full Day Present, add to working days?
+        // User's image shows Working Days 7.5 when Present is 0 but Onsite is 8.
+        // This implies Onsite counts as a working day even if hours are low (Full Leave).
+        // Let's implement: If (DayType == "full_leave" AND Onsite == true) -> Consider it working?
+
+        if (type === "full_leave") {
+          // It was counted as NotWorking above. 
+          // We should effectively convert it to "Present" for working days count calculation?
+          // Or explicitly add 1 to totalWorkingDays?
+          empSum.totalWorkingDays += 1;
+          // Do we valid salary for this? likely yes.
+        }
+        // If "half", it added 0.5. Should Onsite make it 1.0? 
+        // Assuming Onsite overrides hour shortage.
+        else if (type === "half") {
+          empSum.totalWorkingDays += 0.5; // Add remaining 0.5 to make it 1?
+        }
+
       } else {
-         empSum.onsiteNoDays += 1;
+        empSum.onsiteNoDays += 1;
+
+        // ✅ Track specific reasons for non-onsite records
+        if (rec.reason === "Work From Home") {
+          empSum.reasonCount.workFromHome += 1;
+        } else if (rec.reason === "Field Work") {
+          empSum.reasonCount.fieldWork += 1;
+        }
       }
     });
-    
+
     // Convert to Array
     const summaryArray = Object.values(summaryMap);
-    
+
     // Save to DB
     if (summaryArray.length > 0 && processedMonth) {
-       await AttendanceSummary.deleteMany({ month: processedMonth });
-       
-       const summariesToSave = summaryArray.map(s => ({
-           ...s,
-           month: processedMonth,
-           calculatedAt: new Date(),
-           createdAt: new Date()
-       }));
-       
-       await AttendanceSummary.insertMany(summariesToSave);
-       console.log(`✅ Saved ${summariesToSave.length} summaries for ${processedMonth}`);
+      await AttendanceSummary.deleteMany({ month: processedMonth });
+
+      const summariesToSave = summaryArray.map(s => ({
+        ...s,
+        month: processedMonth,
+        calculatedAt: new Date(),
+        createdAt: new Date()
+      }));
+
+      await AttendanceSummary.insertMany(summariesToSave);
+      console.log(`✅ Saved ${summariesToSave.length} summaries for ${processedMonth}`);
     }
-    
+
     res.json({
-       success: true,
-       summary: summaryArray,
-       month: processedMonth
+      success: true,
+      summary: summaryArray,
+      month: processedMonth
     });
 
   } catch (err) {
@@ -4659,40 +4668,40 @@ exports.updateAttendance = async (req, res) => {
     if (hours !== undefined) updateData.totalHours = parseFloat(hours);
     if (region !== undefined) updateData.region = region;
     if (reason !== undefined) {
-        updateData.reason = reason;
-        updateData.comment = reason;
+      updateData.reason = reason;
+      updateData.comment = reason;
     }
 
     // Recalculate Day Type dynamically if hours changed
     if (hours !== undefined) {
-        // Need to fetch employee shift for this?
-        // For simplicity, we fetch the record first
-        const record = await Attendance.findById(attendanceId);
-        if (record) {
-             const allShifts = await Shift.find({});
-             const masterShifts = allShifts.filter(s => s.isMasterShift);
-             const shiftInfo = getEmployeeShift(record.employeeId, allShifts, masterShifts);
-             
-             updateData.dayType = calculateShiftDayType(parseFloat(hours), shiftInfo.duration);
-        }
+      // Need to fetch employee shift for this?
+      // For simplicity, we fetch the record first
+      const record = await Attendance.findById(attendanceId);
+      if (record) {
+        const allShifts = await Shift.find({});
+        const masterShifts = allShifts.filter(s => s.isMasterShift);
+        const shiftInfo = getEmployeeShift(record.employeeId, allShifts, masterShifts);
+
+        updateData.dayType = calculateShiftDayType(parseFloat(hours), shiftInfo.duration);
+      }
     }
 
     const updatedRecord = await Attendance.findByIdAndUpdate(attendanceId, updateData, { new: true });
-    
+
     // Auto Recalculate Summary
     if (updatedRecord) {
-        const d = new Date(updatedRecord.checkInTime);
-        const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        
-        // Call the NEW calculateSummary logic if needed
+      const d = new Date(updatedRecord.checkInTime);
+      const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+      // Call the NEW calculateSummary logic if needed
     }
 
     res.json({
-       success: true,
-       message: "Updated successfully",
-       record: updatedRecord
+      success: true,
+      message: "Updated successfully",
+      record: updatedRecord
     });
   } catch (error) {
-     res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
