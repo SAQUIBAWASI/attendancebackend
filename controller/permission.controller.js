@@ -1,6 +1,9 @@
 const Permission = require("../models/Permission");
 const Employee = require("../models/Employee");
 const Location = require("../models/Location");
+const Notification = require("../models/Notification"); // ✅ Import Notification
+const { sendPushToUser } = require("./notification.controller"); // ✅ Import Push Helper
+const Admin = require("../models/Admin"); // ✅ Import Admin for notifying admins
 
 // Helper: Haversine Distance
 const getDistance = (lat1, lon1, lat2, lon2) => {
@@ -31,6 +34,24 @@ exports.createPermission = async (req, res) => {
       reason,
       duration,
     });
+
+    // 🔔 NOTIFY ADMINS
+    const admins = await Admin.find({ role: "admin" });
+    for (const admin of admins) {
+      await Notification.create({
+        userId: admin.email,
+        role: "admin",
+        title: "New Permission Request",
+        message: `${employeeName} requested permission for ${duration} mins. Reason: ${reason}`,
+        type: "permission"
+      });
+      // Send Push
+      sendPushToUser(admin.email, { 
+        title: "Permission Request", 
+        body: `${employeeName} needs permission for ${duration} mins`,
+        url: "/admin/permissions"
+      });
+    }
 
     res.status(201).json({
       message: "Permission request sent",
@@ -75,6 +96,21 @@ exports.approvePermission = async (req, res) => {
     permission.endTime = endTime;
 
     await permission.save();
+
+    // 🔔 NOTIFY EMPLOYEE
+    await Notification.create({
+      userId: permission.employeeId,
+      role: "employee",
+      title: "Permission Approved",
+      message: `Your permission request for ${permission.duration} mins has been APPROVED. You must return by ${endTime.toLocaleTimeString()}.`,
+      type: "permission"
+    });
+
+    sendPushToUser(permission.employeeId, {
+      title: "Permission Approved",
+      body: `Your request was approved. Return by ${endTime.toLocaleTimeString()}`,
+      url: "/employee/permissions"
+    });
 
     res.json({
       message: "Permission approved",
@@ -123,6 +159,18 @@ exports.backToDuty = async (req, res) => {
     permission.status = "COMPLETED";
 
     await permission.save();
+
+    // 🔔 NOTIFY ADMIN (Optional: Employee is back)
+    const admins = await Admin.find({ role: "admin" });
+    for (const admin of admins) {
+       await Notification.create({
+        userId: admin.email,
+        role: "admin",
+        title: "Employee Back on Duty",
+        message: `${permission.employeeName} returned from permission.`,
+        type: "permission"
+      });
+    }
 
     res.json({
       message: "Back to duty successful",

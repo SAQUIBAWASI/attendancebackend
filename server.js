@@ -61,6 +61,9 @@ app.use("/api/user-activity", require("./routes/userActivity.routes"));
 app.use("/api/department", require("./routes/department.routes"));
 app.use("/api/roles", require("./routes/role.routes"));
 app.use("/api/permissions", require("./routes/permission.routes"));
+app.use("/api/notifications", require("./routes/notification.routes"));
+app.use("/api/shift-requests", require("./routes/shiftRequest.routes")); // ✅ New Route
+app.use("/api/holidays", require("./routes/holiday.routes")); // ✅ New Route
 
 
 // ✅ Default test route
