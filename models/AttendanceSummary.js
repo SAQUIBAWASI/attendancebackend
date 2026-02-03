@@ -59,8 +59,19 @@ const AttendanceSummarySchema = new mongoose.Schema({
     workFromHome: { type: Number, default: 0 }
   },
 
+  // Payroll Fields
+  calculatedSalary: { type: Number, default: 0 },
+  weekOffDays: { type: Number, default: 0 },
+  holidays: { type: Number, default: 0 },
+  extraWork: {
+    extraDays: { type: Number, default: 0 },
+    extraHours: { type: Number, default: 0 },
+    bonus: { type: Number, default: 0 },
+    deductions: { type: Number, default: 0 },
+    reason: { type: String, default: "" }
+  },
 
-overTimeHours: { type: Number, default: 0 }, // 👈 OT
+  overTimeHours: { type: Number, default: 0 }, // 👈 OT
 
   fromDate: { type: Date },
   toDate: { type: Date },

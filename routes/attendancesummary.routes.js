@@ -48,7 +48,8 @@ const {
   fixSummaryData,
   getSalaries,
   checkMonthData,
-  updateWeekOffConfig
+  updateWeekOffConfig,
+  updatePayrollDetails
 } = require("../controller/attendanceSummary.controller");
 
 // 📊 Attendance Summary Routes
@@ -73,4 +74,5 @@ router.get("/getsalaries/:employeeId", calculateSummary);
 router.get("/check-month-data", checkMonthData);
 // ✅ YE LINE ADD KARO:
 router.post('/updateWeekOffConfig', updateWeekOffConfig);
+router.post('/updatePayroll', updatePayrollDetails); // ✅ ADD THIS ROUTE
 module.exports = router;
