@@ -1,5 +1,8 @@
 const Leave = require("../models/Leave");
 const { logActivity } = require("./userActivity.controller");
+const Notification = require("../models/Notification"); // ✅ Import Notification Model
+const { sendPushToUser } = require("./notification.controller"); // ✅ Import Push Helper
+const Admin = require("../models/Admin"); // ✅ Import Admin Model
 
 // ✅ Add new leave
 exports.addLeave = async (req, res) => {
@@ -31,7 +34,7 @@ exports.addLeave = async (req, res) => {
     await logActivity({
       userId: employeeId,
       userName: employeeName,
-      userEmail: "", // Email not available in leave request, can be fetched if needed
+      userEmail: "", 
       userRole: "employee",
       action: "leave_apply",
       actionDetails: `Applied for ${leaveType} from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()} (${days} days)`,
@@ -44,6 +47,27 @@ exports.addLeave = async (req, res) => {
         reason,
       },
     });
+
+    // 🔔 NOTIFY ADMINS
+    console.log("🔔 Creating Leave Notification...");
+    const admins = await Admin.find({ role: { $regex: /^admin$/i } });
+    console.log(`🔔 Found ${admins.length} admins to notify`);
+    for (const admin of admins) {
+      console.log(`🔔 Notifying admin: ${admin.email}`);
+      await Notification.create({
+        userId: admin.email,
+        role: "admin",
+        title: "New Leave Request",
+        message: `${employeeName} applied for ${leaveType} (${days} days)`,
+        type: "leave"
+      });
+      // Send Push
+      sendPushToUser(admin.email, { 
+        title: "New Leave Request", 
+        body: `${employeeName} requested ${leaveType}`,
+        url: "/admin/leaves"
+      });
+    }
 
     res.status(201).json({ message: "Leave added successfully", leave: newLeave });
   } catch (error) {
@@ -138,6 +162,21 @@ exports.updateLeaveStatus = async (req, res) => {
         days: leave.days,
         status,
       },
+    });
+
+    // 🔔 NOTIFY EMPLOYEE
+    await Notification.create({
+      userId: leave.employeeId,
+      role: "employee",
+      title: `Leave ${status === "approved" ? "Approved" : "Rejected"}`,
+      message: `Your ${leave.leaveType} request has been ${status}.`,
+      type: "leave"
+    });
+
+    sendPushToUser(leave.employeeId, {
+      title: `Leave ${status}`,
+      body: `Your leave request was ${status} by Admin.`,
+      url: "/employee/leaves"
     });
 
     res.status(200).json({ message: `Leave ${status}`, leave });

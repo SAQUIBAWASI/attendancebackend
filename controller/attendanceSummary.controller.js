@@ -3430,13 +3430,15 @@ exports.getSummary = async (req, res) => {
 
     console.log("✅ Found records:", data.length);
 
-    // ✅ FIXED: Auto-correct wrong data for current month
+    // ✅ FIXED: Auto-correct wrong data for current month (DISABLED TO RESPECT MANUAL EDITS)
     const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth() + 1;
-    const currentDay = today.getDate();
+    // const currentYear = today.getFullYear();
+    // const currentMonth = today.getMonth() + 1;
+    // const currentDay = today.getDate();
 
     const correctedData = data.map(summary => {
+      /* 
+      // ❌ DISABLE AUTO-CORRECT: Use DB values as truth (User edits are priority)
       if (summary.month) {
         const [year, monthNum] = summary.month.split('-').map(Number);
 
@@ -3452,8 +3454,6 @@ exports.getSummary = async (req, res) => {
           const correctedFullLeave = Math.min(summary.fullDayNotWorking, currentDay);
           const correctedTotal = correctedPresent + (correctedHalf * 0.5);
 
-          console.log(`🔧 Auto-correcting ${summary.employeeId}: present ${summary.presentDays} → ${correctedPresent}`);
-
           return {
             ...summaryObj,
             presentDays: correctedPresent,
@@ -3465,20 +3465,15 @@ exports.getSummary = async (req, res) => {
           };
         }
       }
+      */
       return summary;
     });
 
-    // Check if any correction happened
-    const wasCorrected = JSON.stringify(data) !== JSON.stringify(correctedData);
-    if (wasCorrected) {
-      console.log("🔄 Summary data auto-corrected for current month");
-    }
-
     res.json({
       success: true,
-      count: correctedData.length,
-      summary: correctedData,
-      note: wasCorrected ? "Data auto-corrected for current month" : "Data is correct"
+      count: data.length, // data.length is correct
+      summary: data,      // Return raw DB data
+      note: "Data from DB (Manual edits respected)"
     });
   } catch (err) {
     console.error('❌ Error fetching summary:', err);
@@ -3734,6 +3729,17 @@ exports.calculateSummary = async (req, res) => {
       }
     }
 
+    // ✅ PRESERVE MANUAL EDITS (Extra Work)
+    // Before deleting, fetch existing summaries to keep 'extraWork' and specific manual overrides
+    let existingSummariesMap = {};
+    if (processedMonth) {
+      const existingData = await AttendanceSummary.find({ month: processedMonth });
+      existingData.forEach(doc => {
+        existingSummariesMap[doc.employeeId] = doc;
+      });
+      console.log(`💾 Preserving edits for ${existingData.length} employees`);
+    }
+
     // ✅ SAVE TO DATABASE (ONLY for this month)
     if (summaryArray.length > 0 && processedMonth) {
       // Delete ONLY summaries for this specific month
@@ -3745,14 +3751,25 @@ exports.calculateSummary = async (req, res) => {
       console.log(`🗑️ Deleted ${deleteResult.deletedCount} existing summaries for ${processedMonth}`);
 
       // Save new summaries with CORRECT month
-      const summariesToSave = summaryArray.map(summary => ({
-        ...summary,
-        month: processedMonth, // Ensure month is saved correctly
-        fromDate: fromDate || null,
-        toDate: toDate || null,
-        calculatedAt: new Date(),
-        createdAt: new Date()
-      }));
+      const summariesToSave = summaryArray.map(summary => {
+        const existing = existingSummariesMap[summary.employeeId];
+        
+        // Merge preserved data
+        let preservedExtraWork = existing?.extraWork || {};
+        
+        return {
+          ...summary,
+          month: processedMonth,
+          extraWork: preservedExtraWork, // ✅ Restore extra work
+          // potentially restore calculatedSalary if we want to lock it, 
+          // but better to let it re-calculate based on new days + preserved extra
+          // calculatedSalary: existing?.calculatedSalary || summary.calculatedSalary, 
+          fromDate: fromDate || null,
+          toDate: toDate || null,
+          calculatedAt: new Date(),
+          createdAt: new Date()
+        };
+      });
 
       const savedSummaries = await AttendanceSummary.insertMany(summariesToSave);
       console.log(`💾 Saved ${savedSummaries.length} summaries for ${processedMonth}`);
@@ -3951,6 +3968,12 @@ exports.getSalaries = async (req, res) => {
 
     const employees = await Employee.find({});
     const attendanceSummaries = await AttendanceSummary.find({ month });
+    
+    console.log(`🔍 DEBUG: Found ${attendanceSummaries.length} summaries for month ${month}`);
+    if (attendanceSummaries.length > 0) {
+        const sample = attendanceSummaries[0];
+        console.log(`🔍 DEBUG SAMPLE (${sample.employeeId}): calculatedSalary=${sample.calculatedSalary}, extraWork=${JSON.stringify(sample.extraWork)}`);
+    }
 
     const attendanceMap = {};
     attendanceSummaries.forEach(a => {
@@ -4019,13 +4042,46 @@ exports.getSalaries = async (req, res) => {
       const dailyRate = salaryPerMonth / daysInMonth;
 
       const paidDays = effectiveWorkingDays + weekOffs;
-      const calculatedSalary = Math.round(paidDays * dailyRate);
+
+      
+      // ✅ CHECK FOR STORED PAYROLL DATA
+      const storedExtraWork = empAttendance?.extraWork || {
+        extraDays: 0,
+        extraHours: 0,
+        bonus: 0,
+        deductions: 0,
+        reason: ""
+      };
+
+      // Base calculated salary from attendance
+      let calculatedSalary = Math.round(paidDays * dailyRate);
+
+      // Add Extras if they exist
+      if (storedExtraWork) {
+         const extraDaysAmount = (storedExtraWork.extraDays || 0) * dailyRate;
+         const bonus = storedExtraWork.bonus || 0;
+         const deductions = storedExtraWork.deductions || 0;
+         
+         calculatedSalary = Math.round(calculatedSalary + extraDaysAmount + bonus - deductions);
+      }
+
+      // If manual overwrite exists and it's higher/different? 
+      // User request: "mere edit ko bhi backend se lao"
+      // If we have a stored calculatedSalary which implies manual edit, maybe prefer it?
+      // But usually we want Dynamic Base + Fixed Extras. 
+      // The logic above (Dynamic Base + Saved Extras) is best for ongoing month.
+      // If stored salary is preferred (frozen):
+      if (empAttendance?.calculatedSalary) {
+         // Optionally prefer the stored one if it was manually "Saved"
+         calculatedSalary = empAttendance.calculatedSalary;
+      }
 
       salaryMap[emp.employeeId] = {
         employeeId: emp.employeeId,
         name: emp.name,
         month,
         presentDays,
+        extraWork: storedExtraWork, // ✅ Return extra work details
         halfDayWorking: halfDays,
         totalWorkingDays: effectiveWorkingDays,
         weekOffs,
@@ -4046,6 +4102,7 @@ exports.getSalaries = async (req, res) => {
       month,
       salaries: Object.values(salaryMap),
       count: Object.values(salaryMap).length,
+      monthDays: daysInMonth, // ✅ Return total days in month
       note: "0+2: 2 days | 0+4: 4 days | Manual: user defined"
     });
 
@@ -4703,5 +4760,86 @@ exports.updateAttendance = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * 📌 Update Payroll Details (Bonus, Deductions, etc.) - ✅ NEW FUNCTION
+ */
+exports.updatePayrollDetails = async (req, res) => {
+  try {
+    const { employeeId, month, calculatedSalary, extraWork, presentDays, workingDays, halfDayWorking, fullDayNotWorking, weekOffDays, holidays } = req.body;
+
+    if (!employeeId || !month) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee ID and Month are required"
+      });
+    }
+
+    console.log(`💰 Updating payroll for ${employeeId} (${month})`, extraWork);
+
+    // Find ALL existing summaries (to handle duplicates)
+    const summaries = await AttendanceSummary.find({ employeeId, month });
+    let summary;
+
+    if (summaries.length === 0) {
+      // If no summary exists (rare if attendance exists), create one
+      summary = new AttendanceSummary({
+        employeeId,
+        month,
+        presentDays: presentDays || 0,
+        totalWorkingDays: workingDays || 0, // Approximate
+        calculatedSalary: calculatedSalary || 0
+      });
+    } else if (summaries.length === 1) {
+      summary = summaries[0];
+    } else {
+      // ⚠️ DUPLICATES FOUND - Merge and Clean
+      console.warn(`⚠️ Found ${summaries.length} duplicate summaries for ${employeeId} - ${month}. Merging...`);
+      
+      // Sort by last updated (createdAt as proxy)
+      summaries.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      
+      summary = summaries[0]; // Keep the newest one
+      
+      // Delete others
+      const idsToDelete = summaries.slice(1).map(s => s._id);
+      await AttendanceSummary.deleteMany({ _id: { $in: idsToDelete } });
+      console.log(`🗑️ Deleted ${idsToDelete.length} duplicates.`);
+    }
+
+    // Update fields
+    if (calculatedSalary !== undefined) summary.calculatedSalary = calculatedSalary;
+    if (extraWork) {
+        console.log(`📝 Saving extraWork for ${employeeId}:`, JSON.stringify(extraWork));
+        summary.extraWork = extraWork;
+    }
+    
+    // Also update day counts if provided (allowing manual override of days)
+    if (presentDays !== undefined) summary.presentDays = presentDays;
+    if (workingDays !== undefined) summary.workingDays = workingDays; // legacy field
+    if (workingDays !== undefined) summary.totalWorkingDays = workingDays;
+    if (halfDayWorking !== undefined) summary.halfDayWorking = halfDayWorking;
+    if (fullDayNotWorking !== undefined) summary.fullDayNotWorking = fullDayNotWorking;
+    if (weekOffDays !== undefined) summary.weekOffDays = weekOffDays;
+    if (holidays !== undefined) summary.holidays = holidays;
+
+    const savedSummary = await summary.save();
+    console.log(`✅ MongoDB Save Result for ${employeeId}:`, JSON.stringify(savedSummary.extraWork));
+
+    res.json({
+      success: true,
+      message: "Payroll details updated successfully",
+      summary: savedSummary
+    });
+
+  } catch (error) {
+    console.error("❌ Error updating payroll:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating payroll details",
+      error: error.message
+    });
   }
 };
