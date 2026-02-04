@@ -1,8 +1,9 @@
 const express = require("express");
-const { registerAdmin, loginAdmin } = require("../controller/adminController");
+const { registerAdmin, loginAdmin, getAllQuizes } = require("../controller/adminController");
 const router = express.Router();
 
 router.post("/register", registerAdmin);
 router.post("/login", loginAdmin);
+router.get("/getallquizes", getAllQuizes);
 
 module.exports = router;

@@ -45,4 +45,16 @@ const loginAdmin = async (req, res) => {
   }
 };
 
-module.exports = { registerAdmin, loginAdmin };
+const Quiz = require("../models/Quiz");
+
+// 🟢 Get All Quizes
+const getAllQuizes = async (req, res) => {
+  try {
+    const quizzes = await Quiz.find().sort({ createdAt: -1 });
+    res.status(200).json({ success: true, quizzes });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+module.exports = { registerAdmin, loginAdmin, getAllQuizes };

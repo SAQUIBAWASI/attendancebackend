@@ -61,6 +61,11 @@ app.use("/api/user-activity", require("./routes/userActivity.routes"));
 app.use("/api/department", require("./routes/department.routes"));
 app.use("/api/roles", require("./routes/role.routes"));
 app.use("/api/permissions", require("./routes/permission.routes"));
+app.use("/api/jobs", require("./routes/jobPost.routes"));
+app.get("/api/ping", (req, res) => res.send("PONG - SERVER UPDATED"));
+
+console.log("✅ JOB ROUTES REGISTERED: /api/jobs");
+console.log("✅ PING ROUTE REGISTERED: /api/ping");
 
 
 // ✅ Default test route
