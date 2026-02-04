@@ -61,6 +61,7 @@ app.use("/api/user-activity", require("./routes/userActivity.routes"));
 app.use("/api/department", require("./routes/department.routes"));
 app.use("/api/roles", require("./routes/role.routes"));
 app.use("/api/permissions", require("./routes/permission.routes"));
+app.use("/api/jobs", require("./routes/jobPost.routes"));
 
 
 // ✅ Default test route
