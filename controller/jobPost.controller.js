@@ -72,4 +72,67 @@ const getJobPostByLink = async (req, res) => {
     }
 };
 
-module.exports = { createJobPost, getAllJobPosts, getJobPostByLink };
+// 🟢 Update Job Post
+const updateJobPost = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { role, responsibilities, skills, salary, assessmentId } = req.body;
+
+        console.log("Updating Job ID:", id);
+        console.log("Update Data:", req.body);
+
+        if (!id) {
+            return res.status(400).json({ success: false, message: "Job post ID is required" });
+        }
+
+        const updatedJob = await JobPost.findByIdAndUpdate(
+            id,
+            {
+                role,
+                responsibilities,
+                skills,
+                salary,
+                assessmentId: assessmentId || null,
+            },
+            { new: true }
+        ).populate("assessmentId");
+
+        if (!updatedJob) {
+            console.log("Update failed: Job not found for ID", id);
+            return res.status(404).json({ success: false, message: "Job post not found in database" });
+        }
+
+        console.log("Update successful");
+        res.status(200).json({ success: true, message: "Job post updated successfully", jobPost: updatedJob });
+    } catch (error) {
+        console.error("Job Post Update Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 🟢 Delete Job Post
+const deleteJobPost = async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log("Attempting to delete Job ID:", id);
+
+        if (!id) {
+            return res.status(400).json({ success: false, message: "Job post ID is required" });
+        }
+
+        const deletedJob = await JobPost.findByIdAndDelete(id);
+
+        if (!deletedJob) {
+            console.log("Delete failed: Job not found for ID", id);
+            return res.status(404).json({ success: false, message: "Job post not found in database" });
+        }
+
+        console.log("Delete successful");
+        res.status(200).json({ success: true, message: "Job post deleted successfully" });
+    } catch (error) {
+        console.error("Job Post Delete Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+module.exports = { createJobPost, getAllJobPosts, getJobPostByLink, updateJobPost, deleteJobPost };

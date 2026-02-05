@@ -3372,6 +3372,13 @@ exports.saveSummary = async (req, res) => {
         fieldWork: 0,
         workFromHome: 0
       },
+      extraWork: summary.extraWork || {
+        extraDays: 0,
+        extraHours: 0,
+        bonus: 0,
+        deductions: 0,
+        reason: ""
+      },
       createdAt: new Date()
     }));
 
@@ -3753,10 +3760,10 @@ exports.calculateSummary = async (req, res) => {
       // Save new summaries with CORRECT month
       const summariesToSave = summaryArray.map(summary => {
         const existing = existingSummariesMap[summary.employeeId];
-        
+
         // Merge preserved data
         let preservedExtraWork = existing?.extraWork || {};
-        
+
         return {
           ...summary,
           month: processedMonth,
@@ -3968,11 +3975,21 @@ exports.getSalaries = async (req, res) => {
 
     const employees = await Employee.find({});
     const attendanceSummaries = await AttendanceSummary.find({ month });
-    
+
+    // Fetch all approved leaves that might overlap with the month
+    // More robust query for string dates
+    const allApprovedLeaves = await Leave.find({
+      status: "approved",
+      $or: [
+        { startDate: { $regex: `^${month}` } },
+        { endDate: { $regex: `^${month}` } }
+      ]
+    });
+
     console.log(`🔍 DEBUG: Found ${attendanceSummaries.length} summaries for month ${month}`);
     if (attendanceSummaries.length > 0) {
-        const sample = attendanceSummaries[0];
-        console.log(`🔍 DEBUG SAMPLE (${sample.employeeId}): calculatedSalary=${sample.calculatedSalary}, extraWork=${JSON.stringify(sample.extraWork)}`);
+      const sample = attendanceSummaries[0];
+      console.log(`🔍 DEBUG SAMPLE (${sample.employeeId}): calculatedSalary=${sample.calculatedSalary}, extraWork=${JSON.stringify(sample.extraWork)}`);
     }
 
     const attendanceMap = {};
@@ -4041,9 +4058,33 @@ exports.getSalaries = async (req, res) => {
       const salaryPerMonth = emp.salaryPerMonth || 0;
       const dailyRate = salaryPerMonth / daysInMonth;
 
-      const paidDays = effectiveWorkingDays + weekOffs;
+      // === NEW: LEAVE CALCULATION ===
+      // 1. Filter leaves for this month and employee
+      const empLeaves = allApprovedLeaves.filter(l => l.employeeId === emp.employeeId);
 
-      
+      let paidLeaveDays = 0;
+      empLeaves.forEach(leave => {
+        // Parse dates
+        const leaveStart = new Date(leave.startDate);
+        const leaveEnd = new Date(leave.endDate);
+
+        // Count days in current month
+        const overlapStart = new Date(Math.max(leaveStart, start));
+        const overlapEnd = new Date(Math.min(leaveEnd, end));
+
+        if (overlapStart <= overlapEnd) {
+          const diffTime = Math.abs(overlapEnd - overlapStart);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+          // Only paid leaves
+          if (["CL", "EL", "COFF", "Casual Leave", "Earned Leave", "Comp Off"].includes(leave.leaveType)) {
+            paidLeaveDays += diffDays;
+          }
+        }
+      });
+
+      const paidDays = effectiveWorkingDays + weekOffs + paidLeaveDays;
+
       // ✅ CHECK FOR STORED PAYROLL DATA
       const storedExtraWork = empAttendance?.extraWork || {
         extraDays: 0,
@@ -4053,16 +4094,16 @@ exports.getSalaries = async (req, res) => {
         reason: ""
       };
 
-      // Base calculated salary from attendance
+      // Base calculated salary from attendance (including leaves)
       let calculatedSalary = Math.round(paidDays * dailyRate);
 
       // Add Extras if they exist
       if (storedExtraWork) {
-         const extraDaysAmount = (storedExtraWork.extraDays || 0) * dailyRate;
-         const bonus = storedExtraWork.bonus || 0;
-         const deductions = storedExtraWork.deductions || 0;
-         
-         calculatedSalary = Math.round(calculatedSalary + extraDaysAmount + bonus - deductions);
+        const extraDaysAmount = (storedExtraWork.extraDays || 0) * dailyRate;
+        const bonus = storedExtraWork.bonus || 0;
+        const deductions = storedExtraWork.deductions || 0;
+
+        calculatedSalary = Math.round(calculatedSalary + extraDaysAmount + bonus - deductions);
       }
 
       // If manual overwrite exists and it's higher/different? 
@@ -4072,8 +4113,8 @@ exports.getSalaries = async (req, res) => {
       // The logic above (Dynamic Base + Saved Extras) is best for ongoing month.
       // If stored salary is preferred (frozen):
       if (empAttendance?.calculatedSalary) {
-         // Optionally prefer the stored one if it was manually "Saved"
-         calculatedSalary = empAttendance.calculatedSalary;
+        // Optionally prefer the stored one if it was manually "Saved"
+        calculatedSalary = empAttendance.calculatedSalary;
       }
 
       salaryMap[emp.employeeId] = {
@@ -4797,12 +4838,12 @@ exports.updatePayrollDetails = async (req, res) => {
     } else {
       // ⚠️ DUPLICATES FOUND - Merge and Clean
       console.warn(`⚠️ Found ${summaries.length} duplicate summaries for ${employeeId} - ${month}. Merging...`);
-      
+
       // Sort by last updated (createdAt as proxy)
       summaries.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      
+
       summary = summaries[0]; // Keep the newest one
-      
+
       // Delete others
       const idsToDelete = summaries.slice(1).map(s => s._id);
       await AttendanceSummary.deleteMany({ _id: { $in: idsToDelete } });
@@ -4812,10 +4853,10 @@ exports.updatePayrollDetails = async (req, res) => {
     // Update fields
     if (calculatedSalary !== undefined) summary.calculatedSalary = calculatedSalary;
     if (extraWork) {
-        console.log(`📝 Saving extraWork for ${employeeId}:`, JSON.stringify(extraWork));
-        summary.extraWork = extraWork;
+      console.log(`📝 Saving extraWork for ${employeeId}:`, JSON.stringify(extraWork));
+      summary.extraWork = extraWork;
     }
-    
+
     // Also update day counts if provided (allowing manual override of days)
     if (presentDays !== undefined) summary.presentDays = presentDays;
     if (workingDays !== undefined) summary.workingDays = workingDays; // legacy field

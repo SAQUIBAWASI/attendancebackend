@@ -32,6 +32,12 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+// 🔍 DEBUG: Log all requests
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // ✅ Serve static files (for uploaded images)
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -44,24 +50,32 @@ mongoose
   .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
 // ✅ ROUTES
+app.use("/api/applications", (req, res, next) => {
+  console.log(`[DEBUG] /api/applications hit: ${req.method} ${req.url}`);
+  next();
+}, require("./routes/jobApplication.routes"));
+
+app.use("/api/jobs", require("./routes/jobPost.routes")); // Move to top
 app.use("/api/auth", require("./routes/auth.routes"));
 app.use("/api/employees", require("./routes/employee.routes"));
 app.use("/api/leaves", require("./routes/leave.routes"));
-// app.use("/api/department", require("./routes/department.routes"));
-// app.use("/api/roles", require("./routes/role.routes"));
 app.use("/api/shifts", require("./routes/shift.routes"));
 app.use("/api/admin", require("./routes/adminroutes"));
 app.use("/api/empl", require("./routes/empl.routers"));
 app.use("/api/location", require("./routes/location.routes"));
-// ✅ Attendance Routes (newly added)
 app.use("/api/attendance", require("./routes/attendance.routes"));
 app.use("/api/attendancesummary", require("./routes/attendancesummary.routes"));
 app.use("/api/salary", require("./routes/salary.routes"));
 app.use("/api/user-activity", require("./routes/userActivity.routes"));
+// ✅ Simple Test Route to verify server update
+app.get("/api/test-application-routes", (req, res) => {
+  res.json({ message: "Job Application Routes are active!" });
+});
+
+
 app.use("/api/department", require("./routes/department.routes"));
 app.use("/api/roles", require("./routes/role.routes"));
 app.use("/api/permissions", require("./routes/permission.routes"));
-app.use("/api/jobs", require("./routes/jobPost.routes"));
 
 
 // ✅ Default test route
@@ -86,6 +100,12 @@ app.get("/", (req, res) => {
       },
     },
   });
+});
+
+// 🚨 Catch-all 404 Handler (Logs unhandled requests)
+app.use((req, res, next) => {
+  console.log(`[WARNING] Unhandled 404 Request: ${req.method} ${req.url}`);
+  res.status(404).json({ success: false, message: "Route not found on server" });
 });
 
 // ✅ Start the Server
