@@ -79,15 +79,37 @@ exports.addLocation = async (req, res) => {
 
 
 // ✅ Get All Locations
+// exports.getAllLocations = async (req, res) => {
+//   try {
+//     const locations = await Location.find({});
+//     if (!locations.length)
+//       return res.status(404).json({ message: "No locations found" });
+
+//     res.status(200).json({ message: "All locations fetched", locations });
+//   } catch (err) {
+//     res.status(500).json({ message: "Failed to fetch locations", error: err.message });
+//   }
+// };
+
 exports.getAllLocations = async (req, res) => {
   try {
-    const locations = await Location.find({});
+    const locations = await Location.find({
+      clientId: { $exists: false } // Sirf wahi locations jismein clientId field nahi hai
+    });
+    
     if (!locations.length)
-      return res.status(404).json({ message: "No locations found" });
+      return res.status(404).json({ message: "No locations found without clientId" });
 
-    res.status(200).json({ message: "All locations fetched", locations });
+    res.status(200).json({ 
+      message: "Locations without clientId fetched successfully", 
+      count: locations.length,
+      locations 
+    });
   } catch (err) {
-    res.status(500).json({ message: "Failed to fetch locations", error: err.message });
+    res.status(500).json({ 
+      message: "Failed to fetch locations", 
+      error: err.message 
+    });
   }
 };
 
