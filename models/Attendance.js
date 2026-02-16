@@ -119,12 +119,34 @@
 
 // module.exports = mongoose.model("Attendance", attendanceSchema);
 
+// const mongoose = require("mongoose");
+
+// const attendanceSchema = new mongoose.Schema(
+//   {
+//     employeeId: { type: String, required: true },
+//     name:{ type: String },
+//     employeeEmail: { type: String },
+//     checkInTime: { type: Date, required: true },   // MUST be required
+//     checkOutTime: { type: Date },
+//     totalHours: { type: Number, default: 0 },
+//     latitude: { type: Number },
+//     longitude: { type: Number },
+//     distance: { type: Number, default: 0 },
+//     onsite: { type: Boolean, default: false },
+//     status: { type: String, enum: ["checked-in", "checked-out"], default: "checked-in" },
+//     reason: { type: String },
+//   },
+//   { timestamps: true }
+// );
+
+// module.exports = mongoose.model("Attendance", attendanceSchema);
+
 const mongoose = require("mongoose");
 
 const attendanceSchema = new mongoose.Schema(
   {
     employeeId: { type: String, required: true },
-    name:{ type: String },
+    name: { type: String },
     employeeEmail: { type: String },
     checkInTime: { type: Date, required: true },   // MUST be required
     checkOutTime: { type: Date },
@@ -135,6 +157,7 @@ const attendanceSchema = new mongoose.Schema(
     onsite: { type: Boolean, default: false },
     status: { type: String, enum: ["checked-in", "checked-out"], default: "checked-in" },
     reason: { type: String },
+    comment: { type: String, default: "" }, // ✅ YEH FIELD ADD KARO - Admin Comment ke liye
   },
   { timestamps: true }
 );

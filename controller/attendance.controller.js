@@ -1189,7 +1189,7 @@
 
 const Attendance = require("../models/Attendance");
 const Employee = require("../models/Employee");
-const Shift = require("../models/Shift"); // Assuming Shift model exists
+// const Shift = require("../models/Shift"); // Assuming Shift model exists
 const Location = require("../models/Location");
 const { logActivity } = require("./userActivity.controller");
 
