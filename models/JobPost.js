@@ -16,10 +16,20 @@ const jobPostSchema = new mongoose.Schema({
   salary: {
     type: String,
   },
+  experience: {
+    type: String, // e.g., "Fresher", "1-2 Years"
+  },
+
+  assessmentIds: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Quiz",
+  }],
+
   assessmentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Quiz",
   },
+
   link: {
     type: String,
     unique: true,

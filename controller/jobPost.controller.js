@@ -5,7 +5,12 @@ const crypto = require("crypto");
 // 🟢 Create Job Post
 const createJobPost = async (req, res) => {
     try {
-        const { role, responsibilities, skills, salary, assessmentId } = req.body;
+        const { role, responsibilities, skills, salary, experience, assessmentIds } = req.body;
+
+        console.log("=== CREATE JOB POST ===");
+        console.log("Received assessmentIds:", assessmentIds);
+        console.log("Type:", Array.isArray(assessmentIds) ? "Array" : typeof assessmentIds);
+        console.log("Length:", assessmentIds?.length);
 
         // Generate a unique identifier for the link
         const uniqueId = crypto.randomBytes(4).toString("hex");
@@ -16,11 +21,21 @@ const createJobPost = async (req, res) => {
             responsibilities,
             skills,
             salary,
-            assessmentId: assessmentId || null, // Handle empty string from frontend
+            experience,
+            assessmentIds: assessmentIds || [],
             link,
         });
 
+        console.log("JobPost object before save:", {
+            role: jobPost.role,
+            assessmentIds: jobPost.assessmentIds
+        });
+
         await jobPost.save();
+
+
+        console.log("JobPost saved successfully!");
+        console.log("Saved assessmentIds:", jobPost.assessmentIds);
 
         // Trigger Notification for Admin
         try {
@@ -36,6 +51,7 @@ const createJobPost = async (req, res) => {
         }
 
         res.status(201).json({ success: true, message: "Job post created successfully", jobPost });
+
     } catch (error) {
         console.error("Job Post Creation Error:", error);
         res.status(500).json({
@@ -49,7 +65,8 @@ const createJobPost = async (req, res) => {
 // 🟢 Get All Job Posts
 const getAllJobPosts = async (req, res) => {
     try {
-        const jobPosts = await JobPost.find().populate("assessmentId").sort({ createdAt: -1 });
+        const jobPosts = await JobPost.find().populate("assessmentIds").sort({ createdAt: -1 });
+
         res.status(200).json({ success: true, jobPosts });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -60,7 +77,8 @@ const getAllJobPosts = async (req, res) => {
 const getJobPostByLink = async (req, res) => {
     try {
         const { id } = req.params;
-        const jobPost = await JobPost.findOne({ link: `/jobs/${id}` }).populate("assessmentId");
+        const jobPost = await JobPost.findOne({ link: `/jobs/${id}` }).populate("assessmentIds");
+
 
         if (!jobPost) {
             return res.status(404).json({ success: false, message: "Job post not found" });
@@ -76,10 +94,12 @@ const getJobPostByLink = async (req, res) => {
 const updateJobPost = async (req, res) => {
     try {
         const { id } = req.params;
-        const { role, responsibilities, skills, salary, assessmentId } = req.body;
+        const { role, responsibilities, skills, salary, experience, assessmentIds } = req.body;
+
 
         console.log("Updating Job ID:", id);
         console.log("Update Data:", req.body);
+        console.log("AssessmentIds received:", assessmentIds);
 
         if (!id) {
             return res.status(400).json({ success: false, message: "Job post ID is required" });
@@ -92,10 +112,15 @@ const updateJobPost = async (req, res) => {
                 responsibilities,
                 skills,
                 salary,
-                assessmentId: assessmentId || null,
+                experience,
+                assessmentIds: assessmentIds || [],
             },
             { new: true }
-        ).populate("assessmentId");
+        ).populate("assessmentIds");
+
+        console.log("Updated Job assessmentIds:", updatedJob.assessmentIds);
+
+
 
         if (!updatedJob) {
             console.log("Update failed: Job not found for ID", id);

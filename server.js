@@ -5,6 +5,7 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const fs = require("fs");
 const path = require("path");
 
 // ✅ Initialize Express app
@@ -50,10 +51,8 @@ mongoose
   .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
 // ✅ ROUTES
-app.use("/api/applications", (req, res, next) => {
-  console.log(`[DEBUG] /api/applications hit: ${req.method} ${req.url}`);
-  next();
-}, require("./routes/jobApplication.routes"));
+const applicationRoutes = require("./routes/jobApplication.routes");
+app.use("/api/applications", applicationRoutes);
 
 app.use("/api/jobs", require("./routes/jobPost.routes")); // Move to top
 app.use("/api/auth", require("./routes/auth.routes"));
@@ -62,6 +61,7 @@ app.use("/api/leaves", require("./routes/leave.routes"));
 app.use("/api/shifts", require("./routes/shift.routes"));
 app.use("/api/admin", require("./routes/adminroutes"));
 app.use("/api/empl", require("./routes/empl.routers"));
+app.use("/api/candidate", require("./routes/candidate.routes")); // Candidate Routes
 app.use("/api/location", require("./routes/location.routes"));
 app.use("/api/attendance", require("./routes/attendance.routes"));
 app.use("/api/attendancesummary", require("./routes/attendancesummary.routes"));
@@ -73,6 +73,7 @@ app.use("/api/client-requests", require("./routes/clientRequest.routes"));
 
 // ✅ Notifications
 app.use("/api/notifications", require("./routes/notification.routes"));
+
 // ✅ Simple Test Route to verify server update
 app.get("/api/test-application-routes", (req, res) => {
   res.json({ message: "Job Application Routes are active!" });
@@ -114,10 +115,40 @@ app.use((req, res, next) => {
   res.status(404).json({ success: false, message: "Route not found on server" });
 });
 
+// 🚨 Global Error Handler
+app.use((err, req, res, next) => {
+  const errorLog = `
+=== GLOBAL SERVER ERROR ===
+Time: ${new Date().toISOString()}
+Error Message: ${err.message}
+Error Stack: ${err.stack}
+URL: ${req.originalUrl}
+Method: ${req.method}
+===========================
+`;
+  // Write to a different log file to be safe, or same one
+  try {
+    fs.appendFileSync('backend_errors.log', errorLog);
+  } catch (e) {
+    console.error("Failed to write to log file:", e);
+  }
+
+  console.error("=== GLOBAL SERVER ERROR ===");
+  console.error(err);
+
+  res.status(500).json({
+    success: false,
+    message: "Internal Server Error",
+    error: err.message
+  });
+});
+
 // ✅ Start the Server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001; // ✅ Changed to 5001 to avoid conflict with coworking-backend
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`\n\n===============================================================`);
+  console.log(`🚀 ATTENDANCE BACKEND IS RUNNING on port ${PORT}`);
+  console.log(`===============================================================\n\n`);
   console.log(`📍 Check-in: POST http://localhost:${PORT}/api/attendance/checkin`);
   console.log(`📍 Check-out: POST http://localhost:${PORT}/api/attendance/checkout`);
   console.log(`📍 View all: GET http://localhost:${PORT}/api/attendance/all`);

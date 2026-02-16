@@ -5,12 +5,20 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const {
-    submitApplication,
-    getAllApplications,
-    getApplicationsByJobId
+    submitApplication, getAllApplications, getApplicationById,
+    updateApplicationStatus, submitAssessment,
+    getApplicationsByJobId, updateApplicationScore, sendInterviewInvitation,
+    sendOfferLetter, sendAgreements, uploadSignedAgreements, reviewDocuments,
+    getApplicationsWithDocuments
 } = require("../controller/jobApplication.controller");
 
-// Ensure uploads directory exists
+// ... imports ...
+
+// ✅ Debug Route
+router.get("/test", (req, res) => res.json({ message: "Applications Routes Working!" }));
+
+// ✅ Public route to submit application
+
 const uploadDir = "uploads/resumes";
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
@@ -45,9 +53,18 @@ const upload = multer({
 
 // ✅ Public route to submit application
 router.post("/submit", upload.single("resume"), submitApplication);
+router.post("/submit-assessment", submitAssessment);
+router.post("/update-score", updateApplicationScore);
+router.post("/send-invitation", sendInterviewInvitation);
+router.post("/send-offer", sendOfferLetter);
+router.post("/send-agreements", upload.single("adminAttachment"), sendAgreements);
+router.post("/upload-signed-docs", upload.single("signedDoc"), uploadSignedAgreements);
+router.post("/review-documents", reviewDocuments);
 
 // ✅ Admin routes
 router.get("/all", getAllApplications);
+router.get("/get/:applicationId", getApplicationById);
 router.get("/job/:jobId", getApplicationsByJobId);
+router.get("/documents", getApplicationsWithDocuments);
 
 module.exports = router;
