@@ -9,7 +9,7 @@ const {
     updateApplicationStatus, submitAssessment,
     getApplicationsByJobId, updateApplicationScore, sendInterviewInvitation,
     sendOfferLetter, sendAgreements, uploadSignedAgreements, reviewDocuments,
-    getApplicationsWithDocuments
+    getApplicationsWithDocuments, handleResignationApproval, getRecruitmentStats
 } = require("../controller/jobApplication.controller");
 
 // ... imports ...
@@ -60,9 +60,11 @@ router.post("/send-offer", sendOfferLetter);
 router.post("/send-agreements", upload.single("adminAttachment"), sendAgreements);
 router.post("/upload-signed-docs", upload.single("signedDoc"), uploadSignedAgreements);
 router.post("/review-documents", reviewDocuments);
+router.post("/resignation-approval", handleResignationApproval);
 
 // ✅ Admin routes
 router.get("/all", getAllApplications);
+router.get("/stats", getRecruitmentStats);
 router.get("/get/:applicationId", getApplicationById);
 router.get("/job/:jobId", getApplicationsByJobId);
 router.get("/documents", getApplicationsWithDocuments);

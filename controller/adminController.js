@@ -1,4 +1,5 @@
 const Admin = require("../models/Admin");
+const jwt = require("jsonwebtoken");
 
 // 🟢 Register Admin
 const registerAdmin = async (req, res) => {
@@ -39,7 +40,8 @@ const loginAdmin = async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid email or password" });
     }
 
-    res.status(200).json({ success: true, message: "Login successful", admin });
+    const token = jwt.sign({ id: admin._id, role: admin.role }, process.env.JWT_SECRET, { expiresIn: "1d" });
+    res.status(200).json({ success: true, message: "Login successful", admin, token });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

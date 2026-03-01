@@ -67,6 +67,7 @@ app.use("/api/attendance", require("./routes/attendance.routes"));
 app.use("/api/attendancesummary", require("./routes/attendancesummary.routes"));
 app.use("/api/salary", require("./routes/salary.routes"));
 app.use("/api/user-activity", require("./routes/userActivity.routes"));
+app.use("/api/expense", require("./routes/expense.routes"));
 
 // ✅ Client Requests
 app.use("/api/client-requests", require("./routes/clientRequest.routes"));
@@ -77,6 +78,15 @@ app.use("/api/notifications", require("./routes/notification.routes"));
 // ✅ Simple Test Route to verify server update
 app.get("/api/test-application-routes", (req, res) => {
   res.json({ message: "Job Application Routes are active!" });
+});
+
+app.get("/api/ping-debug", (req, res) => {
+  res.json({
+    message: "PING",
+    path: __dirname,
+    node_version: process.version,
+    uptime: process.uptime()
+  });
 });
 
 

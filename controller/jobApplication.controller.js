@@ -1,11 +1,110 @@
 const JobApplication = require("../models/JobApplication");
-const JobPost = require("../models/JobPost");
+const JobPost = require("../models/jobPost");
 const fs = require('fs');
+const mongoose = require("mongoose");
 
 
 // Submit Job Application
+// const submitApplication = async (req, res) => {
+//     let newApplication;
+//     try {
+//         const {
+//             jobId,
+//             firstName,
+//             lastName,
+//             email,
+//             mobile,
+//             dob,
+//             gender,
+//             highestQualification,
+//             experience,
+//             currentCTC,
+//             expectedCTC,
+//             noticePeriod,
+//             currentLocation,
+//             skills,
+//             percentage,
+//             passingYear,
+//             address,
+//             dateOfJoining,
+//             currentCompany,
+//             candidateId
+//         } = req.body;
+
+//         console.log(`[DEBUG] Received Application for JobID: ${jobId}`);
+//         // ... (logs)
+
+
+
+//         // Verify if Job exists
+//         const job = await JobPost.findById(jobId);
+//         if (!job) {
+//             console.error(`[ERROR] Job not found for ID: ${jobId}`);
+//             return res.status(404).json({ success: false, message: `Job post not found in database for ID: ${jobId}` });
+//         }
+
+//         // Optional: Check if candidate has already applied (if candidateId is provided)
+//         const sanitizedCandidateId = candidateId && candidateId !== 'undefined' ? candidateId : null;
+
+//         if (sanitizedCandidateId) {
+//             const existingApp = await JobApplication.findOne({ jobId, candidateId: sanitizedCandidateId });
+//             if (existingApp) return res.status(400).json({ message: "You have already applied for this job." });
+//         }
+
+//         newApplication = new JobApplication({
+//             jobId,
+//             firstName,
+//             lastName,
+//             email,
+//             mobile,
+//             dob,
+//             gender,
+//             highestQualification,
+//             experience,
+//             currentCTC,
+//             expectedCTC,
+//             noticePeriod,
+//             currentLocation,
+//             skills,
+//             percentage,
+//             passingYear,
+//             address,
+//             dateOfJoining,
+//             currentCompany,
+//             resume: req.file ? (req.file.path.includes("uploads") ? "uploads/" + req.file.path.split(/uploads[\\/]/).pop().replace(/\\/g, "/") : req.file.path.replace(/\\/g, "/")) : null, // Store relative path
+//             candidateId: sanitizedCandidateId
+//         });
+
+
+//         await newApplication.save();
+
+//         res.status(201).json({
+//             success: true,
+//             message: "Job application submitted successfully",
+//             application: newApplication,
+//             applicationId: newApplication._id
+//         });
+//     } catch (error) {
+//         console.error("=== APPLICATION SUBMISSION ERROR ===");
+//         console.error("Error Message:", error.message);
+//         console.error("Error Stack:", error.stack);
+
+//         // Return full error details to client for debugging
+//         res.status(500).json({
+//             success: false,
+//             message: error.message,
+//             stack: error.stack,
+//             validation: error.errors ? Object.keys(error.errors).map(key => ({
+//                 field: key,
+//                 message: error.errors[key].message
+//             })) : null,
+//             bodyReceived: req.body
+//         });
+//     }
+
+// };
+
 const submitApplication = async (req, res) => {
-    let newApplication;
     try {
         const {
             jobId,
@@ -14,101 +113,110 @@ const submitApplication = async (req, res) => {
             email,
             mobile,
             dob,
-            gender,
             highestQualification,
-            experience,
-            currentCTC,
-            expectedCTC,
-            noticePeriod,
-            currentLocation,
-            skills,
+            institution,
+            department,
             percentage,
             passingYear,
             address,
+            currentLocation,
+            totalExperience,
+            companyName,
+            role,
+            currentCTC,
+            expectedCTC,
+            noticePeriod,
             dateOfJoining,
             currentCompany,
+            skills,
             candidateId
         } = req.body;
 
-        console.log(`[DEBUG] Received Application for JobID: ${jobId}`);
-        // ... (logs)
-
-        /* if (!req.file) {
-            return res.status(400).json({ success: false, message: "Resume is required" });
-        } */
-
-        // Verify if Job exists
+        // Check job exists
         const job = await JobPost.findById(jobId);
         if (!job) {
-            console.error(`[ERROR] Job not found for ID: ${jobId}`);
-            return res.status(404).json({ success: false, message: `Job post not found in database for ID: ${jobId}` });
+            return res.status(404).json({
+                success: false,
+                message: "Job not found"
+            });
         }
 
-        // Optional: Check if candidate has already applied (if candidateId is provided)
-        const sanitizedCandidateId = candidateId && candidateId !== 'undefined' ? candidateId : null;
+        // Prevent duplicate apply
+        const sanitizedCandidateId =
+            candidateId && candidateId !== "undefined"
+                ? candidateId
+                : null;
 
         if (sanitizedCandidateId) {
-            const existingApp = await JobApplication.findOne({ jobId, candidateId: sanitizedCandidateId });
-            if (existingApp) return res.status(400).json({ message: "You have already applied for this job." });
+            const existingApp = await JobApplication.findOne({
+                jobId,
+                candidateId: sanitizedCandidateId
+            });
+
+            if (existingApp) {
+                return res.status(400).json({
+                    success: false,
+                    message: "You already applied for this job"
+                });
+            }
         }
 
-        newApplication = new JobApplication({
+        const newApplication = new JobApplication({
             jobId,
             firstName,
             lastName,
             email,
             mobile,
             dob,
-            gender,
             highestQualification,
-            experience,
-            currentCTC,
-            expectedCTC,
-            noticePeriod,
-            currentLocation,
-            skills,
+            institution,
+            department,
             percentage,
             passingYear,
             address,
+            currentLocation,
+            experience: totalExperience, // mapped
+            companyName,
+            role,
+            currentCTC,
+            expectedCTC,
+            noticePeriod,
             dateOfJoining,
             currentCompany,
-            resume: req.file ? req.file.path : null, // Optional resume
+            skills,
+            resume: req.file
+                ? req.file.path.replace(/\\/g, "/")
+                : null,
             candidateId: sanitizedCandidateId
         });
 
-
         await newApplication.save();
 
-        res.status(201).json({
+        return res.status(201).json({
             success: true,
-            message: "Job application submitted successfully",
-            application: newApplication,
-            applicationId: newApplication._id
+            message: "Application submitted successfully",
+            application: newApplication
         });
-    } catch (error) {
-        console.error("=== APPLICATION SUBMISSION ERROR ===");
-        console.error("Error Message:", error.message);
-        console.error("Error Stack:", error.stack);
 
-        // Return full error details to client for debugging
-        res.status(500).json({
+    } catch (error) {
+        console.error("APPLICATION ERROR:", error);
+
+        return res.status(500).json({
             success: false,
-            message: error.message,
-            stack: error.stack,
-            validation: error.errors ? Object.keys(error.errors).map(key => ({
-                field: key,
-                message: error.errors[key].message
-            })) : null,
-            bodyReceived: req.body
+            message: error.message
         });
     }
-
 };
+
 
 // Get all applications (Admin only)
 const getAllApplications = async (req, res) => {
     try {
-        const applications = await JobApplication.find().populate("jobId", "role").sort({ appliedAt: -1 });
+        const applications = await JobApplication.find()
+            .populate("jobId", "role")
+            .populate("candidateId", "name email phone")
+            .populate("assessmentResults.quizId", "title questions")
+            .sort({ appliedAt: -1 });
         res.status(200).json({ success: true, applications });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -144,7 +252,12 @@ const submitAssessment = async (req, res) => {
         }
 
         // Add result
-        application.assessmentResults.push({ quizId, score, totalQuestions });
+        application.assessmentResults.push({
+            quizId,
+            score,
+            totalQuestions,
+            answers: req.body.answers || [] // Save detailed answers if provided
+        });
         await application.save();
 
         console.log("Assessment saved for Application:", applicationId);
@@ -201,7 +314,7 @@ const sendInterviewInvitation = async (req, res) => {
     console.log("✅ [BACKEND DEBUG] Received sendInterviewInvitation request");
     console.log("Body:", req.body);
     try {
-        const { applicationId, interviewSubject, interviewTime } = req.body;
+        const { applicationId, interviewSubject, interviewTime, interviewMode } = req.body;
 
         if (!applicationId || !interviewSubject || !interviewTime) {
             console.log("❌ Missing fields:", { applicationId, interviewSubject, interviewTime });
@@ -216,14 +329,23 @@ const sendInterviewInvitation = async (req, res) => {
 
         application.interviewSubject = interviewSubject;
         application.interviewTime = interviewTime;
+        if (interviewMode) {
+            console.log("📝 [BACKEND] Saving interviewMode:", interviewMode);
+            application.interviewMode = interviewMode;
+        } else {
+            console.log("⚠️ [BACKEND] No interviewMode received in request body");
+        }
         application.interviewStatus = "Invited";
+        application.candidateInterviewStatus = "Pending";
+        application.candidateInterviewNote = "";
 
-        await application.save();
+        const savedApp = await application.save();
+        console.log("✅ [BACKEND] Application saved successfully. Persisted interviewMode:", savedApp.interviewMode);
 
         res.status(200).json({
             success: true,
             message: "Interview invitation saved and sent to candidate's dashboard!",
-            application
+            application: savedApp
         });
     } catch (error) {
         console.error("Send Invitation Error:", error);
@@ -235,10 +357,10 @@ const sendInterviewInvitation = async (req, res) => {
 const sendOfferLetter = async (req, res) => {
     console.log("✅ [BACKEND DEBUG] Received sendOfferLetter request");
     try {
-        const { applicationId, email, offerLetterContent, documentsVerified } = req.body;
+        const { applicationId, email, offerLetterContent, documentsVerified, documentType } = req.body;
 
         if (!applicationId || !offerLetterContent) {
-            return res.status(400).json({ success: false, message: "Application ID and Offer Content are required" });
+            return res.status(400).json({ success: false, message: "Application ID and Content are required" });
         }
 
         const application = await JobApplication.findById(applicationId);
@@ -247,9 +369,24 @@ const sendOfferLetter = async (req, res) => {
         }
 
         application.offerLetter = offerLetterContent;
+        application.documentType = documentType || "Offer";
         application.offerSentAt = new Date();
         application.documentsVerified = documentsVerified;
-        application.status = "Selected"; // Should likely move to 'Selected' or similar status if not already
+
+        // Add to history
+        if (!application.documentHistory) {
+            application.documentHistory = [];
+        }
+        application.documentHistory.push({
+            content: offerLetterContent,
+            documentType: documentType || "Offer",
+            sentAt: new Date()
+        });
+
+        // Only update status to Selected if it's an actual Offer Letter
+        if (application.documentType === "Offer") {
+            application.status = "Selected";
+        }
 
         await application.save();
 
@@ -374,6 +511,31 @@ const updateApplicationStatus = async (req, res) => {
     }
 };
 
+// ✅ Handle Resignation Approval (Admin Action)
+const handleResignationApproval = async (req, res) => {
+    try {
+        const { applicationId, status } = req.body; // status: "Approved" or "Rejected"
+        if (!applicationId || !status) {
+            return res.status(400).json({ success: false, message: "Application ID and Status are required" });
+        }
+
+        const application = await JobApplication.findById(applicationId);
+        if (!application) return res.status(404).json({ success: false, message: "Application not found" });
+
+        application.resignationStatus = status;
+
+        // If approved, we might want to change the overall status as well, 
+        // though "Resigned" is already set when the candidate submits.
+        // We can keep it "Resigned" but the resignationStatus will be "Approved".
+
+        await application.save();
+
+        res.status(200).json({ success: true, message: `Resignation ${status} successfully`, application });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // Get all applications with uploaded documents
 const getApplicationsWithDocuments = async (req, res) => {
     try {
@@ -386,6 +548,144 @@ const getApplicationsWithDocuments = async (req, res) => {
         res.status(200).json({ success: true, data: applications });
     } catch (error) {
         console.error("Error fetching applications with documents:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Get Recruitment Statistics
+const getRecruitmentStats = async (req, res) => {
+    try {
+        const { role, statusRole, scoreRole } = req.query;
+
+        // Helper function to get jobIds by role name
+        const getJobIdsByRole = async (roleName) => {
+            if (!roleName || roleName === "All") return null;
+            const roleRegex = new RegExp(`^${roleName.trim()}$`, "i");
+            return await JobPost.find({ role: roleRegex }).distinct("_id");
+        };
+
+        const globalJobIds = await getJobIdsByRole(role);
+        const statusJobIds = await getJobIdsByRole(statusRole || role);
+        const scoreJobIds = await getJobIdsByRole(scoreRole || role);
+
+        // Build robust filter helper
+        const buildFilter = (jobIds, roleName) => {
+            if (!jobIds && (!roleName || roleName === "All")) return {};
+            const filter = { $or: [] };
+            if (jobIds && jobIds.length > 0) filter.$or.push({ jobId: { $in: jobIds } });
+            if (roleName && roleName !== "All") {
+                filter.$or.push({ role: { $regex: new RegExp(`^${roleName.trim()}$`, "i") } });
+            }
+            return filter.$or.length > 0 ? filter : {};
+        };
+
+        const globalFilter = buildFilter(globalJobIds, role);
+        const statusFilter = buildFilter(statusJobIds, statusRole || role);
+        const scoreFilter = buildFilter(scoreJobIds, scoreRole || role);
+
+        const totalApplicants = await JobApplication.countDocuments(globalFilter);
+        const selected = await JobApplication.countDocuments({ ...globalFilter, status: "Selected" });
+        const rejected = await JobApplication.countDocuments({ ...globalFilter, status: "Rejected" });
+        const interview = await JobApplication.countDocuments({
+            ...globalFilter,
+            status: { $in: ["Interview", "Shortlisted", "Invited", "Assessment"] }
+        });
+
+        const availableRoles = await JobPost.distinct("role", { status: "active" });
+
+        // 1. Status Breakdown (for Pie Chart)
+        const statusAggregation = await JobApplication.aggregate([
+            { $match: statusFilter },
+            { $group: { _id: "$status", value: { $sum: 1 } } },
+            { $project: { name: "$_id", value: 1, _id: 0 } }
+        ]);
+
+        // 2. Monthly Trend (for last 6 months)
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+        sixMonthsAgo.setDate(1);
+        sixMonthsAgo.setHours(0, 0, 0, 0);
+
+        const trendAggregation = await JobApplication.aggregate([
+            { $match: { ...globalFilter, appliedAt: { $gte: sixMonthsAgo } } },
+            {
+                $group: {
+                    _id: {
+                        month: { $month: "$appliedAt" },
+                        year: { $year: "$appliedAt" }
+                    },
+                    avgScore: { $avg: { $ifNull: ["$technicalScore", 0] } },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { "_id.year": 1, "_id.month": 1 } }
+        ]);
+
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const monthlyTrend = trendAggregation.map(item => ({
+            name: `${months[item._id.month - 1]} ${item._id.year}`,
+            avgScore: Math.round(item.avgScore || 0),
+            count: item.count
+        }));
+
+        // 3. Score Distribution (Buckets)
+        const scoreDistribution = await JobApplication.aggregate([
+            { $match: scoreFilter },
+            {
+                $bucket: {
+                    groupBy: { $ifNull: ["$technicalScore", 0] },
+                    boundaries: [0, 40, 50, 60, 70, 80, 90, 101],
+                    default: "Other",
+                    output: { count: { $sum: 1 } }
+                }
+            },
+            {
+                $project: {
+                    range: {
+                        $switch: {
+                            branches: [
+                                { case: { $eq: ["$_id", 0] }, then: "0-40" },
+                                { case: { $eq: ["$_id", 40] }, then: "40-50" },
+                                { case: { $eq: ["$_id", 50] }, then: "50-60" },
+                                { case: { $eq: ["$_id", 60] }, then: "60-70" },
+                                { case: { $eq: ["$_id", 70] }, then: "70-80" },
+                                { case: { $eq: ["$_id", 80] }, then: "80-90" },
+                                { case: { $eq: ["$_id", 90] }, then: "90-100" }
+                            ],
+                            default: "100+"
+                        }
+                    },
+                    count: 1,
+                    _id: 0
+                }
+            }
+        ]);
+
+        // 4. Quality Metrics (50+, 60+, etc.)
+        const qualityMetrics = {
+            score50plus: await JobApplication.countDocuments({ ...globalFilter, technicalScore: { $gte: 50 } }),
+            score60plus: await JobApplication.countDocuments({ ...globalFilter, technicalScore: { $gte: 60 } }),
+            score70plus: await JobApplication.countDocuments({ ...globalFilter, technicalScore: { $gte: 70 } }),
+            score80plus: await JobApplication.countDocuments({ ...globalFilter, technicalScore: { $gte: 80 } }),
+            score90plus: await JobApplication.countDocuments({ ...globalFilter, technicalScore: { $gte: 90 } })
+        };
+
+        res.status(200).json({
+            success: true,
+            stats: {
+                totalApplicants,
+                selected,
+                rejected,
+                interview,
+                statusBreakdown: statusAggregation,
+                monthlyTrend,
+                scoreDistribution,
+                qualityMetrics,
+                availableRoles
+            }
+        });
+    } catch (error) {
+        console.error("Error fetching recruitment stats:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -405,6 +705,8 @@ module.exports = {
     sendAgreements,
     uploadSignedAgreements,
     reviewDocuments,
-    getApplicationsWithDocuments
+    getApplicationsWithDocuments,
+    handleResignationApproval,
+    getRecruitmentStats
 };
 

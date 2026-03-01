@@ -52,3 +52,69 @@ Error Stack: MulterError: File too large
 URL: /api/applications/upload-signed-docs
 Method: POST
 ===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-02-20T07:43:45.042Z
+Error Message: ENOENT: no such file or directory, open 'C:\Timely-health-projects\Project\attendancebackend\uploads\candidate-documents\1771573425011-809334697.pdf'
+Error Stack: Error: ENOENT: no such file or directory, open 'C:\Timely-health-projects\Project\attendancebackend\uploads\candidate-documents\1771573425011-809334697.pdf'
+URL: /api/candidate/upload-documents
+Method: POST
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-02-20T07:43:54.227Z
+Error Message: ENOENT: no such file or directory, open 'C:\Timely-health-projects\Project\attendancebackend\uploads\candidate-documents\1771573434222-457775393.pdf'
+Error Stack: Error: ENOENT: no such file or directory, open 'C:\Timely-health-projects\Project\attendancebackend\uploads\candidate-documents\1771573434222-457775393.pdf'
+URL: /api/candidate/upload-documents
+Method: POST
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-02-20T07:45:54.035Z
+Error Message: ENOENT: no such file or directory, open 'C:\Timely-health-projects\Project\attendancebackend\uploads\candidate-documents\1771573554031-709898122.jpg'
+Error Stack: Error: ENOENT: no such file or directory, open 'C:\Timely-health-projects\Project\attendancebackend\uploads\candidate-documents\1771573554031-709898122.jpg'
+URL: /api/candidate/upload-documents
+Method: POST
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-02-20T07:47:11.542Z
+Error Message: ENOENT: no such file or directory, open 'C:\Timely-health-projects\Project\attendancebackend\uploads\candidate-documents\1771573631530-637457656.pdf'
+Error Stack: Error: ENOENT: no such file or directory, open 'C:\Timely-health-projects\Project\attendancebackend\uploads\candidate-documents\1771573631530-637457656.pdf'
+URL: /api/candidate/upload-documents
+Method: POST
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-02-20T09:10:06.076Z
+Error Message: ENOENT: no such file or directory, open 'C:\Timely-health-projects\Project\attendancebackend\uploads\candidate-documents\1771578606038-948122502.pdf'
+Error Stack: Error: ENOENT: no such file or directory, open 'C:\Timely-health-projects\Project\attendancebackend\uploads\candidate-documents\1771578606038-948122502.pdf'
+URL: /api/candidate/upload-documents
+Method: POST
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-02-20T09:10:18.867Z
+Error Message: ENOENT: no such file or directory, open 'C:\Timely-health-projects\Project\attendancebackend\uploads\candidate-documents\1771578618862-321656453.pdf'
+Error Stack: Error: ENOENT: no such file or directory, open 'C:\Timely-health-projects\Project\attendancebackend\uploads\candidate-documents\1771578618862-321656453.pdf'
+URL: /api/candidate/upload-documents
+Method: POST
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-02-20T10:55:38.879Z
+Error Message: File too large
+Error Stack: MulterError: File too large
+    at abortWithCode (C:\Timely-health-projects\Project\attendancebackend\node_modules\multer\lib\make-middleware.js:85:22)
+    at FileStream.<anonymous> (C:\Timely-health-projects\Project\attendancebackend\node_modules\multer\lib\make-middleware.js:155:11)
+    at FileStream.emit (node:events:508:28)
+    at SBMH.ssCb [as _cb] (C:\Timely-health-projects\Project\attendancebackend\node_modules\busboy\lib\types\multipart.js:479:32)
+    at feed (C:\Timely-health-projects\Project\attendancebackend\node_modules\streamsearch\lib\sbmh.js:248:10)
+    at SBMH.push (C:\Timely-health-projects\Project\attendancebackend\node_modules\streamsearch\lib\sbmh.js:104:16)
+    at Multipart._write (C:\Timely-health-projects\Project\attendancebackend\node_modules\busboy\lib\types\multipart.js:567:19)
+    at writeOrBuffer (node:internal/streams/writable:570:12)
+    at _write (node:internal/streams/writable:499:10)
+    at Writable.write (node:internal/streams/writable:508:10)
+URL: /api/candidate/upload-documents
+Method: POST
+===========================

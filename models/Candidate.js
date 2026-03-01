@@ -30,6 +30,15 @@ const candidateSchema = new mongoose.Schema({
     address: {
         type: String,
     },
+    qualification: {
+        type: String,
+    },
+    percentage: {
+        type: String,
+    },
+    passingYear: {
+        type: String,
+    },
     currentCompany: {
         type: String,
     },

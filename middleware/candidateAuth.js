@@ -8,6 +8,8 @@ module.exports = function (req, res, next) {
         token = token.slice(7, token.length);
     }
 
+    console.log(`[DEBUG] Auth Middleware - Token provided: ${!!token}`);
+
     if (!token) {
         return res.status(401).json({ message: "No token provided" });
     }

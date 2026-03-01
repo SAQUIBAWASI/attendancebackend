@@ -1,48 +1,62 @@
 const mongoose = require("mongoose");
 
-const jobPostSchema = new mongoose.Schema({
-  role: {
-    type: String,
-    required: true,
-  },
-  responsibilities: {
-    type: String,
-    required: true,
-  },
-  skills: {
-    type: String,
-    required: true, // Can be comma-separated or stored as an array
-  },
-  salary: {
-    type: String,
-  },
-  experience: {
-    type: String, // e.g., "Fresher", "1-2 Years"
-  },
+const jobPostSchema = new mongoose.Schema(
+  {
+    role: {
+      type: String,
+      required: true,
+      trim: true,
+    },
 
-  assessmentIds: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Quiz",
-  }],
+    salary: {
+      type: String,
+      required: true,
+      trim: true,
+    },
 
-  assessmentId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Quiz",
-  },
+    experience: {
+      type: String,
+      enum: ["Fresher", "0-1", "1-2", "2-3", "3-4", "5+"],
+      required: true,
+    },
 
-  link: {
-    type: String,
-    unique: true,
+    location: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    description: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    skills: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    assessmentIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Quiz",
+      },
+    ],
+
+    link: {
+      type: String,
+      unique: true,
+    },
+
+    status: {
+      type: String,
+      enum: ["active", "closed"],
+      default: "active",
+    },
   },
-  status: {
-    type: String,
-    enum: ["active", "closed"],
-    default: "active",
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-});
+  { timestamps: true }
+);
 
 module.exports = mongoose.model("JobPost", jobPostSchema);

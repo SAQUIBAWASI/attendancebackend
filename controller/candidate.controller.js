@@ -2,6 +2,8 @@ const Candidate = require("../models/Candidate");
 const JobApplication = require("../models/JobApplication");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const CandidateDocuments = require("../models/CandidateDocuments");
+const CandidateExperience = require("../models/CandidateExperience");
 
 // Register Candidate
 exports.register = async (req, res) => {
@@ -110,7 +112,12 @@ exports.getProfile = async (req, res) => {
 // Update Candidate Profile
 exports.updateProfile = async (req, res) => {
     try {
-        const { name, phone, skills, experience, address } = req.body;
+        const {
+            name, phone, skills, experience, address,
+            currentCompany, currentCTC, expectedCTC,
+            qualification, percentage, passingYear
+        } = req.body;
+
         let candidate = await Candidate.findById(req.candidate.id);
 
         if (!candidate) {
@@ -118,11 +125,17 @@ exports.updateProfile = async (req, res) => {
         }
 
         // Update fields
-        if (name) candidate.name = name;
-        if (phone) candidate.phone = phone;
-        if (skills) candidate.skills = skills;
-        if (experience) candidate.experience = experience;
-        if (address) candidate.address = address;
+        if (name !== undefined) candidate.name = name;
+        if (phone !== undefined) candidate.phone = phone;
+        if (skills !== undefined) candidate.skills = skills;
+        if (experience !== undefined) candidate.experience = experience;
+        if (address !== undefined) candidate.address = address;
+        if (currentCompany !== undefined) candidate.currentCompany = currentCompany;
+        if (currentCTC !== undefined) candidate.currentCTC = currentCTC;
+        if (expectedCTC !== undefined) candidate.expectedCTC = expectedCTC;
+        if (qualification !== undefined) candidate.qualification = qualification;
+        if (percentage !== undefined) candidate.percentage = percentage;
+        if (passingYear !== undefined) candidate.passingYear = passingYear;
 
         // Handle Resume Upload if present (req.file)
         if (req.file) {
@@ -166,11 +179,510 @@ const checkCandidateExists = async (req, res) => {
     }
 };
 
+// Upload Candidate Documents
+exports.uploadPersonalDocuments = async (req, res) => {
+    try {
+        const candidateId = req.candidate?.id;
+        const documentType = req.body.documentType;
+
+        if (!candidateId) {
+            return res.status(400).json({ success: false, message: "Candidate ID not found in token" });
+        }
+
+        if (!documentType) {
+            return res.status(400).json({ success: false, message: "Document type is required" });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: "No file uploaded" });
+        }
+
+        // Verify file was actually saved
+        const fs = require("fs");
+        if (!fs.existsSync(req.file.path)) {
+            return res.status(500).json({ success: false, message: "File save failed - directory may not exist" });
+        }
+
+        // Get candidate's email from profile
+        const candidate = await require("../models/Candidate").findById(candidateId);
+        if (!candidate) {
+            return res.status(404).json({ success: false, message: "Candidate not found" });
+        }
+
+        // Find or create candidate documents record
+        let candDocs = await CandidateDocuments.findOne({ candidateId });
+        if (!candDocs) {
+            candDocs = new CandidateDocuments({
+                candidateId,
+                email: candidate.email,
+                documents: {}
+            });
+        }
+
+        // Update specific document field with relative path for easier storing
+        candDocs.documents[documentType] = {
+            fileName: req.file.originalname,
+            filePath: req.file.path,
+            uploadedAt: new Date(),
+            verified: false
+        };
+
+        // Calculate completion percentage
+        const docFields = [
+            'aadharCard', 'panCard',
+            'tenthCertificate', 'twelfthCertificate', 'graduationCertificate',
+            'passportPhoto', 'bankDetails', 'emergencyContact1', 'emergencyContact2'
+        ];
+
+        let completedCount = 0;
+        docFields.forEach(field => {
+            const doc = candDocs.documents[field];
+            if (doc && (doc.filePath || doc.bankName || doc.name)) {
+                completedCount++;
+            }
+        });
+
+        candDocs.completionPercentage = Math.round((completedCount / docFields.length) * 100);
+
+        await candDocs.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Document uploaded successfully",
+            data: candDocs
+        });
+    } catch (err) {
+        console.error("Document upload error:", err);
+        res.status(500).json({
+            success: false,
+            message: "Upload failed: " + err.message,
+            error: err.message
+        });
+    }
+};
+
+// Get Candidate Documents
+exports.getPersonalDocuments = async (req, res) => {
+    try {
+        const candidateId = req.candidate?.id;
+
+        if (!candidateId) {
+            return res.status(400).json({ success: false, message: "Candidate ID not found in token" });
+        }
+
+        let candDocs = await CandidateDocuments.findOne({ candidateId })
+            .populate("candidateId", "name email phone qualification percentage passingYear address currentCompany experience currentCTC expectedCTC skills");
+
+        if (!candDocs) {
+            // Get candidate info first
+            const candidate = await require("../models/Candidate").findById(candidateId);
+            if (!candidate) {
+                return res.status(404).json({ success: false, message: "Candidate not found" });
+            }
+
+            // Create new empty document record
+            candDocs = new CandidateDocuments({
+                candidateId,
+                email: candidate.email,
+                documents: {}
+            });
+            await candDocs.save();
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Documents retrieved successfully",
+            data: candDocs
+        });
+    } catch (err) {
+        console.error("Get documents error:", err);
+        res.status(500).json({ success: false, message: "Failed to fetch documents", error: err.message });
+    }
+};
+
+// Get All Candidates Documents (Admin View)
+exports.getAllCandidatesDocuments = async (req, res) => {
+    try {
+        const candDocs = await CandidateDocuments.find()
+            .populate('candidateId', 'name email phone qualification percentage passingYear address currentCompany experience currentCTC expectedCTC skills')
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({
+            success: true,
+            message: "All candidate documents retrieved",
+            totalCount: candDocs.length,
+            data: candDocs
+        });
+    } catch (err) {
+        console.error("Get all documents error:", err);
+        res.status(500).json({ success: false, message: "Failed to fetch documents", error: err.message });
+    }
+};
+
+// Get Specific Candidate Documents by ID (Admin View)
+exports.getCandidateDocumentsById = async (req, res) => {
+    try {
+        const candidateId = req.params.id;
+
+        if (!candidateId) {
+            return res.status(400).json({ success: false, message: "Candidate ID parameter is missing" });
+        }
+
+        let candDocs = await CandidateDocuments.findOne({ candidateId })
+            .populate('candidateId', 'name email phone qualification percentage passingYear address currentCompany experience currentCTC expectedCTC skills');
+
+        if (!candDocs) {
+            // Get candidate info first to see if they exist
+            const candidate = await require("../models/Candidate").findById(candidateId);
+            if (!candidate) {
+                return res.status(404).json({ success: false, message: "Candidate not found" });
+            }
+
+            // Return empty document structure for the candidate
+            candDocs = {
+                candidateId: candidate,
+                email: candidate.email,
+                documents: {}
+            };
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Candidate documents retrieved",
+            data: candDocs
+        });
+    } catch (err) {
+        console.error("Get specific candidate documents error:", err);
+        res.status(500).json({ success: false, message: "Failed to fetch documents", error: err.message });
+    }
+};
+
+// Save Bank Details
+exports.saveBankDetails = async (req, res) => {
+    try {
+        const candidateId = req.candidate?.id;
+        const { bankDetails } = req.body;
+
+        if (!candidateId) {
+            return res.status(400).json({ success: false, message: "Candidate ID not found in token" });
+        }
+
+        if (!bankDetails || !bankDetails.bankName || !bankDetails.accountNumber || !bankDetails.ifscCode) {
+            return res.status(400).json({ success: false, message: "Missing required bank details fields (bankName, accountNumber, ifscCode)" });
+        }
+
+        // Get candidate's email for reference
+        const candidate = await require("../models/Candidate").findById(candidateId);
+        if (!candidate) {
+            return res.status(404).json({ success: false, message: "Candidate not found" });
+        }
+
+        let candDocs = await CandidateDocuments.findOne({ candidateId });
+
+        if (!candDocs) {
+            candDocs = new CandidateDocuments({
+                candidateId,
+                email: candidate.email
+            });
+        }
+
+        candDocs.documents.bankDetails = {
+            bankName: bankDetails.bankName,
+            accountNumber: bankDetails.accountNumber,
+            ifscCode: bankDetails.ifscCode,
+            uploadedAt: new Date(),
+            verified: false
+        };
+
+        // Calculate completion percentage
+        let completedFields = 0;
+        const docFields = [
+            "aadharCard", "panCard", "tenthCertificate",
+            "twelfthCertificate", "graduationCertificate",
+            "passportPhoto", "bankDetails", "emergencyContact1", "emergencyContact2"
+        ];
+
+        docFields.forEach(field => {
+            if (candDocs.documents[field] && (candDocs.documents[field].fileName || candDocs.documents[field].bankName || candDocs.documents[field].name)) {
+                completedFields++;
+            }
+        });
+
+        candDocs.completionPercentage = Math.round((completedFields / docFields.length) * 100);
+
+        await candDocs.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Bank details saved successfully",
+            data: candDocs
+        });
+    } catch (err) {
+        console.error("Save bank details error:", err);
+        res.status(500).json({ success: false, message: "Failed to save bank details", error: err.message });
+    }
+};
+
+// Save Emergency Contact
+exports.saveEmergencyContact = async (req, res) => {
+    try {
+        const candidateId = req.candidate?.id;
+        const { contactNumber, contact } = req.body;
+
+        if (!candidateId) {
+            return res.status(400).json({ success: false, message: "Candidate ID not found in token" });
+        }
+
+        if (!contactNumber || !contact || !contact.name || !contact.phone || !contact.relationship) {
+            return res.status(400).json({ success: false, message: "Missing required emergency contact fields (name, phone, relationship)" });
+        }
+
+        // Get candidate's email for reference
+        const candidate = await require("../models/Candidate").findById(candidateId);
+        if (!candidate) {
+            return res.status(404).json({ success: false, message: "Candidate not found" });
+        }
+
+        let candDocs = await CandidateDocuments.findOne({ candidateId });
+
+        if (!candDocs) {
+            candDocs = new CandidateDocuments({
+                candidateId,
+                email: candidate.email
+            });
+        }
+
+        const fieldName = contactNumber === 1 ? "emergencyContact1" : "emergencyContact2";
+        candDocs.documents[fieldName] = {
+            name: contact.name,
+            phone: contact.phone,
+            relationship: contact.relationship,
+            uploadedAt: new Date(),
+            verified: false
+        };
+
+        // Calculate completion percentage
+        let completedFields = 0;
+        const docFields = [
+            "aadharCard", "panCard", "tenthCertificate",
+            "twelfthCertificate", "graduationCertificate",
+            "passportPhoto", "bankDetails", "emergencyContact1", "emergencyContact2"
+        ];
+
+        docFields.forEach(field => {
+            if (candDocs.documents[field] && (candDocs.documents[field].fileName || candDocs.documents[field].bankName || candDocs.documents[field].name)) {
+                completedFields++;
+            }
+        });
+
+        candDocs.completionPercentage = Math.round((completedFields / docFields.length) * 100);
+
+        await candDocs.save();
+
+        res.status(200).json({
+            success: true,
+            message: `Emergency contact ${contactNumber} saved successfully`,
+            data: candDocs
+        });
+    } catch (err) {
+        console.error("Save emergency contact error:", err);
+        res.status(500).json({ success: false, message: "Failed to save emergency contact", error: err.message });
+    }
+};
+
+// Submit Resignation
+exports.submitResignation = async (req, res) => {
+    try {
+        const candidateId = req.candidate?.id;
+        const { applicationId, resignationLetter } = req.body;
+
+        if (!candidateId) {
+            return res.status(400).json({ success: false, message: "Candidate ID not found in token" });
+        }
+
+        if (!applicationId || !resignationLetter) {
+            return res.status(400).json({ success: false, message: "Application ID and resignation letter are required" });
+        }
+
+        const application = await JobApplication.findOne({ _id: applicationId, candidateId });
+
+        if (!application) {
+            return res.status(404).json({ success: false, message: "Application not found or unauthorized" });
+        }
+
+        application.resignationLetter = resignationLetter;
+        application.resignationSentAt = new Date();
+        application.status = "Resigned";
+
+        await application.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Resignation submitted successfully",
+            data: application
+        });
+    } catch (err) {
+        console.error("Submit resignation error:", err);
+        res.status(500).json({ success: false, message: "Failed to submit resignation", error: err.message });
+    }
+};
+
+// Confirm Interview
+exports.confirmInterview = async (req, res) => {
+    try {
+        const candidateId = req.candidate?.id;
+        const { applicationId, status, note } = req.body;
+
+        console.log(`[DEBUG] Confirm Interview Request:`, {
+            candidateId,
+            applicationId,
+            status,
+            note,
+            url: req.originalUrl,
+            method: req.method
+        });
+
+        if (!candidateId) {
+            return res.status(400).json({ success: false, message: "Candidate ID not found in token" });
+        }
+
+        if (!applicationId || !status) {
+            return res.status(400).json({ success: false, message: "Application ID and status are required" });
+        }
+
+        if (!["Confirmed", "Declined"].includes(status)) {
+            return res.status(400).json({ success: false, message: "Invalid status value" });
+        }
+
+        const application = await JobApplication.findOne({ _id: applicationId, candidateId });
+
+        if (!application) {
+            console.log(`[DEBUG] Interview Application Not Found: applicationId=${applicationId}, candidateId=${candidateId}`);
+            return res.status(404).json({ success: false, message: "Application not found or unauthorized" });
+        }
+
+        console.log(`[DEBUG] Found Application:`, application._id);
+
+        application.candidateInterviewStatus = status;
+        application.candidateInterviewNote = note || "";
+
+        await application.save();
+
+        res.status(200).json({
+            success: true,
+            message: `Interview ${status.toLowerCase()} successfully`,
+            data: application
+        });
+    } catch (err) {
+        console.error("Confirm interview error:", err);
+        res.status(500).json({ success: false, message: "Failed to confirm interview", error: err.message });
+    }
+};
+
+// Add Candidate Experience
+exports.addCandidateExperience = async (req, res) => {
+    try {
+        const candidateId = req.candidate?.id;
+        const { companyName, role, startDate, endDate, salary, location } = req.body;
+
+        if (!candidateId) {
+            return res.status(400).json({ success: false, message: "Candidate ID not found in token" });
+        }
+
+        if (!companyName || !role || !startDate || !salary || !location) {
+            return res.status(400).json({ success: false, message: "Missing required fields" });
+        }
+
+        const newExperienceData = {
+            candidateId,
+            companyName,
+            role,
+            startDate,
+            endDate: endDate || null,
+            salary,
+            location,
+        };
+
+        // Handle file uploads
+        if (req.files) {
+            if (req.files.offerLetter && req.files.offerLetter[0]) {
+                newExperienceData.offerLetter = req.files.offerLetter[0].path;
+            }
+            if (req.files.payslip && req.files.payslip[0]) {
+                newExperienceData.payslip = req.files.payslip[0].path;
+            }
+        }
+
+        const newExperience = new CandidateExperience(newExperienceData);
+        await newExperience.save();
+
+        res.status(201).json({
+            success: true,
+            message: "Experience added successfully",
+            data: newExperience
+        });
+
+    } catch (err) {
+        console.error("Add experience error:", err);
+        res.status(500).json({ success: false, message: "Failed to add experience", error: err.message });
+    }
+};
+
+// Get Candidate Experiences
+exports.getCandidateExperiences = async (req, res) => {
+    try {
+        const candidateId = req.candidate?.id;
+        if (!candidateId) {
+            return res.status(400).json({ success: false, message: "Candidate ID not found in token" });
+        }
+
+        const experiences = await CandidateExperience.find({ candidateId }).sort({ startDate: -1 });
+
+        res.status(200).json({
+            success: true,
+            message: "Experiences retrieved successfully",
+            data: experiences
+        });
+    } catch (err) {
+        console.error("Get experiences error:", err);
+        res.status(500).json({ success: false, message: "Failed to fetch experiences", error: err.message });
+    }
+};
+
+// Get All Candidate Experiences (Admin)
+exports.getAllCandidateExperiences = async (req, res) => {
+    try {
+        const experiences = await CandidateExperience.find()
+            .populate("candidateId", "name email phone")
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({
+            success: true,
+            message: "All experiences retrieved successfully",
+            data: experiences
+        });
+    } catch (err) {
+        console.error("Get all experiences error:", err);
+        res.status(500).json({ success: false, message: "Failed to fetch all experiences", error: err.message });
+    }
+};
+
 module.exports = {
     register: exports.register,
     login: exports.login,
     getProfile: exports.getProfile,
     updateProfile: exports.updateProfile,
     getAppliedJobs,
-    checkCandidateExists
+    checkCandidateExists,
+    uploadPersonalDocuments: exports.uploadPersonalDocuments,
+    getPersonalDocuments: exports.getPersonalDocuments,
+    getAllCandidatesDocuments: exports.getAllCandidatesDocuments,
+    getCandidateDocumentsById: exports.getCandidateDocumentsById,
+    saveBankDetails: exports.saveBankDetails,
+    saveEmergencyContact: exports.saveEmergencyContact,
+    submitResignation: exports.submitResignation,
+    confirmInterview: exports.confirmInterview,
+    addCandidateExperience: exports.addCandidateExperience,
+    getCandidateExperiences: exports.getCandidateExperiences,
+    getAllCandidateExperiences: exports.getAllCandidateExperiences
 };
