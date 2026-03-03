@@ -106,6 +106,7 @@ const mongoose = require("mongoose");
 
 const submitApplication = async (req, res) => {
     try {
+        console.log("[DEBUG] Submit Application Body:", req.body);
         const {
             jobId,
             firstName,
@@ -199,11 +200,11 @@ const submitApplication = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("APPLICATION ERROR:", error);
+        console.error("[ERROR] APPLICATION SUBMISSION FAILURE:", error);
 
         return res.status(500).json({
             success: false,
-            message: error.message
+            message: "Application Submission Failed: " + error.message
         });
     }
 };

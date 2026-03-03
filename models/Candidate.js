@@ -12,7 +12,7 @@ const candidateSchema = new mongoose.Schema({
     },
     password: {
         type: String,
-        required: true,
+        // Password is now optional for email-only login flow
     },
     phone: {
         type: String,
@@ -37,6 +37,24 @@ const candidateSchema = new mongoose.Schema({
         type: String,
     },
     passingYear: {
+        type: String,
+    },
+    institution: {
+        type: String,
+    },
+    department: {
+        type: String,
+    },
+    currentLocation: {
+        type: String,
+    },
+    noticePeriod: {
+        type: String,
+    },
+    dateOfJoining: {
+        type: String,
+    },
+    role: {
         type: String,
     },
     currentCompany: {

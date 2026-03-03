@@ -8,7 +8,14 @@ const CandidateExperience = require("../models/CandidateExperience");
 // Register Candidate
 exports.register = async (req, res) => {
     try {
-        const { name, email, password, phone, skills, experience, address, currentCompany, currentCTC, expectedCTC } = req.body;
+        console.log("[DEBUG] Candidate Register Request Body:", req.body);
+        const {
+            name, email, phone, skills, experience, address,
+            currentCompany, currentCTC, expectedCTC,
+            highestQualification, institution, department,
+            currentLocation, noticePeriod, dateOfJoining, role,
+            percentage, passingYear
+        } = req.body;
 
         // Check if candidate already exists
         let candidate = await Candidate.findOne({ email });
@@ -16,14 +23,9 @@ exports.register = async (req, res) => {
             return res.status(400).json({ message: "Candidate already exists" });
         }
 
-        // Hash password
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-
         candidate = new Candidate({
             name,
             email,
-            password: hashedPassword,
             phone,
             skills,
             experience,
@@ -31,6 +33,15 @@ exports.register = async (req, res) => {
             currentCompany,
             currentCTC,
             expectedCTC,
+            qualification: highestQualification,
+            institution,
+            department,
+            currentLocation,
+            noticePeriod,
+            dateOfJoining,
+            role,
+            percentage,
+            passingYear
         });
 
         await candidate.save();
@@ -53,26 +64,21 @@ exports.register = async (req, res) => {
             }
         );
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send("Server Error");
+        console.error("[ERROR] Candidate Register Failure:", err);
+        res.status(500).send("Server Error: " + err.message);
     }
 };
 
 // Login Candidate
 exports.login = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email } = req.body; // Remove password extraction
 
         // Check if candidate exists
         let candidate = await Candidate.findOne({ email });
         if (!candidate) {
-            return res.status(400).json({ message: "Invalid Credentials" });
-        }
-
-        // Compare password
-        const isMatch = await bcrypt.compare(password, candidate.password);
-        if (!isMatch) {
-            return res.status(400).json({ message: "Invalid Credentials" });
+            // For email-only login, if they don't exist, we might want to say so or just say Invalid Credentials
+            return res.status(400).json({ message: "Candidate not found. Please register." });
         }
 
         // Create JWT Payload
@@ -115,7 +121,9 @@ exports.updateProfile = async (req, res) => {
         const {
             name, phone, skills, experience, address,
             currentCompany, currentCTC, expectedCTC,
-            qualification, percentage, passingYear
+            qualification, percentage, passingYear,
+            institution, department, currentLocation,
+            noticePeriod, dateOfJoining, role
         } = req.body;
 
         let candidate = await Candidate.findById(req.candidate.id);
@@ -136,6 +144,12 @@ exports.updateProfile = async (req, res) => {
         if (qualification !== undefined) candidate.qualification = qualification;
         if (percentage !== undefined) candidate.percentage = percentage;
         if (passingYear !== undefined) candidate.passingYear = passingYear;
+        if (institution !== undefined) candidate.institution = institution;
+        if (department !== undefined) candidate.department = department;
+        if (currentLocation !== undefined) candidate.currentLocation = currentLocation;
+        if (noticePeriod !== undefined) candidate.noticePeriod = noticePeriod;
+        if (dateOfJoining !== undefined) candidate.dateOfJoining = dateOfJoining;
+        if (role !== undefined) candidate.role = role;
 
         // Handle Resume Upload if present (req.file)
         if (req.file) {
