@@ -14,7 +14,17 @@ const expenseSchema = new mongoose.Schema({
     outcome: { type: String },
     orderValue: { type: Number, default: 0 },
     upsellValue: { type: Number, default: 0 },
-    remark: { type: String }
+    remark: { type: String },
+    stops: [
+        {
+            locationName: { type: String, required: true },
+            outcome: { type: String },
+            orderValue: { type: Number, default: 0 },
+            upsellValue: { type: Number, default: 0 },
+            km: { type: Number, default: 0 },
+            amount: { type: Number, default: 0 }
+        }
+    ]
 }, { timestamps: true });
 
 module.exports = mongoose.model("Expense", expenseSchema);

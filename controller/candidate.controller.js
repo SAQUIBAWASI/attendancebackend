@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const CandidateDocuments = require("../models/CandidateDocuments");
 const CandidateExperience = require("../models/CandidateExperience");
+const Employee = require("../models/Employee");
 
 // Register Candidate
 exports.register = async (req, res) => {
@@ -670,10 +671,46 @@ exports.getAllCandidateExperiences = async (req, res) => {
             .populate("candidateId", "name email phone")
             .sort({ createdAt: -1 });
 
+        // Convert Mongoose documents to plain objects for manipulation
+        let mergedExperiences = experiences.map(exp => exp.toObject());
+
+        // --- Added: Merge Current Employee Jobs into Journey ---
+        try {
+            const employees = await Employee.find({ status: 'active' });
+
+            // For each active employee, create a "virtual" experience entry if they have a candidate record
+            for (const emp of employees) {
+                // Find matching experience for this candidate to get their ID for grouping
+                const existingExp = experiences.find(exp =>
+                    exp.candidateId && exp.candidateId.email?.toLowerCase() === emp.email?.toLowerCase()
+                );
+
+                if (existingExp && existingExp.candidateId) {
+                    // Create a virtual experience record for the current job
+                    const currentJobEntry = {
+                        _id: `current_${emp._id}`,
+                        candidateId: existingExp.candidateId,
+                        companyName: "Timely Health Tech Pvt Ltd",
+                        role: emp.role || "Employee",
+                        startDate: emp.joinDate || emp.createdAt,
+                        endDate: null, // "Present"
+                        salary: emp.salaryPerMonth ? `₹${emp.salaryPerMonth.toLocaleString('en-IN')}/mo` : "-",
+                        location: emp.city || emp.addressLine1 || "India",
+                        isCurrentJob: true,
+                        createdAt: new Date().toISOString()
+                    };
+                    mergedExperiences.unshift(currentJobEntry);
+                }
+            }
+        } catch (empErr) {
+            console.error("Error merging employee data into experiences:", empErr);
+        }
+        // -------------------------------------------------------
+
         res.status(200).json({
             success: true,
             message: "All experiences retrieved successfully",
-            data: experiences
+            data: mergedExperiences
         });
     } catch (err) {
         console.error("Get all experiences error:", err);

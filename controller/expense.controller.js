@@ -6,7 +6,7 @@ exports.addExpense = async (req, res) => {
     try {
         const {
             employeeId, purpose, date, km,
-            outcome, orderValue, upsellValue, remark
+            outcome, orderValue, upsellValue, remark, stops
         } = req.body;
 
         if (!employeeId || !purpose || !date || !km) {
@@ -21,19 +21,41 @@ exports.addExpense = async (req, res) => {
         let currentRate = rateSetting ? Number(rateSetting.value) : 10;
 
         const rateApplied = currentRate;
-        const totalAmount = (Number(km) * rateApplied).toFixed(2);
+        let finalKm = Number(km) || 0;
+        let totalAmount = (finalKm * rateApplied).toFixed(2);
+
+        // Calculate dynamic values if stops are provided
+        let finalOutcome = outcome;
+        let finalOrderValue = Number(orderValue) || 0;
+        let finalUpsellValue = Number(upsellValue) || 0;
+
+        if (stops && Array.isArray(stops) && stops.length > 0) {
+            finalOrderValue = stops.reduce((sum, stop) => sum + (Number(stop.orderValue) || 0), 0);
+            finalUpsellValue = stops.reduce((sum, stop) => sum + (Number(stop.upsellValue) || 0), 0);
+            
+            // Calculate total km from stops if stops have km
+            const stopsTotalKm = stops.reduce((sum, stop) => sum + (Number(stop.km) || 0), 0);
+            if (stopsTotalKm > 0) {
+               finalKm = stopsTotalKm;
+               totalAmount = (finalKm * rateApplied).toFixed(2);
+            }
+            
+            // If primary outcome is empty but stops have outcomes, we could safely concatenate them or leave as is.
+            // Leaving primary outcome as the "overall visit outcome".
+        }
 
         const newExpense = new Expense({
             employeeId,
             purpose,
             date: new Date(date),
-            km: Number(km),
+            km: finalKm,
             rateApplied,
             totalAmount: Number(totalAmount),
-            outcome,
-            orderValue: Number(orderValue) || 0,
-            upsellValue: Number(upsellValue) || 0,
-            remark
+            outcome: finalOutcome,
+            orderValue: finalOrderValue,
+            upsellValue: finalUpsellValue,
+            remark,
+            stops: stops && Array.isArray(stops) ? stops : []
         });
 
         await newExpense.save();

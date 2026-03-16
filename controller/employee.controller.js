@@ -1,4 +1,7 @@
-// const Employee = require("../models/Employee");
+const Employee = require("../models/Employee");
+const EmployeeExperience = require("../models/EmployeeExperience");
+const path = require("path");
+const fs = require("fs");
 // const Location = require("../models/Location");
 // const { logActivity } = require("./userActivity.controller");
 // // ➕ Add a new employee
@@ -355,9 +358,14 @@
 // };
 
 
+
 const mongoose = require("mongoose");
-const Employee = require("../models/Employee");
 const Location = require("../models/Location");
+const JobApplication = require("../models/JobApplication");
+const JobPost = require("../models/jobPost");
+const Candidate = require("../models/Candidate");
+const CandidateExperience = require("../models/CandidateExperience");
+const CandidateDocuments = require("../models/CandidateDocuments");
 const { logActivity } = require("./userActivity.controller");
 
 // ✅ Get employee by phone number
@@ -366,18 +374,18 @@ exports.getEmployeeByPhone = async (req, res) => {
     const { phone } = req.query;
 
     if (!phone) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Phone number is required" 
+        message: "Phone number is required"
       });
     }
 
     const employee = await Employee.findOne({ phone });
 
     if (!employee) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Employee not found with this phone number" 
+        message: "Employee not found with this phone number"
       });
     }
 
@@ -388,10 +396,10 @@ exports.getEmployeeByPhone = async (req, res) => {
     });
   } catch (error) {
     console.error("Get employee by phone error:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: "Server error",
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -463,10 +471,10 @@ exports.addEmployee = async (req, res) => {
     });
   } catch (error) {
     console.error("Add employee error:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: "Server error",
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -487,9 +495,9 @@ exports.getEmployeeByEmail = async (req, res) => {
     const { email, employeeId, phone } = req.query;
 
     if (!email && !employeeId && !phone) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Email, Employee ID or Phone is required" 
+        message: "Email, Employee ID or Phone is required"
       });
     }
 
@@ -501,9 +509,9 @@ exports.getEmployeeByEmail = async (req, res) => {
     const employee = await Employee.findOne(query);
 
     if (!employee) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Employee not found" 
+        message: "Employee not found"
       });
     }
 
@@ -512,10 +520,10 @@ exports.getEmployeeByEmail = async (req, res) => {
       data: employee
     });
   } catch (error) {
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: "Server Error", 
-      error: error.message 
+      message: "Server Error",
+      error: error.message
     });
   }
 };
@@ -526,9 +534,9 @@ exports.loginEmployee = async (req, res) => {
     const { email, employeeId, password } = req.body;
 
     if (!email && !employeeId) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Email or Employee ID is required" 
+        message: "Email or Employee ID is required"
       });
     }
 
@@ -536,16 +544,16 @@ exports.loginEmployee = async (req, res) => {
     const employee = await Employee.findOne(query);
 
     if (!employee) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Employee not found" 
+        message: "Employee not found"
       });
     }
-    
+
     if (employee.password !== password) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        message: "Invalid password" 
+        message: "Invalid password"
       });
     }
 
@@ -580,10 +588,10 @@ exports.loginEmployee = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: "Server Error", 
-      error: error.message 
+      message: "Server Error",
+      error: error.message
     });
   }
 };
@@ -595,25 +603,25 @@ exports.assignLocation = async (req, res) => {
     const { locationId } = req.body;
 
     if (!employeeId || !locationId) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Employee ID and Location ID are required" 
+        message: "Employee ID and Location ID are required"
       });
     }
 
     const employee = await Employee.findOne({ employeeId });
     if (!employee) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Employee not found" 
+        message: "Employee not found"
       });
     }
 
     const location = await Location.findById(locationId);
     if (!location) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Location not found" 
+        message: "Location not found"
       });
     }
 
@@ -712,22 +720,22 @@ exports.getAssignedLocationByEmployeeId = async (req, res) => {
 exports.updateEmployee = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     console.log("🔄 Update request for employee ID:", id);
     console.log("📦 Update data received:", req.body);
 
     // Find employee first
     const existingEmployee = await Employee.findById(id);
     if (!existingEmployee) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Employee not found" 
+        message: "Employee not found"
       });
     }
 
     // Prepare update data - only update what's provided
     const updateData = { ...req.body };
-    
+
     // Remove empty or undefined values
     Object.keys(updateData).forEach(key => {
       if (updateData[key] === undefined || updateData[key] === '') {
@@ -760,10 +768,10 @@ exports.updateEmployee = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Update employee error:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: "Server error",
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -775,21 +783,21 @@ exports.deleteEmployee = async (req, res) => {
     const employee = await Employee.findByIdAndDelete(id);
 
     if (!employee) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Employee not found" 
+        message: "Employee not found"
       });
     }
 
-    res.json({ 
+    res.json({
       success: true,
-      message: "Employee deleted successfully" 
+      message: "Employee deleted successfully"
     });
   } catch (error) {
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: "Server Error", 
-      error: error.message 
+      message: "Server Error",
+      error: error.message
     });
   }
 };
@@ -799,18 +807,18 @@ exports.getEmployeeByPhone = async (req, res) => {
     const { phone } = req.query;
 
     if (!phone) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Phone number is required" 
+        message: "Phone number is required"
       });
     }
 
     const employee = await Employee.findOne({ phone });
 
     if (!employee) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Employee not found with this phone number" 
+        message: "Employee not found with this phone number"
       });
     }
 
@@ -821,10 +829,10 @@ exports.getEmployeeByPhone = async (req, res) => {
     });
   } catch (error) {
     console.error("Get employee by phone error:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: "Server error",
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -858,5 +866,263 @@ exports.getEmployeeAttendanceSummary = async (req, res) => {
       message: "Server error",
       error: error.message,
     });
+  }
+};
+// ✅ Submit Resignation Request
+exports.submitResignation = async (req, res) => {
+  try {
+    const { email, resignationLetter } = req.body;
+
+    if (!email || !resignationLetter) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and Resignation Letter are required"
+      });
+    }
+
+    // 1. Find employee to verify existence
+    const employee = await Employee.findOne({ email });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found"
+      });
+    }
+
+    // 2. Find existing JobApplication for this email
+    let application = await JobApplication.findOne({ email });
+
+    if (application) {
+      // Update existing application
+      application.resignationLetter = resignationLetter;
+      application.resignationSentAt = new Date();
+      application.resignationStatus = "Pending";
+      application.status = "Resigned";
+      await application.save();
+    } else {
+      // Find a JobPost to link to, or create a dummy one
+      let jobPost = await JobPost.findOne({ role: employee.role });
+
+      if (!jobPost) {
+        // Create a basic job post if none exists for this role to satisfy model requirements
+        jobPost = await JobPost.findOne(); // Just pick any existing one
+      }
+
+      // Create new application record for resignation tracking
+      application = new JobApplication({
+        jobId: jobPost ? jobPost._id : new mongoose.Types.ObjectId(), // Fallback to random if no jobs exist
+        firstName: employee.name.split(' ')[0],
+        lastName: employee.name.split(' ').slice(1).join(' ') || "",
+        email: employee.email,
+        mobile: employee.phone,
+        role: employee.role,
+        department: employee.department,
+        status: "Resigned",
+        resignationLetter: resignationLetter,
+        resignationSentAt: new Date(),
+        resignationStatus: "Pending"
+      });
+      await application.save();
+    }
+
+    // ✅ Log resignation activity
+    await logActivity({
+      userId: employee.employeeId,
+      userName: employee.name,
+      userEmail: employee.email,
+      userRole: "employee",
+      action: "resignation_filed",
+      actionDetails: `Employee filed a resignation request`,
+      ipAddress: req.ip || req.connection.remoteAddress,
+      metadata: {
+        department: employee.department,
+        role: employee.role,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Resignation submitted successfully",
+      data: application
+    });
+
+  } catch (error) {
+    console.error("Submit resignation error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message
+    });
+  }
+};
+
+// Add Employee Experience
+exports.addEmployeeExperience = async (req, res) => {
+  try {
+    const { employeeId, companyName, role, startDate, endDate, salary, location } = req.body;
+
+    if (!employeeId || !companyName || !role || !startDate || !salary || !location) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    const newExperienceData = {
+      employeeId,
+      companyName,
+      role,
+      startDate,
+      endDate: endDate || null,
+      salary,
+      location,
+    };
+
+    // Handle file uploads
+    if (req.files) {
+      if (req.files.offerLetter && req.files.offerLetter[0]) {
+        newExperienceData.offerLetter = req.files.offerLetter[0].path;
+      }
+      if (req.files.payslip && req.files.payslip[0]) {
+        newExperienceData.payslip = req.files.payslip[0].path;
+      }
+    }
+
+    const newExperience = new EmployeeExperience(newExperienceData);
+    await newExperience.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Experience added successfully",
+      data: newExperience
+    });
+
+  } catch (err) {
+    console.error("Add employee experience error:", err);
+    res.status(500).json({ success: false, message: "Failed to add experience", error: err.message });
+  }
+};
+
+// Get Employee Experiences
+exports.getEmployeeExperiences = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    if (!employeeId) {
+      return res.status(400).json({ success: false, message: "Employee ID is required" });
+    }
+
+    // Fetch employee to get their email
+    const employee = await Employee.findOne({ employeeId });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found" });
+    }
+
+    // 1. Fetch Employee Experiences
+    const employeeExperiences = await EmployeeExperience.find({ employeeId }).lean();
+    let allExperiences = [...employeeExperiences];
+
+    // 2. Try to find Candidate with same email and get Candidate Experiences
+    if (employee.email) {
+      const candidate = await Candidate.findOne({ email: employee.email });
+      if (candidate) {
+        const candidateExperiences = await CandidateExperience.find({ candidateId: candidate._id }).lean();
+
+        allExperiences = [...allExperiences, ...candidateExperiences];
+      }
+    }
+
+    // Sort by start date, newest first
+    allExperiences.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+
+    res.status(200).json({
+      success: true,
+      message: "Experiences retrieved successfully",
+      data: allExperiences
+    });
+  } catch (err) {
+    console.error("Get employee experiences error:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch experiences", error: err.message });
+  }
+};
+
+// Get Candidate Documents for an Employee
+exports.getEmployeeCandidateDocuments = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    if (!employeeId) {
+      return res.status(400).json({ success: false, message: "Employee ID is required" });
+    }
+
+    // Fetch employee to get their email
+    const employee = await Employee.findOne({ employeeId });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found" });
+    }
+
+    if (!employee.email) {
+      return res.status(404).json({ success: false, message: "Employee has no email to link documents" });
+    }
+
+    const candidate = await Candidate.findOne({ email: employee.email });
+    if (!candidate) {
+      return res.status(200).json({
+        success: true,
+        message: "No candidate profile linked to this employee's email",
+        noCandidate: true,
+        data: { documents: {} }
+      });
+    }
+
+    const documents = await CandidateDocuments.findOne({ candidateId: candidate._id });
+
+    res.status(200).json({
+      success: true,
+      message: "Candidate documents retrieved successfully",
+      data: documents || { documents: {} }
+    });
+  } catch (err) {
+    console.error("Get candidate documents error:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch candidate documents", error: err.message });
+  }
+};
+
+// Get Employment Letters (JobApplications) for an Employee
+exports.getEmployeeLetters = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    if (!employeeId) {
+      return res.status(400).json({ success: false, message: "Employee ID is required" });
+    }
+
+    // 1. Fetch employee to get their email
+    const employee = await Employee.findOne({ employeeId });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found" });
+    }
+
+    if (!employee.email) {
+      return res.status(200).json({
+        success: true,
+        message: "Employee has no email for letter retrieval",
+        data: []
+      });
+    }
+
+    // 2. Find all JobApplications for this email that have letters or are pertinent
+    const letters = await JobApplication.find({
+      email: employee.email,
+      $or: [
+        { offerLetter: { $ne: "" } },
+        { adminAttachment: { $ne: "" } },
+        { status: "Resigned" },
+        { documentHistory: { $exists: true, $ne: [] } }
+      ]
+    }).populate("jobId", "role department");
+
+    res.status(200).json({
+      success: true,
+      message: "Letters retrieved successfully",
+      data: letters
+    });
+  } catch (err) {
+    console.error("Get employee letters error:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch letters", error: err.message });
   }
 };

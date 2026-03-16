@@ -70,6 +70,48 @@
 
 
 const express = require("express");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+
+// Ensure upload directory exists for employee experiences
+const uploadDir = path.join(__dirname, "../uploads/employee-experience");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// Configure Multer for document uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type not allowed. Allowed types: PDF, JPG, PNG, DOC, DOCX`));
+    }
+  }
+});
+
 const {
   addEmployee,
   getEmployees,
@@ -81,6 +123,11 @@ const {
   getAssignedLocationByEmployeeId,
   updateEmployee,
   deleteEmployee,
+  submitResignation, // ✅ New method
+  addEmployeeExperience,
+  getEmployeeExperiences,
+  getEmployeeCandidateDocuments,
+  getEmployeeLetters, // ✅ New method
 } = require("../controller/employee.controller");
 
 const router = express.Router();
@@ -112,5 +159,18 @@ router.put("/update/:id", updateEmployee);
 
 // ✅ Delete employee
 router.delete("/delete-employee/:id", deleteEmployee);
+
+// ✅ Submit resignation (NEW)
+router.post("/submit-resignation", submitResignation);
+
+// ✅ Employee Experience Routes (NEW)
+router.post(
+  "/experience",
+  upload.fields([{ name: 'offerLetter', maxCount: 1 }, { name: 'payslip', maxCount: 1 }]),
+  addEmployeeExperience
+);
+router.get("/experience/:employeeId", getEmployeeExperiences);
+router.get("/candidate-documents/:employeeId", getEmployeeCandidateDocuments);
+router.get("/letters/:employeeId", getEmployeeLetters);
 
 module.exports = router;

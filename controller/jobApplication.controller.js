@@ -3,107 +3,6 @@ const JobPost = require("../models/jobPost");
 const fs = require('fs');
 const mongoose = require("mongoose");
 
-
-// Submit Job Application
-// const submitApplication = async (req, res) => {
-//     let newApplication;
-//     try {
-//         const {
-//             jobId,
-//             firstName,
-//             lastName,
-//             email,
-//             mobile,
-//             dob,
-//             gender,
-//             highestQualification,
-//             experience,
-//             currentCTC,
-//             expectedCTC,
-//             noticePeriod,
-//             currentLocation,
-//             skills,
-//             percentage,
-//             passingYear,
-//             address,
-//             dateOfJoining,
-//             currentCompany,
-//             candidateId
-//         } = req.body;
-
-//         console.log(`[DEBUG] Received Application for JobID: ${jobId}`);
-//         // ... (logs)
-
-
-
-//         // Verify if Job exists
-//         const job = await JobPost.findById(jobId);
-//         if (!job) {
-//             console.error(`[ERROR] Job not found for ID: ${jobId}`);
-//             return res.status(404).json({ success: false, message: `Job post not found in database for ID: ${jobId}` });
-//         }
-
-//         // Optional: Check if candidate has already applied (if candidateId is provided)
-//         const sanitizedCandidateId = candidateId && candidateId !== 'undefined' ? candidateId : null;
-
-//         if (sanitizedCandidateId) {
-//             const existingApp = await JobApplication.findOne({ jobId, candidateId: sanitizedCandidateId });
-//             if (existingApp) return res.status(400).json({ message: "You have already applied for this job." });
-//         }
-
-//         newApplication = new JobApplication({
-//             jobId,
-//             firstName,
-//             lastName,
-//             email,
-//             mobile,
-//             dob,
-//             gender,
-//             highestQualification,
-//             experience,
-//             currentCTC,
-//             expectedCTC,
-//             noticePeriod,
-//             currentLocation,
-//             skills,
-//             percentage,
-//             passingYear,
-//             address,
-//             dateOfJoining,
-//             currentCompany,
-//             resume: req.file ? (req.file.path.includes("uploads") ? "uploads/" + req.file.path.split(/uploads[\\/]/).pop().replace(/\\/g, "/") : req.file.path.replace(/\\/g, "/")) : null, // Store relative path
-//             candidateId: sanitizedCandidateId
-//         });
-
-
-//         await newApplication.save();
-
-//         res.status(201).json({
-//             success: true,
-//             message: "Job application submitted successfully",
-//             application: newApplication,
-//             applicationId: newApplication._id
-//         });
-//     } catch (error) {
-//         console.error("=== APPLICATION SUBMISSION ERROR ===");
-//         console.error("Error Message:", error.message);
-//         console.error("Error Stack:", error.stack);
-
-//         // Return full error details to client for debugging
-//         res.status(500).json({
-//             success: false,
-//             message: error.message,
-//             stack: error.stack,
-//             validation: error.errors ? Object.keys(error.errors).map(key => ({
-//                 field: key,
-//                 message: error.errors[key].message
-//             })) : null,
-//             bodyReceived: req.body
-//         });
-//     }
-
-// };
-
 const submitApplication = async (req, res) => {
     try {
         console.log("[DEBUG] Submit Application Body:", req.body);
@@ -214,7 +113,14 @@ const submitApplication = async (req, res) => {
 const getAllApplications = async (req, res) => {
     try {
         const applications = await JobApplication.find()
-            .populate("jobId", "role")
+            .populate({
+                path: "jobId",
+                select: "role assessmentIds",
+                populate: {
+                    path: "assessmentIds",
+                    select: "title duration"
+                }
+            })
             .populate("candidateId", "name email phone")
             .populate("assessmentResults.quizId", "title questions")
             .sort({ appliedAt: -1 });
@@ -483,7 +389,14 @@ const getApplicationById = async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid Application ID" });
         }
 
-        const application = await JobApplication.findById(applicationId).populate("jobId", "role");
+        const application = await JobApplication.findById(applicationId).populate({
+            path: "jobId",
+            select: "role assessmentIds",
+            populate: {
+                path: "assessmentIds",
+                select: "title duration"
+            }
+        });
 
         if (!application) {
             console.error(`[ERROR] Application not found for ID: ${applicationId}`);
@@ -556,7 +469,7 @@ const getApplicationsWithDocuments = async (req, res) => {
 // Get Recruitment Statistics
 const getRecruitmentStats = async (req, res) => {
     try {
-        const { role, statusRole, scoreRole } = req.query;
+        const { role, statusRole, scoreRole, tatRole, trendRole, trendMonth } = req.query;
 
         // Helper function to get jobIds by role name
         const getJobIdsByRole = async (roleName) => {
@@ -568,21 +481,20 @@ const getRecruitmentStats = async (req, res) => {
         const globalJobIds = await getJobIdsByRole(role);
         const statusJobIds = await getJobIdsByRole(statusRole || role);
         const scoreJobIds = await getJobIdsByRole(scoreRole || role);
+        const tatJobIds = await getJobIdsByRole(tatRole || role);
 
-        // Build robust filter helper
+        // Build filter: if a role is selected and we found matching jobIds, filter by those.
+        // If no jobIds found for a role, return a filter that matches nothing (to avoid showing all data).
         const buildFilter = (jobIds, roleName) => {
-            if (!jobIds && (!roleName || roleName === "All")) return {};
-            const filter = { $or: [] };
-            if (jobIds && jobIds.length > 0) filter.$or.push({ jobId: { $in: jobIds } });
-            if (roleName && roleName !== "All") {
-                filter.$or.push({ role: { $regex: new RegExp(`^${roleName.trim()}$`, "i") } });
-            }
-            return filter.$or.length > 0 ? filter : {};
+            if (!roleName || roleName === "All") return {}; // No role filter = show all
+            if (!jobIds || jobIds.length === 0) return { jobId: { $in: [] } }; // Role found no jobs = show nothing
+            return { jobId: { $in: jobIds } };
         };
 
         const globalFilter = buildFilter(globalJobIds, role);
         const statusFilter = buildFilter(statusJobIds, statusRole || role);
         const scoreFilter = buildFilter(scoreJobIds, scoreRole || role);
+        const tatFilter = buildFilter(tatJobIds, tatRole || role);
 
         const totalApplicants = await JobApplication.countDocuments(globalFilter);
         const selected = await JobApplication.countDocuments({ ...globalFilter, status: "Selected" });
@@ -592,7 +504,7 @@ const getRecruitmentStats = async (req, res) => {
             status: { $in: ["Interview", "Shortlisted", "Invited", "Assessment"] }
         });
 
-        const availableRoles = await JobPost.distinct("role", { status: "active" });
+        const availableRoles = (await JobPost.distinct("role")).filter(Boolean).sort();
 
         // 1. Status Breakdown (for Pie Chart)
         const statusAggregation = await JobApplication.aggregate([
@@ -601,33 +513,60 @@ const getRecruitmentStats = async (req, res) => {
             { $project: { name: "$_id", value: 1, _id: 0 } }
         ]);
 
-        // 2. Monthly Trend (for last 6 months)
-        const sixMonthsAgo = new Date();
-        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
-        sixMonthsAgo.setDate(1);
-        sixMonthsAgo.setHours(0, 0, 0, 0);
+        const trendJobIds = await getJobIdsByRole(trendRole || role);
+        const trendFilter = buildFilter(trendJobIds, trendRole || role);
 
-        const trendAggregation = await JobApplication.aggregate([
-            { $match: { ...globalFilter, appliedAt: { $gte: sixMonthsAgo } } },
-            {
-                $group: {
-                    _id: {
-                        month: { $month: "$appliedAt" },
-                        year: { $year: "$appliedAt" }
-                    },
-                    avgScore: { $avg: { $ifNull: ["$technicalScore", 0] } },
-                    count: { $sum: 1 }
-                }
-            },
-            { $sort: { "_id.year": 1, "_id.month": 1 } }
-        ]);
-
+        // 2. Monthly Trend (default: last 6 months, or daily if trendMonth=YYYY-MM)
+        let monthlyTrend = [];
         const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        const monthlyTrend = trendAggregation.map(item => ({
-            name: `${months[item._id.month - 1]} ${item._id.year}`,
-            avgScore: Math.round(item.avgScore || 0),
-            count: item.count
-        }));
+
+        if (trendMonth) {
+            // Daily view for the selected month
+            const [yr, mo] = trendMonth.split("-").map(Number);
+            const startOfMonth = new Date(yr, mo - 1, 1);
+            const endOfMonth = new Date(yr, mo, 1);
+
+            const dailyAgg = await JobApplication.aggregate([
+                { $match: { ...trendFilter, appliedAt: { $gte: startOfMonth, $lt: endOfMonth } } },
+                {
+                    $group: {
+                        _id: { day: { $dayOfMonth: "$appliedAt" } },
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { "_id.day": 1 } }
+            ]);
+            monthlyTrend = dailyAgg.map(item => ({
+                name: `${item._id.day} ${months[mo - 1]}`,
+                count: item.count
+            }));
+        } else {
+            // Default 6-month aggregate view
+            const sixMonthsAgo = new Date();
+            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+            sixMonthsAgo.setDate(1);
+            sixMonthsAgo.setHours(0, 0, 0, 0);
+
+            const trendAggregation = await JobApplication.aggregate([
+                { $match: { ...trendFilter, appliedAt: { $gte: sixMonthsAgo } } },
+                {
+                    $group: {
+                        _id: {
+                            month: { $month: "$appliedAt" },
+                            year: { $year: "$appliedAt" }
+                        },
+                        avgScore: { $avg: { $ifNull: ["$technicalScore", 0] } },
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { "_id.year": 1, "_id.month": 1 } }
+            ]);
+            monthlyTrend = trendAggregation.map(item => ({
+                name: `${months[item._id.month - 1]} ${item._id.year}`,
+                avgScore: Math.round(item.avgScore || 0),
+                count: item.count
+            }));
+        }
 
         // 3. Score Distribution (Buckets)
         const scoreDistribution = await JobApplication.aggregate([
@@ -671,6 +610,37 @@ const getRecruitmentStats = async (req, res) => {
             score90plus: await JobApplication.countDocuments({ ...globalFilter, technicalScore: { $gte: 90 } })
         };
 
+        // 5. TAT (Turnaround Time) Distribution - Candidate-wise
+        const tatQuery = {
+            ...tatFilter,
+            status: { $in: ["Selected", "Hired"] }
+        };
+
+        console.log("[DEBUG] TAT Query:", JSON.stringify(tatQuery));
+        const tatApps = await JobApplication.find(tatQuery, "firstName lastName appliedAt createdAt offerSentAt updatedAt")
+            .sort({ updatedAt: -1 })
+            .limit(20);
+
+        console.log(`[DEBUG] Found ${tatApps.length} candidates for TAT`);
+
+        const tatDistribution = tatApps.map(app => {
+            const startDate = app.appliedAt || app.createdAt;
+            const endDate = app.offerSentAt || app.updatedAt;
+            let diffDays = 0;
+
+            if (startDate && endDate && !isNaN(new Date(startDate)) && !isNaN(new Date(endDate))) {
+                const diffTime = Math.abs(new Date(endDate) - new Date(startDate));
+                diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            }
+
+            return {
+                name: `${app.firstName} ${app.lastName}`,
+                appliedAt: startDate,
+                offerSentAt: endDate,
+                days: diffDays
+            };
+        }).sort((a, b) => b.days - a.days);
+
         res.status(200).json({
             success: true,
             stats: {
@@ -682,6 +652,7 @@ const getRecruitmentStats = async (req, res) => {
                 monthlyTrend,
                 scoreDistribution,
                 qualityMetrics,
+                tatDistribution,
                 availableRoles
             }
         });
