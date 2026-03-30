@@ -1,11 +1,32 @@
+// const mongoose = require("mongoose");
+
+// const leaveSchema = new mongoose.Schema(
+//   {
+//     employeeId: { type: String, required: true }, // keep as string if you are not using ObjectId
+//     employeeName: { type: String, required: true }, // ✅ add this
+//     leaveType: { type: String, required: true },
+//     startDate: { type: String, required: true }, // ✅ change Date → String (to match frontend)
+//     endDate: { type: String, required: true },
+//     days: { type: Number, required: true },
+//     reason: { type: String, required: true },
+//     status: { type: String, default: "pending" },
+//     appliedDate: { type: Date, default: Date.now },
+//     approvedDate: { type: Date },
+//     comments: { type: String },
+//   },
+//   { timestamps: true }
+// );
+
+// module.exports = mongoose.model("Leave", leaveSchema);
+
 const mongoose = require("mongoose");
 
 const leaveSchema = new mongoose.Schema(
   {
-    employeeId: { type: String, required: true }, // keep as string if you are not using ObjectId
-    employeeName: { type: String, required: true }, // ✅ add this
+    employeeId: { type: String, required: true },
+    employeeName: { type: String, required: true },
     leaveType: { type: String, required: true },
-    startDate: { type: String, required: true }, // ✅ change Date → String (to match frontend)
+    startDate: { type: String, required: true },
     endDate: { type: String, required: true },
     days: { type: Number, required: true },
     reason: { type: String, required: true },
@@ -13,6 +34,17 @@ const leaveSchema = new mongoose.Schema(
     appliedDate: { type: Date, default: Date.now },
     approvedDate: { type: Date },
     comments: { type: String },
+    
+    // ✅ New fields for comp-off
+    isConvertedToCompOff: { 
+      type: Boolean, 
+      default: false 
+    },
+    compOffId: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: "CompOff" 
+    },
+    convertedDate: Date,
   },
   { timestamps: true }
 );

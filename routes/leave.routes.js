@@ -1,3 +1,29 @@
+// const express = require("express");
+// const router = express.Router();
+// const {
+//   addLeave,
+//   getLeaves,
+//   updateLeaveStatus,
+//   getPendingLeaves,
+//   getLeavesByEmployee,
+// } = require("../controller/leave.controller");
+
+// // ✅ Add Leave
+// router.post("/add-leave", addLeave);
+
+// // ✅ Get All Leaves
+// router.get("/leaves", getLeaves);
+// router.get("/employeeleaves/:employeeId", getLeavesByEmployee);
+// router.get("/pendingleaves", getPendingLeaves);
+
+
+// // ✅ Approve / Reject
+// router.put("/updateleaves/:id", updateLeaveStatus);
+
+// module.exports = router;
+
+
+
 const express = require("express");
 const router = express.Router();
 const {
@@ -6,6 +32,7 @@ const {
   updateLeaveStatus,
   getPendingLeaves,
   getLeavesByEmployee,
+  getLeavesWithStatus,  // ✅ New function
 } = require("../controller/leave.controller");
 
 // ✅ Add Leave
@@ -15,9 +42,9 @@ router.post("/add-leave", addLeave);
 router.get("/leaves", getLeaves);
 router.get("/employeeleaves/:employeeId", getLeavesByEmployee);
 router.get("/pendingleaves", getPendingLeaves);
+router.get("/leaves-with-status", getLeavesWithStatus);  // ✅ New route
 
-
-// ✅ Approve / Reject
+// ✅ Approve / Reject / Update
 router.put("/updateleaves/:id", updateLeaveStatus);
 
 module.exports = router;
