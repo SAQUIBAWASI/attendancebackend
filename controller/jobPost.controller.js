@@ -15,6 +15,8 @@ const createJobPost = async (req, res) => {
       description,
       skills,
       assessmentIds,
+      department,
+      vacancies,
     } = req.body;
 
     if (!role || !salary || !experience || !location || !description || !skills) {
@@ -28,6 +30,8 @@ const createJobPost = async (req, res) => {
     const link = `/jobs/${uniqueId}`;
 
     const jobPost = await JobPost.create({
+      department: department || "General",
+      vacancies: vacancies || 1,
       role,
       salary,
       experience,
@@ -109,6 +113,8 @@ const updateJobPost = async (req, res) => {
     const updatedJob = await JobPost.findByIdAndUpdate(
       id,
       {
+        department: req.body.department,
+        vacancies: req.body.vacancies,
         role: req.body.role,
         salary: req.body.salary,
         experience: req.body.experience,

@@ -49,13 +49,16 @@ const {
   getSalaries,
   checkMonthData,
   updateWeekOffConfig,
-  updatePayrollDetails
+  updatePayrollDetails,
+  getWeekOffConfig,
+  getEditedAttendanceRecords
 } = require("../controller/attendanceSummary.controller");
 
 // 📊 Attendance Summary Routes
 router.post("/save", saveSummary);
 router.get("/get", getSummary);
 router.post("/calculate", calculateSummary);
+router.get("/edited-records", getEditedAttendanceRecords);
 
 // 👥 Employee Details Routes
 router.get("/employee-details", getEmployeeDetails);

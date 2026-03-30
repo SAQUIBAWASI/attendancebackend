@@ -198,7 +198,7 @@ const checkCandidateExists = async (req, res) => {
 exports.uploadPersonalDocuments = async (req, res) => {
     try {
         const candidateId = req.candidate?.id;
-        const documentType = req.body.documentType;
+        const documentType = req.body.documentType || req.body.type;
 
         if (!candidateId) {
             return res.status(400).json({ success: false, message: "Candidate ID not found in token" });
@@ -238,6 +238,8 @@ exports.uploadPersonalDocuments = async (req, res) => {
         candDocs.documents[documentType] = {
             fileName: req.file.originalname,
             filePath: req.file.path,
+            url: req.file.path,
+            status: "Pending",
             uploadedAt: new Date(),
             verified: false
         };
@@ -302,6 +304,15 @@ exports.getPersonalDocuments = async (req, res) => {
                 documents: {}
             });
             await candDocs.save();
+        }
+
+        if (candDocs && candDocs.documents) {
+            const types = ['aadharCard', 'panCard', 'tenthCertificate', 'twelfthCertificate', 'graduationCertificate', 'experienceLetters', 'passportPhoto'];
+            types.forEach(type => {
+                if (candDocs.documents[type] && candDocs.documents[type].filePath && !candDocs.documents[type].url) {
+                    candDocs.documents[type].url = candDocs.documents[type].filePath;
+                }
+            });
         }
 
         res.status(200).json({
@@ -502,6 +513,94 @@ exports.saveEmergencyContact = async (req, res) => {
     } catch (err) {
         console.error("Save emergency contact error:", err);
         res.status(500).json({ success: false, message: "Failed to save emergency contact", error: err.message });
+    }
+};
+
+// Update Document Details (Generic for Bank/Emergency) - Used by Recruitment Frontend
+exports.updateCandidateDocumentDetails = async (req, res) => {
+    try {
+        const candidateId = req.candidate?.id;
+        const { bankDetails, emergencyContact1, emergencyContact2 } = req.body;
+
+        if (!candidateId) {
+            return res.status(400).json({ success: false, message: "Candidate ID not found in token" });
+        }
+
+        // Get candidate's email for reference
+        const candidate = await (require("../models/Candidate")).findById(candidateId);
+        if (!candidate) {
+            return res.status(404).json({ success: false, message: "Candidate not found" });
+        }
+
+        let candDocs = await (require("../models/CandidateDocuments")).findOne({ candidateId });
+
+        if (!candDocs) {
+            candDocs = new (require("../models/CandidateDocuments"))({
+                candidateId,
+                email: candidate.email,
+                documents: {}
+            });
+        }
+
+        // Update Bank Details if present
+        if (bankDetails) {
+            candDocs.documents.bankDetails = {
+                bankName: bankDetails.bankName,
+                accountNumber: bankDetails.accountNumber,
+                ifscCode: bankDetails.ifscCode,
+                uploadedAt: new Date(),
+                verified: false
+            };
+        }
+
+        // Update Emergency Contact 1 if present
+        if (emergencyContact1) {
+            candDocs.documents.emergencyContact1 = {
+                name: emergencyContact1.name,
+                phone: emergencyContact1.phone,
+                relationship: emergencyContact1.relationship,
+                uploadedAt: new Date(),
+                verified: false
+            };
+        }
+
+        // Update Emergency Contact 2 if present
+        if (emergencyContact2) {
+            candDocs.documents.emergencyContact2 = {
+                name: emergencyContact2.name,
+                phone: emergencyContact2.phone,
+                relationship: emergencyContact2.relationship,
+                uploadedAt: new Date(),
+                verified: false
+            };
+        }
+
+        // Calculate completion percentage
+        let completedFields = 0;
+        const docFields = [
+            "aadharCard", "panCard", "tenthCertificate",
+            "twelfthCertificate", "graduationCertificate",
+            "passportPhoto", "bankDetails", "emergencyContact1", "emergencyContact2"
+        ];
+
+        docFields.forEach(field => {
+            if (candDocs.documents[field] && (candDocs.documents[field].fileName || candDocs.documents[field].bankName || candDocs.documents[field].name)) {
+                completedFields++;
+            }
+        });
+
+        candDocs.completionPercentage = Math.round((completedFields / docFields.length) * 100);
+
+        await candDocs.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Candidate document details updated successfully",
+            data: candDocs
+        });
+    } catch (err) {
+        console.error("Update candidate document details error:", err);
+        res.status(500).json({ success: false, message: "Failed to update details", error: err.message });
     }
 };
 
@@ -731,6 +830,7 @@ module.exports = {
     getCandidateDocumentsById: exports.getCandidateDocumentsById,
     saveBankDetails: exports.saveBankDetails,
     saveEmergencyContact: exports.saveEmergencyContact,
+    updateCandidateDocumentDetails: exports.updateCandidateDocumentDetails,
     submitResignation: exports.submitResignation,
     confirmInterview: exports.confirmInterview,
     addCandidateExperience: exports.addCandidateExperience,

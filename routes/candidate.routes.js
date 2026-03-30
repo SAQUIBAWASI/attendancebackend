@@ -143,4 +143,13 @@ router.get("/experience", candidateAuth, candidateController.getCandidateExperie
 // @access  Public (matching existing admin patterns)
 router.get("/all-experiences", candidateController.getAllCandidateExperiences);
 
+// Recruitment Frontend Compatibility Routes
+router.post(
+    "/documents/upload",
+    candidateAuth,
+    upload.single("document"),
+    candidateController.uploadPersonalDocuments
+);
+router.put("/documents/details", candidateAuth, candidateController.updateCandidateDocumentDetails);
+
 module.exports = router;

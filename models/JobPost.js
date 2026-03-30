@@ -2,6 +2,16 @@ const mongoose = require("mongoose");
 
 const jobPostSchema = new mongoose.Schema(
   {
+    department: {
+      type: String,
+      default: "General",
+      trim: true,
+    },
+    vacancies: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
     role: {
       type: String,
       required: true,

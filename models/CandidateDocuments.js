@@ -15,42 +15,56 @@ const candidateDocumentsSchema = new mongoose.Schema({
         aadharCard: {
             fileName: String,
             filePath: String,
+            url: String,
+            status: { type: String, default: "Pending" },
             uploadedAt: Date,
             verified: { type: Boolean, default: false }
         },
         panCard: {
             fileName: String,
             filePath: String,
+            url: String,
+            status: { type: String, default: "Pending" },
             uploadedAt: Date,
             verified: { type: Boolean, default: false }
         },
         tenthCertificate: {
             fileName: String,
             filePath: String,
+            url: String,
+            status: { type: String, default: "Pending" },
             uploadedAt: Date,
             verified: { type: Boolean, default: false }
         },
         twelfthCertificate: {
             fileName: String,
             filePath: String,
+            url: String,
+            status: { type: String, default: "Pending" },
             uploadedAt: Date,
             verified: { type: Boolean, default: false }
         },
         graduationCertificate: {
             fileName: String,
             filePath: String,
+            url: String,
+            status: { type: String, default: "Pending" },
             uploadedAt: Date,
             verified: { type: Boolean, default: false }
         },
         experienceLetters: {
             fileName: String,
             filePath: String,
+            url: String,
+            status: { type: String, default: "Pending" },
             uploadedAt: Date,
             verified: { type: Boolean, default: false }
         },
         passportPhoto: {
             fileName: String,
             filePath: String,
+            url: String,
+            status: { type: String, default: "Pending" },
             uploadedAt: Date,
             verified: { type: Boolean, default: false }
         },

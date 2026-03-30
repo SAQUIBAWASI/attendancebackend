@@ -136,6 +136,8 @@ app.use("/api/notifications", require("./routes/notification.routes"));
 app.use("/api/department", require("./routes/department.routes"));
 app.use("/api/roles", require("./routes/role.routes"));
 app.use("/api/permissions", require("./routes/permission.routes"));
+app.use("/api/attendance-edit-requests", require("./routes/attendanceEditRequest.routes"));
+app.use("/api/medical-certificates", require("./routes/medicalCertificate.routes"));
 
 // ============================================
 // ✅ Default Route
@@ -158,7 +160,7 @@ app.get("/", (req, res) => {
 
 app.use((req, res) => {
   console.log(`[WARNING] Unhandled 404 Request: ${req.method} ${req.url}`);
-  res.status(404).json({ success: false, message: "Route not found" });
+  res.status(404).json({ success: false, message: "Route not found [TAG_5001_B]" });
 });
 
 // ============================================

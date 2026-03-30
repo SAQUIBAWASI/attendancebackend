@@ -10798,3 +10798,48 @@ exports.updatePayrollDetails = async (req, res) => {
     });
   }
 };
+
+/**
+ * 📌 Get Edited Attendance Records (Regularized)
+ */
+exports.getEditedAttendanceRecords = async (req, res) => {
+  try {
+    const { month, date } = req.query;
+    let query = {
+      $and: [
+          { $or: [
+            { comment: { $exists: true, $ne: "" } }, 
+            { reason: { $exists: true, $nin: ["Onsite", "Work From Home", "No reason provided", "checked-in", ""] } }
+          ]}
+      ]
+    };
+
+    if (date) {
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+      query.checkInTime = { $gte: start, $lte: end };
+    } else if (month) {
+      const [year, monthNum] = month.split('-').map(Number);
+      const start = new Date(year, monthNum - 1, 1);
+      const end = new Date(year, monthNum, 0, 23, 59, 59, 999);
+      query.checkInTime = { $gte: start, $lte: end };
+    }
+
+    const records = await Attendance.find(query).sort({ checkInTime: -1 });
+    
+    res.json({
+      success: true,
+      data: records,
+      count: records.length
+    });
+  } catch (error) {
+    console.error('❌ Error fetching edited records:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching edited records',
+      error: error.message
+    });
+  }
+};
