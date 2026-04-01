@@ -1627,45 +1627,88 @@ exports.getAttendanceSummary = async (req, res) => {
 
 exports.updateAttendance = async (req, res) => {
   try {
-    const { attendanceId, hours, reason } = req.body;
+    const { attendanceId, employeeId, date, checkInTime, checkOutTime, hours, reason, comment } = req.body;
 
-    // Basic validation
-    if (!attendanceId || !hours || !reason) {
+    // If attendanceId is provided, we update the existing record
+    if (attendanceId) {
+      // Find the existing record to maintain any fields not being updated, though we'll directly update what's passed
+      const updateData = {
+        updatedAt: new Date()
+      };
+
+      if (hours !== undefined) updateData.totalHours = parseFloat(hours) || 0;
+      if (reason !== undefined) updateData.reason = reason;
+      if (comment !== undefined) updateData.comment = comment;
+      
+      // Update checkInTime and checkOutTime if provided
+      if (checkInTime) {
+        updateData.checkInTime = new Date(checkInTime);
+      }
+      if (checkOutTime) {
+        updateData.checkOutTime = new Date(checkOutTime);
+      }
+
+      const updatedAttendance = await Attendance.findByIdAndUpdate(
+        attendanceId,
+        updateData,
+        { new: true }
+      );
+
+      if (!updatedAttendance) {
+        return res.status(404).json({
+          success: false,
+          message: 'Attendance record not found'
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Attendance updated successfully',
+        data: updatedAttendance
+      });
+    } 
+    
+    // If no attendanceId, but we have employeeId, checkInTime, etc. - Create a missing record
+    else if (employeeId && checkInTime) {
+      // Find employee to get email/name
+      const Employee = require("../models/Employee");
+      const employee = await Employee.findOne({ employeeId });
+      
+      const newAttendance = await Attendance.create({
+        employeeId: employeeId,
+        employeeEmail: employee ? employee.email : "",
+        name: employee ? employee.name : "",
+        checkInTime: new Date(checkInTime),
+        checkOutTime: checkOutTime ? new Date(checkOutTime) : null,
+        totalHours: parseFloat(hours) || 0,
+        reason: reason || "",
+        comment: comment || "",
+        status: checkOutTime ? "checked-out" : "checked-in",
+        // Default other fields appropriate for manual entry
+        onsite: reason === "Onsite",
+        distance: 0
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: 'Missing attendance record created successfully',
+        data: newAttendance
+      });
+    } 
+    
+    // Invalid request
+    else {
       return res.status(400).json({
         success: false,
-        message: 'attendanceId, hours and reason are required'
+        message: 'Provide either attendanceId for update, or employeeId and checkInTime for creation'
       });
     }
-
-    // Update totalHours and reason in database
-    const updatedAttendance = await Attendance.findByIdAndUpdate(
-      attendanceId,
-      {
-        totalHours: parseFloat(hours),
-        reason: reason,
-        updatedAt: new Date()
-      },
-      { new: true }
-    );
-
-    if (!updatedAttendance) {
-      return res.status(404).json({
-        success: false,
-        message: 'Attendance record not found'
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'Hours and reason updated successfully',
-      data: updatedAttendance
-    });
 
   } catch (error) {
-    console.error('Error updating hours:', error);
+    console.error('Error updating/creating attendance:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Server error: ' + error.message
     });
   }
 };

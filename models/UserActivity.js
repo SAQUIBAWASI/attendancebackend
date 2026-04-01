@@ -22,14 +22,6 @@ const userActivitySchema = new mongoose.Schema(
         },
         action: {
             type: String,
-            enum: [
-                "login",
-                "logout",
-                "leave_apply",
-                "leave_approve",
-                "leave_reject",
-                "payslip_download",
-            ],
             required: true,
             index: true, // Index for filtering by action
         },
