@@ -82,3 +82,58 @@ exports.getAllCertificates = async (req, res) => {
     res.status(500).json({ success: false, message: "Internal server error", error: error.message });
   }
 };
+
+const Notification = require("../models/Notification");
+
+exports.sendReminder = async (req, res) => {
+  try {
+    const { recipientId, message } = req.body;
+
+    if (!recipientId || !message) {
+      return res.status(400).json({ success: false, message: "Recipient ID and message are required" });
+    }
+
+    // Align with Attendance Backend Notification model
+    const newNotification = new Notification({
+      userId: recipientId,
+      role: "employee", // Default for medical reminders
+      title: "Medical Certificate Re-upload",
+      message,
+      type: "medical_reminder"
+    });
+
+    await newNotification.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Reminder sent successfully",
+      data: newNotification,
+    });
+  } catch (error) {
+    console.error("Send Reminder Error:", error);
+    res.status(500).json({ success: false, message: "Internal server error", error: error.message });
+  }
+};
+
+exports.getNotifications = async (req, res) => {
+  try {
+    const { recipientId } = req.params;
+
+    if (!recipientId) {
+      return res.status(400).json({ success: false, message: "Recipient ID is required" });
+    }
+
+    // Search by either userId OR recipientId to be safe across models
+    const notifications = await Notification.find({ 
+      $or: [{ userId: recipientId }, { recipientId: recipientId }] 
+    }).sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: notifications,
+    });
+  } catch (error) {
+    console.error("Get Notifications Error:", error);
+    res.status(500).json({ success: false, message: "Internal server error", error: error.message });
+  }
+};

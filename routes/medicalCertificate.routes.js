@@ -6,6 +6,8 @@ const {
   uploadCertificate,
   getEmployeeCertificates,
   getAllCertificates,
+  sendReminder,
+  getNotifications,
 } = require("../controller/medicalCertificate.controller");
 
 const router = express.Router();
@@ -44,5 +46,7 @@ const upload = multer({
 router.post("/upload", upload.single("document"), uploadCertificate);
 router.get("/employee/:employeeId", getEmployeeCertificates);
 router.get("/all", getAllCertificates);
+router.post("/remind", sendReminder);
+router.get("/notifications/:recipientId", getNotifications);
 
 module.exports = router;
