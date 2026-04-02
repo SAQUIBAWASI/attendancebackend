@@ -288,6 +288,7 @@ app.use("/api/attendancesummary", require("./routes/attendancesummary.routes"));
 app.use("/api/salary", require("./routes/salary.routes"));
 app.use("/api/user-activity", require("./routes/userActivity.routes"));
 app.use("/api/expense", require("./routes/expense.routes"));
+app.use("/api/holidays", require("./routes/holiday.routes"));
 
 // ✅ Client Requests
 app.use("/api/client-requests", require("./routes/clientRequest.routes"));
@@ -331,6 +332,7 @@ app.get("/", (req, res) => {
       shifts: "/api/shifts",
       location: "/api/location",
       salary: "/api/salary",
+      holidays: "/api/holidays",
       attendance: {
         checkin: "POST /api/attendance/checkin",
         checkout: "POST /api/attendance/checkout",
