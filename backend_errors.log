@@ -136,3 +136,399 @@ Error Stack: Error: Not allowed by CORS
 URL: /api/admin/login
 Method: OPTIONS
 ===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T08:07:42.274Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/clients/allclient
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T08:07:42.292Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/clients/products
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T08:07:42.305Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/coupons/allcoupons
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T08:48:03.812Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/clients/products
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T08:48:03.957Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/clients/allclient
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T08:48:04.027Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/coupons/allcoupons
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T11:59:27.232Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/attendancesummary/get?month=2026-04
+Method: GET
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T11:59:27.346Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/attendancesummary/getsalaries?month=2026-04
+Method: GET
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T11:59:27.403Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/employees/get-employees
+Method: GET
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T11:59:27.440Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/leaves/leaves?status=approved
+Method: GET
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T11:59:27.508Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/leaves/comp-offs
+Method: GET
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T11:59:32.115Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/attendancesummary/get?month=2026-04
+Method: GET
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T11:59:32.150Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/attendancesummary/getsalaries?month=2026-04
+Method: GET
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T11:59:32.247Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/employees/get-employees
+Method: GET
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T11:59:32.294Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/leaves/leaves?status=approved
+Method: GET
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-02T11:59:32.421Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/leaves/comp-offs
+Method: GET
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-03T11:50:32.958Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/clients/allclient
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-03T11:50:34.296Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/clients/products
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-03T11:50:34.375Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/coupons/allcoupons
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-03T11:50:34.394Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/clients/allclient
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-03T11:50:34.414Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/clients/products
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-04-03T11:50:34.455Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\TM\attendancebackend\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/coupons/allcoupons
+Method: OPTIONS
+===========================

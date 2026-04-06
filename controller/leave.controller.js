@@ -350,7 +350,7 @@ exports.getPendingLeaves = async (req, res) => {
 exports.updateLeaveStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, adminName, adminEmail, isConvertedToCompOff, compOffId } = req.body;
+    const { status, adminName, adminEmail, adminRole, isConvertedToCompOff, compOffId } = req.body;
 
     const updateData = { 
       updatedAt: new Date() 
@@ -359,6 +359,8 @@ exports.updateLeaveStatus = async (req, res) => {
     if (status) {
       updateData.status = status;
       updateData.approvedDate = new Date();
+      updateData.approvedBy = adminName;
+      updateData.approvedByRole = adminRole || "Admin";
     }
     
     // Add comp-off fields if provided
@@ -385,14 +387,15 @@ exports.updateLeaveStatus = async (req, res) => {
     // If this is not a comp-off conversion, log and notify
     if (status && !isConvertedToCompOff) {
       // Log leave approval/rejection activity
-      const action = status === "approved" ? "leave_approve" : "leave_reject";
-      const actionDetails = `${status === "approved" ? "Approved" : "Rejected"} ${leave.leaveType} for ${leave.employeeName}`;
+      const action = status === "approved" ? "leave_approve" : (status === "manager_approved" ? "manager_approve" : "leave_reject");
+      const statusDisplay = status === "manager_approved" ? "Manager Approved" : (status === "approved" ? "Approved" : "Rejected");
+      const actionDetails = `${statusDisplay} ${leave.leaveType} for ${leave.employeeName}`;
 
       await logActivity({
         userId: adminEmail || "admin",
         userName: adminName || "Admin",
         userEmail: adminEmail || "",
-        userRole: "admin",
+        userRole: adminRole || "admin",
         action,
         actionDetails,
         metadata: {
@@ -408,14 +411,14 @@ exports.updateLeaveStatus = async (req, res) => {
       await Notification.create({
         userId: leave.employeeId,
         role: "employee",
-        title: `Leave ${status === "approved" ? "Approved" : "Rejected"}`,
-        message: `Your ${leave.leaveType} request has been ${status}.`,
+        title: `Leave ${statusDisplay}`,
+        message: `Your ${leave.leaveType} request has been ${status === 'manager_approved' ? 'approved by manager' : status}.`,
         type: "leave"
       });
 
       sendPushToUser(leave.employeeId, {
-        title: `Leave ${status}`,
-        body: `Your leave request was ${status} by Admin.`,
+        title: `Leave ${statusDisplay}`,
+        body: `Your leave request was ${status === 'manager_approved' ? 'approved by manager' : status}.`,
         url: "/employee/leaves"
       });
     }

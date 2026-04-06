@@ -34,6 +34,8 @@ const leaveSchema = new mongoose.Schema(
     appliedDate: { type: Date, default: Date.now },
     approvedDate: { type: Date },
     comments: { type: String },
+    approvedBy: { type: String },
+    approvedByRole: { type: String },
     
     // ✅ New fields for comp-off
     isConvertedToCompOff: { 
