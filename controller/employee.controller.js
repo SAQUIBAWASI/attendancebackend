@@ -1126,3 +1126,92 @@ exports.getEmployeeLetters = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to fetch letters", error: err.message });
   }
 };
+
+// 🎂 Get employees with birthdays today
+exports.getBirthdaysToday = async (req, res) => {
+  try {
+    const today = new Date();
+    const month = today.getMonth() + 1; // getMonth() is 0-indexed
+    const day = today.getDate();
+
+    const { department } = req.query;
+    const query = {
+      $expr: {
+        $and: [
+          { $eq: [{ $month: "$dob" }, month] },
+          { $eq: [{ $dayOfMonth: "$dob" }, day] }
+        ]
+      },
+      status: 'active'
+    };
+
+    if (department) {
+      query.department = { $regex: new RegExp(`^${department.trim()}$`, 'i') };
+    }
+
+    const birthdays = await Employee.find(query).select('name email department role employeeId dob phone');
+
+    res.status(200).json({
+      success: true,
+      message: "Today's birthdays fetched successfully",
+      data: birthdays
+    });
+  } catch (error) {
+    console.error("Get birthdays today error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message
+    });
+  }
+};
+
+// 🏆 Get employees with work anniversaries today
+exports.getAnniversariesToday = async (req, res) => {
+  try {
+    const today = new Date();
+    const month = today.getMonth() + 1;
+    const day = today.getDate();
+    const currentYear = today.getFullYear();
+
+    const { department } = req.query;
+    const query = {
+      $expr: {
+        $and: [
+          { $eq: [{ $month: "$joinDate" }, month] },
+          { $eq: [{ $dayOfMonth: "$joinDate" }, day] },
+          { $lt: [{ $year: "$joinDate" }, currentYear] }
+        ]
+      },
+      status: 'active'
+    };
+
+    if (department) {
+      query.department = { $regex: new RegExp(`^${department.trim()}$`, 'i') };
+    }
+
+    const anniversaries = await Employee.find(query).select('name email department role employeeId joinDate phone');
+
+    // Calculate years of service
+    const formattedAnniversaries = anniversaries.map(emp => {
+      const joinYear = new Date(emp.joinDate).getFullYear();
+      return {
+        ...emp.toObject(),
+        yearsOfService: currentYear - joinYear
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Today's anniversaries fetched successfully",
+      data: formattedAnniversaries
+    });
+  } catch (error) {
+    console.error("Get anniversaries today error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message
+    });
+  }
+};

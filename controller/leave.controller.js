@@ -453,3 +453,66 @@ exports.getLeavesByEmployee = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+// 🏠 Get employees on approved leave today
+const Employee = require("../models/Employee"); // ✅ Import Employee model
+
+exports.getOnLeaveToday = async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const { department } = req.query;
+    const matchStage = {
+      status: { $in: ["approved", "manager_approved"] },
+      startDate: { $lte: today },
+      endDate: { $gte: today }
+    };
+
+    const onLeaveToday = await Leave.aggregate([
+      {
+        $match: matchStage
+      },
+      {
+        $lookup: {
+          from: "employees",
+          localField: "employeeId",
+          foreignField: "employeeId",
+          as: "employeeData"
+        }
+      },
+      {
+        $unwind: "$employeeData"
+      },
+      {
+        $match: department ? {
+          "employeeData.department": { $regex: new RegExp(`^${department.trim()}$`, 'i') }
+        } : {}
+      },
+      {
+        $project: {
+          _id: 1,
+          employeeId: 1,
+          employeeName: "$employeeData.name", // Prefer the official name from Employee record
+          department: "$employeeData.department",
+          role: "$employeeData.role",
+          email: "$employeeData.email",
+          leaveType: 1,
+          startDate: 1,
+          endDate: 1
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: onLeaveToday.length > 0 ? "Employees on leave fetched successfully" : "No one on leave today",
+      data: onLeaveToday
+    });
+  } catch (error) {
+    console.error("Aggregation on-leave-today error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message
+    });
+  }
+};

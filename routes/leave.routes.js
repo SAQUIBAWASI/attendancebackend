@@ -32,8 +32,12 @@ const {
   updateLeaveStatus,
   getPendingLeaves,
   getLeavesByEmployee,
-  getLeavesWithStatus,  // ✅ New function
+  getLeavesWithStatus,
+  getOnLeaveToday, // ✅ New function
 } = require("../controller/leave.controller");
+
+// ✅ Leaves Today (NEW)
+router.get("/on-leave-today", getOnLeaveToday);
 
 // ✅ Add Leave
 router.post("/add-leave", addLeave);

@@ -127,10 +127,18 @@ const {
   addEmployeeExperience,
   getEmployeeExperiences,
   getEmployeeCandidateDocuments,
-  getEmployeeLetters, // ✅ New method
+  getEmployeeLetters,
+  getBirthdaysToday,
+  getAnniversariesToday, // ✅ Added this
 } = require("../controller/employee.controller");
 
 const router = express.Router();
+
+// 🏆 Anniversaries (NEW)
+router.get("/anniversaries-today", getAnniversariesToday);
+
+// 🎂 Birthdays (NEW)
+router.get("/birthdays-today", getBirthdaysToday);
 
 // ➕ Add a new employee
 router.post("/add-employee", addEmployee);
