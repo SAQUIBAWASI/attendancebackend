@@ -268,6 +268,7 @@ const jobApplicationSchema = new mongoose.Schema(
             enum: ["Pending", "Approved", "Rejected"],
             default: "Pending"
         },
+        lastWorkingDay: { type: Date },
 
         // ================= INTERVIEW SCORE CARD =================
         appearanceScore: { type: Number, default: 0 },

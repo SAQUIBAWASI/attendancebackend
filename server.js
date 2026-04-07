@@ -317,6 +317,12 @@ app.use("/api/permissions", require("./routes/permission.routes"));
 // ✅ COMP-OFF ROUTES - Add this line (if not already present, remove duplicate)
 app.use("/api/leaves", require("./routes/compOff.routes"));  // ✅ Comp-off routes
 
+// ✅ Medical Certificates
+app.use("/api/medical-certificates", require("./routes/medicalCertificate.routes"));
+
+// ✅ Attendance Edit Requests
+app.use("/api/attendance-edit-requests", require("./routes/attendanceEditRequest.routes"));
+
 // ✅ Default test route
 app.get("/", (req, res) => {
   res.json({

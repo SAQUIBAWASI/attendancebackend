@@ -234,11 +234,16 @@ exports.uploadPersonalDocuments = async (req, res) => {
             });
         }
 
-        // Update specific document field with relative path for easier storing
+        // Update specific document field with normalized relative path
+        let relativePath = req.file.path;
+        if (relativePath.includes("uploads")) {
+            relativePath = relativePath.substring(relativePath.indexOf("uploads")).replace(/\\/g, '/');
+        }
+
         candDocs.documents[documentType] = {
             fileName: req.file.originalname,
-            filePath: req.file.path,
-            url: req.file.path,
+            filePath: relativePath,
+            url: relativePath,
             status: "Pending",
             uploadedAt: new Date(),
             verified: false
@@ -330,7 +335,7 @@ exports.getPersonalDocuments = async (req, res) => {
 exports.getAllCandidatesDocuments = async (req, res) => {
     try {
         const candDocs = await CandidateDocuments.find()
-            .populate('candidateId', 'name email phone qualification percentage passingYear address currentCompany experience currentCTC expectedCTC skills')
+            .populate('candidateId', 'name email phone qualification percentage passingYear address currentCompany experience currentCTC expectedCTC skills department role')
             .sort({ createdAt: -1 });
 
         res.status(200).json({
@@ -717,13 +722,21 @@ exports.addCandidateExperience = async (req, res) => {
             location,
         };
 
-        // Handle file uploads
+        // Handle file uploads (Normalize paths to be relative starting with 'uploads/')
         if (req.files) {
             if (req.files.offerLetter && req.files.offerLetter[0]) {
-                newExperienceData.offerLetter = req.files.offerLetter[0].path;
+                let filePath = req.files.offerLetter[0].path;
+                if (filePath.includes("uploads")) {
+                    filePath = filePath.substring(filePath.indexOf("uploads")).replace(/\\/g, '/');
+                }
+                newExperienceData.offerLetter = filePath;
             }
             if (req.files.payslip && req.files.payslip[0]) {
-                newExperienceData.payslip = req.files.payslip[0].path;
+                let filePath = req.files.payslip[0].path;
+                if (filePath.includes("uploads")) {
+                    filePath = filePath.substring(filePath.indexOf("uploads")).replace(/\\/g, '/');
+                }
+                newExperienceData.payslip = filePath;
             }
         }
 
