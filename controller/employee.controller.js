@@ -874,7 +874,7 @@ exports.getEmployeeAttendanceSummary = async (req, res) => {
 // ✅ Submit Resignation Request
 exports.submitResignation = async (req, res) => {
   try {
-    const { email, resignationLetter } = req.body;
+    const { email, resignationLetter, lastWorkingDay } = req.body;
 
     if (!email || !resignationLetter) {
       return res.status(400).json({
@@ -898,6 +898,7 @@ exports.submitResignation = async (req, res) => {
     if (application) {
       // Update existing application
       application.resignationLetter = resignationLetter;
+      if (lastWorkingDay) application.lastWorkingDay = new Date(lastWorkingDay);
       application.resignationSentAt = new Date();
       application.resignationStatus = "Pending";
       application.status = "Resigned";
@@ -922,6 +923,7 @@ exports.submitResignation = async (req, res) => {
         department: employee.department,
         status: "Resigned",
         resignationLetter: resignationLetter,
+        lastWorkingDay: lastWorkingDay ? new Date(lastWorkingDay) : null,
         resignationSentAt: new Date(),
         resignationStatus: "Pending"
       });
@@ -978,13 +980,21 @@ exports.addEmployeeExperience = async (req, res) => {
       location,
     };
 
-    // Handle file uploads
+    // Handle file uploads (Normalize paths to be relative starting with 'uploads/')
     if (req.files) {
       if (req.files.offerLetter && req.files.offerLetter[0]) {
-        newExperienceData.offerLetter = req.files.offerLetter[0].path;
+        let filePath = req.files.offerLetter[0].path;
+        if (filePath.includes("uploads")) {
+          filePath = filePath.substring(filePath.indexOf("uploads")).replace(/\\/g, '/');
+        }
+        newExperienceData.offerLetter = filePath;
       }
       if (req.files.payslip && req.files.payslip[0]) {
-        newExperienceData.payslip = req.files.payslip[0].path;
+        let filePath = req.files.payslip[0].path;
+        if (filePath.includes("uploads")) {
+          filePath = filePath.substring(filePath.indexOf("uploads")).replace(/\\/g, '/');
+        }
+        newExperienceData.payslip = filePath;
       }
     }
 
