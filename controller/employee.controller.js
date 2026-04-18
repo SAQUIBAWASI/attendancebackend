@@ -414,7 +414,7 @@ exports.addEmployee = async (req, res) => {
       shiftType, shiftHours,
       joinDate, phone, employeeId, locationId,
       parentsName, alternateNumber, salaryPerMonth, weekOffPerMonth,
-      permissions // ✅ Added permissions
+      permissions, maxCL, maxSL, maxEL
     } = req.body;
 
     // Combine first name and last name
@@ -459,7 +459,10 @@ exports.addEmployee = async (req, res) => {
       alternateNumber,
       salaryPerMonth: Number(salaryPerMonth) || 0,
       weekOffPerMonth: Number(weekOffPerMonth) || 0,
-      permissions: permissions || [] // ✅ Added permissions
+      permissions: permissions || [],
+      maxCL: maxCL !== undefined ? Number(maxCL) : 0,
+      maxSL: maxSL !== undefined ? Number(maxSL) : 0,
+      maxEL: maxEL !== undefined ? Number(maxEL) : 0
     });
 
     await newEmployee.save();

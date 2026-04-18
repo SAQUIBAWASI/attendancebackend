@@ -270,6 +270,11 @@ const employeeSchema = new mongoose.Schema({
     default: 'active' 
   },
   
+  // Custom Leave Limits
+  maxCL: { type: Number, default: 1 },
+  maxSL: { type: Number, default: 1 },
+  maxEL: { type: Number, default: 12 },
+  
   // Permissions
   permissions: {
     type: [String],

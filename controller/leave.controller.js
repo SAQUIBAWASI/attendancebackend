@@ -217,6 +217,60 @@ const Notification = require("../models/Notification");
 const { sendPushToUser } = require("./notification.controller");
 const Admin = require("../models/Admin");
 const CompOff = require("../models/CompOff"); // ✅ Add this
+const Employee = require("../models/Employee"); // ✅ Employee for balances
+
+// ✅ Get leave balances
+exports.getLeaveBalances = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    if (!employeeId) return res.status(400).json({ message: "Employee ID is required" });
+
+    const employee = await Employee.findOne({ employeeId });
+    if (!employee) return res.status(404).json({ message: "Employee not found" });
+
+    const today = new Date();
+    const currentMonth = today.getMonth() + 1;
+    const currentYear = today.getFullYear();
+
+    const approvedLeaves = await Leave.find({
+      employeeId,
+      status: { $in: ["approved", "manager_approved"] }
+    });
+
+    let usedCL = 0, usedSL = 0, usedEL = 0;
+
+    approvedLeaves.forEach(leave => {
+      const leaveType = leave.leaveType ? leave.leaveType.toLowerCase() : "";
+      const startDate = new Date(leave.startDate);
+      const leaveMonth = startDate.getMonth() + 1;
+      const leaveYear = startDate.getFullYear();
+
+      if (leaveYear === currentYear && leaveMonth === currentMonth) {
+        if (leaveType === "casual" || leaveType === "casual leave" || leaveType === "cl") usedCL += leave.days;
+        else if (leaveType === "sick" || leaveType === "sick leave" || leaveType === "sl") usedSL += leave.days;
+      }
+
+      if (leaveType === "earned" || leaveType === "earned leave" || leaveType === "el") usedEL += leave.days;
+    });
+
+    let totalEL = employee.maxEL !== undefined ? employee.maxEL : 0;
+    let totalCL = employee.maxCL !== undefined ? employee.maxCL : 0;
+    let totalSL = employee.maxSL !== undefined ? employee.maxSL : 0;
+
+    res.json({
+      success: true,
+      balances: {
+        CL: { total: totalCL, used: usedCL, available: Math.max(0, totalCL - usedCL) },
+        SL: { total: totalSL, used: usedSL, available: Math.max(0, totalSL - usedSL) },
+        EL: { total: totalEL, used: usedEL, available: Math.max(0, totalEL - usedEL) }
+      }
+    });
+  } catch (error) {
+    console.error("❌ Error in getLeaveBalances:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 
 // ✅ Add new leave
 exports.addLeave = async (req, res) => {
@@ -455,7 +509,6 @@ exports.getLeavesByEmployee = async (req, res) => {
 };
 
 // 🏠 Get employees on approved leave today
-const Employee = require("../models/Employee"); // ✅ Import Employee model
 
 exports.getOnLeaveToday = async (req, res) => {
   try {
