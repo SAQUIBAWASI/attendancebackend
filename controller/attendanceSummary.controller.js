@@ -10255,6 +10255,7 @@ exports.fixSummaryData = async (req, res) => {
  */
 exports.getSalaries = async (req, res) => {
   try {
+    const Holiday = require("../models/Holiday");
     let { month } = req.query;
 
     if (!month || month.trim() === "") {
@@ -10273,6 +10274,26 @@ exports.getSalaries = async (req, res) => {
     const start = new Date(year, monthNum - 1, 1);
     const end = new Date(year, monthNum, 0, 23, 59, 59, 999);
     const daysInMonth = new Date(year, monthNum, 0).getDate();
+
+    const holidays = await Holiday.find({
+      $or: [
+        { fromDate: { $regex: `^${month}` } },
+        { toDate: { $regex: `^${month}` } }
+      ]
+    });
+    
+    let holidayDaysInMonth = 0;
+    holidays.forEach(h => {
+       const startH = new Date(h.fromDate);
+       const endH = new Date(h.toDate);
+       const overlapStart = new Date(Math.max(startH, start));
+       const overlapEnd = new Date(Math.min(endH, end));
+       if (overlapStart <= overlapEnd) {
+           const diffTime = Math.abs(overlapEnd - overlapStart);
+           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+           holidayDaysInMonth += diffDays;
+       }
+    });
 
     const employees = await Employee.find({});
     const attendanceSummaries = await AttendanceSummary.find({ month });
@@ -10355,7 +10376,7 @@ exports.getSalaries = async (req, res) => {
 
       // ✅ LEAVE CALCULATION
       const empLeaves = allApprovedLeaves.filter(l => l.employeeId === emp.employeeId);
-      let paidLeaveDays = 0;
+      let totalCL = 0, totalSL = 0, totalEL = 0, totalCOFF = 0;
       
       empLeaves.forEach(leave => {
         const leaveStart = new Date(leave.startDate);
@@ -10368,14 +10389,29 @@ exports.getSalaries = async (req, res) => {
           const diffTime = Math.abs(overlapEnd - overlapStart);
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
-          if (["CL", "EL", "COFF", "Casual Leave", "Earned Leave", "Comp Off"].includes(leave.leaveType)) {
-            paidLeaveDays += diffDays;
+          if (["Casual Leave", "Casual", "casual", "CL"].includes(leave.leaveType)) {
+            totalCL += diffDays;
+          } else if (["Sick Leave", "Sick", "sick", "SL"].includes(leave.leaveType)) {
+            totalSL += diffDays;
+          } else if (["Earned Leave", "Earned", "earned", "EL"].includes(leave.leaveType)) {
+            totalEL += diffDays;
+          } else if (["Comp Off", "comp off", "COFF"].includes(leave.leaveType)) {
+            totalCOFF += diffDays;
           }
         }
       });
 
-      // ✅ PAID DAYS = Working Days + Week Offs + Paid Leaves
-      const paidDays = effectiveWorkingDays + weekOffs + paidLeaveDays;
+      const maxCL = emp.maxCL !== undefined ? emp.maxCL : 1;
+      const maxSL = emp.maxSL !== undefined ? emp.maxSL : 1;
+      const maxEL = emp.maxEL !== undefined ? emp.maxEL : 12;
+
+      let paidLeaveDays = Math.min(totalCL, maxCL) + Math.min(totalSL, maxSL) + Math.min(totalEL, maxEL) + totalCOFF;
+
+      // ✅ PAID DAYS = Working Days + Week Offs + Paid Leaves + Holidays
+      let paidDays = effectiveWorkingDays + weekOffs + paidLeaveDays + holidayDaysInMonth;
+      
+      // ✅ CAP PAID DAYS TO NOT EXCEED MONTH DAYS
+      paidDays = Math.min(paidDays, daysInMonth);
 
       // ✅ EXTRA WORK / BONUS / DEDUCTIONS
       const storedExtraWork = empAttendance?.extraWork || {
@@ -10461,6 +10497,7 @@ exports.getSalaries = async (req, res) => {
         salaryPerMonth,
         salaryPerDay: Number(dailyRate.toFixed(2)),
         paidDays: Number(paidDays.toFixed(1)),
+        holidays: holidayDaysInMonth,
         calculatedSalary,
         calculatedSalaryDisplay: `₹${calculatedSalary}`,
         monthDays: daysInMonth,

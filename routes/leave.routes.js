@@ -34,6 +34,7 @@ const {
   getLeavesByEmployee,
   getLeavesWithStatus,
   getOnLeaveToday, // ✅ New function
+  getLeaveBalances,
 } = require("../controller/leave.controller");
 
 // ✅ Leaves Today (NEW)
@@ -47,6 +48,7 @@ router.get("/leaves", getLeaves);
 router.get("/employeeleaves/:employeeId", getLeavesByEmployee);
 router.get("/pendingleaves", getPendingLeaves);
 router.get("/leaves-with-status", getLeavesWithStatus);  // ✅ New route
+router.get("/balances/:employeeId", getLeaveBalances);
 
 // ✅ Approve / Reject / Update
 router.put("/updateleaves/:id", updateLeaveStatus);

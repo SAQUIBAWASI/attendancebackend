@@ -7,6 +7,8 @@ const holidaySchema = new mongoose.Schema(
     toDate: { type: String, required: true },   // "YYYY-MM-DD" string
     totalDays: { type: Number, default: 1 },
     type: { type: String, default: "Public Holiday" }, // Festival, National Holiday, etc.
+    state: { type: String, default: "All" }, // State specific holiday or All
+    isActive: { type: Boolean, default: true }, // Whether company actually gives this holiday
   },
   { timestamps: true }
 );

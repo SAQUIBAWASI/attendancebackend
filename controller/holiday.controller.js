@@ -40,7 +40,7 @@ exports.getHolidays = async (req, res) => {
 // ─── Add Holiday ─────────────────────────────────────────────────────────────
 exports.addHoliday = async (req, res) => {
   try {
-    const { name, fromDate, toDate, totalDays, type } = req.body;
+    const { name, fromDate, toDate, totalDays, type, isActive, state } = req.body;
 
     if (!name || !fromDate || !toDate) {
       return res.status(400).json({ message: "name, fromDate and toDate are required" });
@@ -52,6 +52,8 @@ exports.addHoliday = async (req, res) => {
       toDate,
       totalDays: totalDays || 1,
       type: type || "Public Holiday",
+      state: state || "All",
+      isActive: isActive !== undefined ? isActive : true,
     });
 
     // ── Optional: notify employees ───────────────────────────────────────────
@@ -94,11 +96,15 @@ exports.addHoliday = async (req, res) => {
 exports.updateHoliday = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, fromDate, toDate, totalDays, type } = req.body;
+    const { name, fromDate, toDate, totalDays, type, isActive, state } = req.body;
+
+    const updateFields = { name, fromDate, toDate, totalDays, type };
+    if (state !== undefined) updateFields.state = state;
+    if (isActive !== undefined) updateFields.isActive = isActive;
 
     const holiday = await Holiday.findByIdAndUpdate(
       id,
-      { name, fromDate, toDate, totalDays, type },
+      updateFields,
       { new: true }
     );
 
