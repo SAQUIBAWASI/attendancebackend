@@ -112,7 +112,13 @@ const submitApplication = async (req, res) => {
 // Get all applications (Admin only)
 const getAllApplications = async (req, res) => {
     try {
-        const applications = await JobApplication.find()
+        const { excludeResigned } = req.query;
+        let query = {};
+        if (excludeResigned === 'true') {
+            query.status = { $ne: 'Resigned' };
+        }
+
+        const applications = await JobApplication.find(query)
             .populate({
                 path: "jobId",
                 select: "role assessmentIds",
@@ -491,10 +497,10 @@ const getRecruitmentStats = async (req, res) => {
             return { jobId: { $in: jobIds } };
         };
 
-        const globalFilter = buildFilter(globalJobIds, role);
-        const statusFilter = buildFilter(statusJobIds, statusRole || role);
-        const scoreFilter = buildFilter(scoreJobIds, scoreRole || role);
-        const tatFilter = buildFilter(tatJobIds, tatRole || role);
+        const globalFilter = { ...buildFilter(globalJobIds, role), status: { $ne: "Resigned" } };
+        const statusFilter = { ...buildFilter(statusJobIds, statusRole || role), status: { $ne: "Resigned" } };
+        const scoreFilter = { ...buildFilter(scoreJobIds, scoreRole || role), status: { $ne: "Resigned" } };
+        const tatFilter = { ...buildFilter(tatJobIds, tatRole || role), status: { $ne: "Resigned" } };
 
         const totalApplicants = await JobApplication.countDocuments(globalFilter);
         const selected = await JobApplication.countDocuments({ ...globalFilter, status: "Selected" });
@@ -514,7 +520,7 @@ const getRecruitmentStats = async (req, res) => {
         ]);
 
         const trendJobIds = await getJobIdsByRole(trendRole || role);
-        const trendFilter = buildFilter(trendJobIds, trendRole || role);
+        const trendFilter = { ...buildFilter(trendJobIds, trendRole || role), status: { $ne: "Resigned" } };
 
         // 2. Monthly Trend (default: last 6 months, or daily if trendMonth=YYYY-MM)
         let monthlyTrend = [];

@@ -261,6 +261,18 @@ app.use((req, res, next) => {
 
 // ✅ Serve static files (for uploaded images)
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// 🚨 Fallback for missing uploads: If file isn't found in /uploads, don't fallback to API 404
+app.use("/uploads", (req, res) => {
+  res.status(404).send(`
+    <html>
+      <head><title>File Not Found</title></head>
+      <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+        <h2>Document Not Found</h2>
+        <p>The requested file could not be found on the server. It may have been deleted or moved.</p>
+      </body>
+    </html>
+  `);
+});
 
 // ✅ Connect MongoDB
 mongoose
