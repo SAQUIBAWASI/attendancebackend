@@ -60,6 +60,16 @@ const AttendanceSummarySchema = new mongoose.Schema({
   },
 
   // Payroll Fields
+  salaryPerMonthSnapshot: { type: Number, default: 0 },
+  basicPaySnapshot: { type: Number, default: 0 },
+  hraSnapshot: { type: Number, default: 0 },
+  conveyanceAllowanceSnapshot: { type: Number, default: 0 },
+  medicalAllowanceSnapshot: { type: Number, default: 0 },
+  performanceAllowanceSnapshot: { type: Number, default: 0 },
+  specialAllowanceSnapshot: { type: Number, default: 0 },
+  ptaxSnapshot: { type: Number, default: 0 },
+  gmcAmountSnapshot: { type: Number, default: 0 },
+  otherDeductionsSnapshot: { type: Number, default: 0 },
   calculatedSalary: { type: Number, default: 0 },
   weekOffDays: { type: Number, default: 0 },
   holidays: { type: Number, default: 0 },

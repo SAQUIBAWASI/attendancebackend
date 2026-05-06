@@ -9542,10 +9542,14 @@ exports.updateAttendance = async (req, res) => {
       if (checkInTime && checkOutTime) {
         const start = new Date(checkInTime);
         const end = new Date(checkOutTime);
-        const diffMs = end - start;
-        const diffHours = diffMs / (1000 * 60 * 60);
-        updateData.totalHours = parseFloat(diffHours.toFixed(2));
         updateData.status = "checked-out";
+        
+        // Only auto-calculate if hours is NOT explicitly provided
+        if (hours === undefined) {
+          const diffMs = end - start;
+          const diffHours = diffMs / (1000 * 60 * 60);
+          updateData.totalHours = parseFloat(diffHours.toFixed(2));
+        }
       }
 
       // ✅ Recalculate day type based on shift
@@ -9723,6 +9727,15 @@ exports.calculateSummary = async (req, res) => {
           shiftStartTime: shiftInfo.startTime,
           shiftEndTime: shiftInfo.endTime,
           salaryPerMonth: emp.salaryPerMonth || 0,
+          basicPay: emp.basicPay || 0,
+          hra: emp.hra || 0,
+          conveyanceAllowance: emp.conveyanceAllowance || 0,
+          medicalAllowance: emp.medicalAllowance || 0,
+          performanceAllowance: emp.performanceAllowance || 0,
+          specialAllowance: emp.specialAllowance || 0,
+          ptax: emp.ptax || 0,
+          gmcAmount: emp.gmcAmount || 0,
+          otherDeductions: emp.otherDeductions || 0,
           calculatedSalary: 0,
           workingDays: 0,
           reasonCount: { onsite: 0, fieldWork: 0, workFromHome: 0 }
@@ -9806,6 +9819,16 @@ exports.calculateSummary = async (req, res) => {
       const summariesToSave = summaryArray.map(s => ({
         ...s,
         month: processedMonth,
+        salaryPerMonthSnapshot: s.salaryPerMonth, // Persist current salary for historical tracking
+        basicPaySnapshot: s.basicPay,
+        hraSnapshot: s.hra,
+        conveyanceAllowanceSnapshot: s.conveyanceAllowance,
+        medicalAllowanceSnapshot: s.medicalAllowance,
+        performanceAllowanceSnapshot: s.performanceAllowance,
+        specialAllowanceSnapshot: s.specialAllowance,
+        ptaxSnapshot: s.ptax,
+        gmcAmountSnapshot: s.gmcAmount,
+        otherDeductionsSnapshot: s.otherDeductions,
         calculatedAt: new Date(),
         createdAt: new Date()
       }));
@@ -9880,6 +9903,16 @@ exports.saveSummary = async (req, res) => {
         deductions: 0,
         reason: ""
       },
+      salaryPerMonthSnapshot: summary.salaryPerMonthSnapshot || summary.salaryPerMonth || 0,
+      basicPaySnapshot: summary.basicPaySnapshot || summary.basicPay || 0,
+      hraSnapshot: summary.hraSnapshot || summary.hra || 0,
+      conveyanceAllowanceSnapshot: summary.conveyanceAllowanceSnapshot || summary.conveyanceAllowance || 0,
+      medicalAllowanceSnapshot: summary.medicalAllowanceSnapshot || summary.medicalAllowance || 0,
+      performanceAllowanceSnapshot: summary.performanceAllowanceSnapshot || summary.performanceAllowance || 0,
+      specialAllowanceSnapshot: summary.specialAllowanceSnapshot || summary.specialAllowance || 0,
+      ptaxSnapshot: summary.ptaxSnapshot || summary.ptax || 0,
+      gmcAmountSnapshot: summary.gmcAmountSnapshot || summary.gmcAmount || 0,
+      otherDeductionsSnapshot: summary.otherDeductionsSnapshot || summary.otherDeductions || 0,
       createdAt: new Date()
     }));
 
@@ -10253,6 +10286,9 @@ exports.fixSummaryData = async (req, res) => {
 /**
  * 📌 Get Salaries - ONLY SUBIR FIX, BAKI SAB NORMAL
  */
+/**
+ * 📌 Get Salaries - WITH MONTH-WISE SALARY HISTORY SUPPORT
+ */
 exports.getSalaries = async (req, res) => {
   try {
     const Holiday = require("../models/Holiday");
@@ -10264,17 +10300,21 @@ exports.getSalaries = async (req, res) => {
     }
 
     month = month.trim();
-
-    const [year, monthNum] = month.split("-").map(Number);
-
+    
+    let [year, monthNum] = month.split("-").map(Number);
+    
     if (isNaN(year) || isNaN(monthNum)) {
-      return res.status(400).json({ success: false, message: "Invalid month" });
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid month format. Use YYYY-MM" 
+      });
     }
 
-    const start = new Date(year, monthNum - 1, 1);
-    const end = new Date(year, monthNum, 0, 23, 59, 59, 999);
+    const startDate = new Date(year, monthNum - 1, 1);
+    const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
     const daysInMonth = new Date(year, monthNum, 0).getDate();
 
+    // Get holidays
     const holidays = await Holiday.find({
       $or: [
         { fromDate: { $regex: `^${month}` } },
@@ -10284,20 +10324,19 @@ exports.getSalaries = async (req, res) => {
     
     let holidayDaysInMonth = 0;
     holidays.forEach(h => {
-       const startH = new Date(h.fromDate);
-       const endH = new Date(h.toDate);
-       const overlapStart = new Date(Math.max(startH, start));
-       const overlapEnd = new Date(Math.min(endH, end));
-       if (overlapStart <= overlapEnd) {
-           const diffTime = Math.abs(overlapEnd - overlapStart);
-           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-           holidayDaysInMonth += diffDays;
-       }
+      const startH = new Date(h.fromDate);
+      const endH = new Date(h.toDate);
+      const overlapStart = new Date(Math.max(startH, startDate));
+      const overlapEnd = new Date(Math.min(endH, endDate));
+      if (overlapStart <= overlapEnd) {
+        const diffTime = Math.abs(overlapEnd - overlapStart);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        holidayDaysInMonth += diffDays;
+      }
     });
 
     const employees = await Employee.find({});
     const attendanceSummaries = await AttendanceSummary.find({ month });
-
     const allApprovedLeaves = await Leave.find({
       status: "approved",
       $or: [
@@ -10312,208 +10351,213 @@ exports.getSalaries = async (req, res) => {
     });
 
     const sundaysInMonth = calculateWeekOffsForDay(year, monthNum, 0);
+    
+    const dayMap = {
+      Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
+      Thursday: 4, Friday: 5, Saturday: 6
+    };
 
-    const salaryMap = {};
+    const salaryResults = [];
 
-    employees.forEach(emp => {
+    for (const emp of employees) {
+      // ============================================
+      // ✅ STEP 1: GET SALARY FOR THIS SPECIFIC MONTH
+      // ============================================
+      // Create date for 1st of requested month
+      const requestedDate = new Date(year, monthNum - 1, 1);
+      requestedDate.setHours(0, 0, 0, 0);
+      
+      // Use your existing getSalaryForDate method!
+      let salaryData;
+      try {
+        salaryData = await emp.getSalaryForDate(requestedDate);
+      } catch (err) {
+        console.error(`Error getting salary for ${emp.employeeId}:`, err);
+        // Fallback to current salary
+        salaryData = {
+          salaryPerMonth: emp.salaryPerMonth,
+          basicPay: emp.basicPay,
+          hra: emp.hra,
+          conveyanceAllowance: emp.conveyanceAllowance,
+          medicalAllowance: emp.medicalAllowance,
+          performanceAllowance: emp.performanceAllowance,
+          specialAllowance: emp.specialAllowance,
+          ctc: emp.ctc
+        };
+      }
+      
+      // Use snapshot from AttendanceSummary if exists (manual override)
+      const empAttendance = attendanceMap[emp.employeeId];
+      if (empAttendance && empAttendance.salaryPerMonthSnapshot && empAttendance.salaryPerMonthSnapshot > 0) {
+        salaryData.salaryPerMonth = empAttendance.salaryPerMonthSnapshot;
+      }
+      
+      console.log(`💰 ${emp.employeeId} (${emp.name}): ${month} → Salary: ₹${salaryData.salaryPerMonth}`);
+
+      // ============================================
+      // ✅ STEP 2: WEEK OFF CALCULATION
+      // ============================================
       let weekOffDay = emp.weekOffDay || "Sunday";
-      const dayMap = {
-        Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
-        Thursday: 4, Friday: 5, Saturday: 6
-      };
       const weekOffDayNum = dayMap[weekOffDay] ?? 0;
-
-      // ============================================
-      // ✅ WEEK OFF CALCULATION - NORMAL FOR EVERYONE
-      // ============================================
+      
       let weekOffs = 0;
-      let weekOffSource = "default";
-
+      
       if (emp.weekOffType === '0+2') {
         weekOffs = 2;
-        weekOffSource = "0+2_fixed";
-      }
-      else if (emp.weekOffType === '0+4') {
+      } else if (emp.weekOffType === '0+4') {
         weekOffs = 4;
-        weekOffSource = "0+4_fixed";
-      }
-      else if (emp.weekOffType === 'manual') {
+      } else if (emp.weekOffType === 'manual') {
         weekOffs = emp.weekOffPerMonth || 4;
-        weekOffSource = "manual";
-      }
-      else if (emp.weekOffPerMonth === 4 && weekOffDay === "Sunday") {
+      } else if (emp.weekOffPerMonth === 4 && weekOffDay === "Sunday") {
         weekOffs = sundaysInMonth === 5 ? 5 : 4;
-        weekOffSource = "0+4_sunday_auto";
-      }
-      else if (emp.weekOffPerMonth === 2) {
+      } else if (emp.weekOffPerMonth === 2) {
         weekOffs = 2;
-        weekOffSource = "0+2_fixed_no_increment";
-      }
-      else if (typeof emp.weekOffPerMonth === "number") {
+      } else if (typeof emp.weekOffPerMonth === "number" && emp.weekOffPerMonth > 0) {
         weekOffs = emp.weekOffPerMonth;
-        weekOffSource = "fixed_from_db";
-      }
-      else {
+      } else {
         weekOffs = calculateWeekOffsForDay(year, monthNum, weekOffDayNum);
-        weekOffSource = "dynamic";
       }
 
       // ============================================
-      // ✅ ATTENDANCE DATA
+      // ✅ STEP 3: ATTENDANCE DATA
       // ============================================
-      const empAttendance = attendanceMap[emp.employeeId];
       const presentDays = empAttendance?.presentDays || 0;
       const halfDays = empAttendance?.halfDayWorking || 0;
-      
-      // ✅ Working days calculation (present + half*0.5)
-      let effectiveWorkingDays = presentDays + (halfDays * 0.5);
+      const effectiveWorkingDays = presentDays + (halfDays * 0.5);
 
       // ============================================
-      // ✅ SALARY CALCULATION
+      // ✅ STEP 4: LEAVE CALCULATION
       // ============================================
-      const salaryPerMonth = emp.salaryPerMonth || 0;
-      const dailyRate = salaryPerMonth / daysInMonth;
-
-      // ✅ LEAVE CALCULATION
       const empLeaves = allApprovedLeaves.filter(l => l.employeeId === emp.employeeId);
       let totalCL = 0, totalSL = 0, totalEL = 0, totalCOFF = 0;
       
       empLeaves.forEach(leave => {
         const leaveStart = new Date(leave.startDate);
         const leaveEnd = new Date(leave.endDate);
-
-        const overlapStart = new Date(Math.max(leaveStart, start));
-        const overlapEnd = new Date(Math.min(leaveEnd, end));
-
+        const overlapStart = new Date(Math.max(leaveStart, startDate));
+        const overlapEnd = new Date(Math.min(leaveEnd, endDate));
+        
         if (overlapStart <= overlapEnd) {
           const diffTime = Math.abs(overlapEnd - overlapStart);
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-
-          if (["Casual Leave", "Casual", "casual", "CL"].includes(leave.leaveType)) {
-            totalCL += diffDays;
-          } else if (["Sick Leave", "Sick", "sick", "SL"].includes(leave.leaveType)) {
-            totalSL += diffDays;
-          } else if (["Earned Leave", "Earned", "earned", "EL"].includes(leave.leaveType)) {
-            totalEL += diffDays;
-          } else if (["Comp Off", "comp off", "COFF"].includes(leave.leaveType)) {
-            totalCOFF += diffDays;
-          }
+          const leaveType = (leave.leaveType || "").toLowerCase();
+          
+          if (leaveType.includes("cl") || leaveType.includes("casual")) totalCL += diffDays;
+          else if (leaveType.includes("sl") || leaveType.includes("sick")) totalSL += diffDays;
+          else if (leaveType.includes("el") || leaveType.includes("earned")) totalEL += diffDays;
+          else if (leaveType.includes("comp") || leaveType.includes("coff")) totalCOFF += diffDays;
         }
       });
-
-      const maxCL = emp.maxCL !== undefined ? emp.maxCL : 1;
-      const maxSL = emp.maxSL !== undefined ? emp.maxSL : 1;
-      const maxEL = emp.maxEL !== undefined ? emp.maxEL : 12;
-
-      let paidLeaveDays = Math.min(totalCL, maxCL) + Math.min(totalSL, maxSL) + Math.min(totalEL, maxEL) + totalCOFF;
-
-      // ✅ PAID DAYS = Working Days + Week Offs + Paid Leaves + Holidays
-      let paidDays = effectiveWorkingDays + weekOffs + paidLeaveDays + holidayDaysInMonth;
       
-      // ✅ CAP PAID DAYS TO NOT EXCEED MONTH DAYS
+      const paidLeaveDays = Math.min(totalCL, emp.maxCL || 1) + Math.min(totalSL, emp.maxSL || 1) + 
+                           Math.min(totalEL, emp.maxEL || 12) + Math.min(totalCOFF, emp.maxCompOff || 0);
+      
+      // ============================================
+      // ✅ STEP 5: SALARY CALCULATION
+      // ============================================
+      const monthlySalary = salaryData.salaryPerMonth;
+      const dailyRate = monthlySalary / daysInMonth;
+      let paidDays = effectiveWorkingDays + weekOffs + paidLeaveDays + holidayDaysInMonth;
       paidDays = Math.min(paidDays, daysInMonth);
-
-      // ✅ EXTRA WORK / BONUS / DEDUCTIONS
-      const storedExtraWork = empAttendance?.extraWork || {
-        extraDays: 0,
-        extraHours: 0,
-        bonus: 0,
-        deductions: 0,
-        reason: ""
-      };
-
-      // ✅ BASE SALARY
+      
       let calculatedSalary = Math.round(paidDays * dailyRate);
-
-      // ✅ ADD EXTRAS
+      
+      // Add extra work / bonus / deductions
+      const storedExtraWork = empAttendance?.extraWork || { extraDays: 0, bonus: 0, deductions: 0 };
       if (storedExtraWork) {
         const extraDaysAmount = (storedExtraWork.extraDays || 0) * dailyRate;
-        const bonus = storedExtraWork.bonus || 0;
-        const deductions = storedExtraWork.deductions || 0;
-
-        calculatedSalary = Math.round(calculatedSalary + extraDaysAmount + bonus - deductions);
+        calculatedSalary = Math.round(calculatedSalary + extraDaysAmount + (storedExtraWork.bonus || 0) - (storedExtraWork.deductions || 0));
       }
-
-      // ✅ MANUAL OVERRIDE (if exists)
+      
+      // Manual override
       if (empAttendance?.calculatedSalary) {
         calculatedSalary = empAttendance.calculatedSalary;
       }
-
+      
       // ============================================
-      // ✅ SPECIAL CASE: ONLY SUBIR (EMP020)
+      // ✅ STEP 6: SPECIAL CASE - SUBIR (EMP020)
       // ============================================
+      let specialNote = null;
       if (emp.employeeId === 'EMP020') {
-        // ✅ Weekoffs 4 fix karo
-        weekOffs = 4;
-        weekOffSource = "subir_fixed_4_weekoffs";
-        
-        // ✅ Working days 15 se upar display mat karo
-        const displayWorkingDays = effectiveWorkingDays > 15 ? 15 : effectiveWorkingDays;
-        
-        // ✅ DAILY RATE
-        const subirDailyRate = (emp.salaryPerMonth || 15000) / daysInMonth;
-        
-        // ✅ SALARY: 15+ days = FULL, else PRO-RATA
-        let subirSalary = 0;
         if (effectiveWorkingDays >= 15) {
-          subirSalary = emp.salaryPerMonth || 15000; // Full salary
+          calculatedSalary = monthlySalary;
+          specialNote = "Full salary (15+ days)";
         } else {
-          subirSalary = Math.round(effectiveWorkingDays * subirDailyRate); // Pro-rata
+          calculatedSalary = Math.round(effectiveWorkingDays * dailyRate);
+          specialNote = `Pro-rata (${effectiveWorkingDays.toFixed(1)} days)`;
         }
-        
-        // ✅ Override with Subir's calculated salary
-        calculatedSalary = subirSalary;
-        
-        // ✅ Add Subir specific fields
-        salaryMap[emp.employeeId] = {
-          ...salaryMap[emp.employeeId],
-          totalWorkingDays: Number(displayWorkingDays.toFixed(1)),
-          weekOffs: weekOffs,
-          weekOffSource: weekOffSource,
-          paidDays: Number((displayWorkingDays + weekOffs + paidLeaveDays).toFixed(1)),
-          calculatedSalary: subirSalary,
-          calculatedSalaryDisplay: `₹${subirSalary}`,
-          note: effectiveWorkingDays >= 15 
-            ? `✅ ${displayWorkingDays} working days + ${weekOffs} weekoffs = Full Salary ₹${emp.salaryPerMonth || 15000}`
-            : `⚠️ Only ${effectiveWorkingDays.toFixed(1)} working days. Salary: ${effectiveWorkingDays.toFixed(1)} × ₹${subirDailyRate.toFixed(2)} = ₹${subirSalary}`
-        };
       }
-
-      // ✅ FINAL OUTPUT - SAME STRUCTURE FOR EVERYONE
-      salaryMap[emp.employeeId] = {
+      
+      // ============================================
+      // ✅ STEP 7: FIND APPLIED INCREMENT INFO
+      // ============================================
+      let incrementInfo = null;
+      if (emp.salaryIncrements && emp.salaryIncrements.length > 0) {
+        const sortedIncrements = [...emp.salaryIncrements].sort((a, b) => 
+          new Date(b.effectiveFrom) - new Date(a.effectiveFrom)
+        );
+        for (const inc of sortedIncrements) {
+          const incDate = new Date(inc.effectiveFrom);
+          incDate.setHours(0, 0, 0, 0);
+          if (incDate <= requestedDate && inc.isActive) {
+            incrementInfo = {
+              fromMonth: `${inc.effectiveYear}-${inc.effectiveMonth}`,
+              oldSalary: inc.oldSalaryPerMonth,
+              newSalary: inc.newSalaryPerMonth,
+              type: inc.incrementType,
+              value: inc.incrementValue
+            };
+            break;
+          }
+        }
+      }
+      
+      // ============================================
+      // ✅ STEP 8: BUILD RESULT
+      // ============================================
+      salaryResults.push({
         employeeId: emp.employeeId,
         name: emp.name,
-        month,
-        presentDays,
-        extraWork: storedExtraWork,
+        department: emp.department,
+        month: month,
+        presentDays: presentDays,
         halfDayWorking: halfDays,
-        totalWorkingDays: emp.employeeId === 'EMP020' 
-          ? (effectiveWorkingDays > 15 ? 15 : Number(effectiveWorkingDays.toFixed(1)))
-          : Number(effectiveWorkingDays.toFixed(1)),
-        weekOffs,
-        weekOffDay,
-        weekOffType: emp.weekOffType || (emp.weekOffPerMonth === 2 ? '0+2' : '0+4'),
-        weekOffSource,
-        salaryPerMonth,
+        totalWorkingDays: Number(effectiveWorkingDays.toFixed(1)),
+        weekOffs: weekOffs,
+        weekOffDay: weekOffDay,
+        salaryPerMonth: monthlySalary,  // ✅ HISTORICAL SALARY FOR THIS MONTH
+        currentSalary: emp.salaryPerMonth,  // LATEST SALARY FOR REFERENCE
+        basicPay: salaryData.basicPay,
+        hra: salaryData.hra,
+        conveyanceAllowance: salaryData.conveyanceAllowance,
+        medicalAllowance: salaryData.medicalAllowance,
+        performanceAllowance: salaryData.performanceAllowance,
+        specialAllowance: salaryData.specialAllowance,
         salaryPerDay: Number(dailyRate.toFixed(2)),
         paidDays: Number(paidDays.toFixed(1)),
         holidays: holidayDaysInMonth,
-        calculatedSalary,
-        calculatedSalaryDisplay: `₹${calculatedSalary}`,
+        paidLeaveDays: paidLeaveDays,
+        calculatedSalary: calculatedSalary,
+        calculatedSalaryDisplay: `₹${calculatedSalary.toLocaleString()}`,
         monthDays: daysInMonth,
-        ...(emp.employeeId === 'EMP020' && { note: salaryMap[emp.employeeId]?.note })
-      };
-    });
-
+        incrementApplied: incrementInfo,
+        note: specialNote
+      });
+    }
+    
+    // Sort by name
+    salaryResults.sort((a, b) => a.name.localeCompare(b.name));
+    
     res.json({
       success: true,
-      month,
-      salaries: Object.values(salaryMap),
-      count: Object.values(salaryMap).length,
-      monthDays: daysInMonth,
-      note: "Only Subir special calculation. All other employees normal."
+      month: month,
+      monthName: new Date(year, monthNum - 1).toLocaleString('default', { month: 'long' }),
+      year: year,
+      salaries: salaryResults,
+      count: salaryResults.length,
+      monthDays: daysInMonth
     });
-
+    
   } catch (error) {
     console.error("❌ Error in getSalaries:", error);
     res.status(500).json({ success: false, error: error.message });
@@ -10879,4 +10923,4 @@ exports.getEditedAttendanceRecords = async (req, res) => {
       error: error.message
     });
   }
-};
+};
