@@ -532,3 +532,57 @@ Error Stack: Error: Not allowed by CORS
 URL: /api/coupons/allcoupons
 Method: OPTIONS
 ===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-05-08T11:19:29.120Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/user-activity/log
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-05-08T11:21:20.566Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/admin/login
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-05-08T11:21:49.890Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\server.js:246:25)
+    at C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Users\DELL\Desktop\Saquiba\Product 1\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/admin/login
+Method: OPTIONS
+===========================

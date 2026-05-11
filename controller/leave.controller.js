@@ -512,10 +512,19 @@ exports.getLeavesByEmployee = async (req, res) => {
 
 exports.getOnLeaveToday = async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    // Determine today in local time instead of UTC to avoid timezone issues
+    const now = new Date();
+    // Assuming IST for most usage, or server local time
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const today = `${year}-${month}-${day}`;
+    
     const { department } = req.query;
+    
+    // Check multiple casing variants to be safe
     const matchStage = {
-      status: { $in: ["approved", "manager_approved"] },
+      status: { $in: ["approved", "manager_approved", "Approved", "Manager_Approved"] },
       startDate: { $lte: today },
       endDate: { $gte: today }
     };
@@ -533,7 +542,10 @@ exports.getOnLeaveToday = async (req, res) => {
         }
       },
       {
-        $unwind: "$employeeData"
+        $unwind: {
+          path: "$employeeData",
+          preserveNullAndEmptyArrays: false // Only show if we can confirm the employee
+        }
       },
       {
         $match: department ? {
@@ -544,7 +556,7 @@ exports.getOnLeaveToday = async (req, res) => {
         $project: {
           _id: 1,
           employeeId: 1,
-          employeeName: "$employeeData.name", // Prefer the official name from Employee record
+          employeeName: { $ifNull: ["$employeeData.name", "$employeeName"] },
           department: "$employeeData.department",
           role: "$employeeData.role",
           email: "$employeeData.email",

@@ -2134,12 +2134,74 @@ const getEmployeeLetters = async (req, res) => {
 
 // ==================== GET BIRTHDAYS ====================
 const getBirthdaysToday = async (req, res) => {
-  res.status(200).json({ success: true, data: [] });
+  try {
+    const { department } = req.query;
+    const today = new Date();
+    const currentDay = today.getDate();
+    const currentMonth = today.getMonth() + 1;
+    
+    let query = { status: { $ne: "inactive" } };
+    if (department) query.department = department;
+    
+    const employees = await Employee.find(query).select('name email employeeId department role dob');
+    
+    const birthdays = employees.filter(emp => {
+      if (!emp.dob) return false;
+      const dob = new Date(emp.dob);
+      return dob.getDate() === currentDay && (dob.getMonth() + 1) === currentMonth;
+    }).map(emp => ({
+      name: emp.name,
+      email: emp.email,
+      employeeId: emp.employeeId,
+      department: emp.department,
+      role: emp.role
+    }));
+    
+    res.status(200).json({ success: true, data: birthdays });
+  } catch (error) {
+    console.error("Birthday fetch error:", error);
+    res.status(500).json({ success: false, message: "Server error", error: error.message });
+  }
 };
 
 // ==================== GET ANNIVERSARIES ====================
 const getAnniversariesToday = async (req, res) => {
-  res.status(200).json({ success: true, data: [] });
+  try {
+    const { department } = req.query;
+    const today = new Date();
+    const currentDay = today.getDate();
+    const currentMonth = today.getMonth() + 1;
+    const currentYear = today.getFullYear();
+    
+    let query = { status: { $ne: "inactive" } };
+    if (department) query.department = department;
+    
+    const employees = await Employee.find(query).select('name email employeeId department role joinDate');
+    
+    const anniversaries = [];
+    employees.forEach(emp => {
+      if (!emp.joinDate) return;
+      const joinDate = new Date(emp.joinDate);
+      if (joinDate.getDate() === currentDay && (joinDate.getMonth() + 1) === currentMonth) {
+        const yearsOfService = currentYear - joinDate.getFullYear();
+        if (yearsOfService > 0) {
+          anniversaries.push({
+            name: emp.name,
+            email: emp.email,
+            employeeId: emp.employeeId,
+            department: emp.department,
+            role: emp.role,
+            yearsOfService
+          });
+        }
+      }
+    });
+    
+    res.status(200).json({ success: true, data: anniversaries });
+  } catch (error) {
+    console.error("Anniversary fetch error:", error);
+    res.status(500).json({ success: false, message: "Server error", error: error.message });
+  }
 };
 
 // ==================== FIX EMPLOYEE CURRENT SALARY ====================
