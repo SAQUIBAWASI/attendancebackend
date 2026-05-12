@@ -119,6 +119,40 @@
 // module.exports = router;
 
 
+// const express = require('express');
+// const router = express.Router();
+// const shiftController = require('../controller/shift.controller');
+
+// // Master Shifts
+// router.post('/create', shiftController.createMasterShift);
+// router.get('/master', shiftController.getMasterShifts);
+// router.get('/details/:shiftType', shiftController.getShiftDetails); // ✅ NEW
+// router.delete('/master/:id', shiftController.deleteMasterShift);
+
+// // Employee Assignments
+// router.post('/assign', shiftController.assignShiftToEmployee);
+// router.get('/assignments', shiftController.getEmployeeAssignments);
+// router.put('/assignments/:id', shiftController.updateAssignment);
+// router.delete('/assignments/:id', shiftController.deleteAssignment);
+
+// // Get by Shift Type
+// router.get('/type/:shiftType/employees', shiftController.getEmployeesByShiftType);
+
+// // New endpoint for employee count by shift
+// router.get('/employee-count', shiftController.getEmployeeCountByShift);
+
+// // Employee Dashboard
+// router.get('/employee/:employeeId', shiftController.getShiftForEmployee);
+
+// // Migration
+// router.post('/migrate-legacy', shiftController.migrateLegacyData);
+
+// // Default Shifts Creation
+// router.post('/create-defaults', shiftController.createDefaultShifts);
+
+// module.exports = router;
+
+
 const express = require('express');
 const router = express.Router();
 const shiftController = require('../controller/shift.controller');
@@ -126,7 +160,8 @@ const shiftController = require('../controller/shift.controller');
 // Master Shifts
 router.post('/create', shiftController.createMasterShift);
 router.get('/master', shiftController.getMasterShifts);
-router.get('/details/:shiftType', shiftController.getShiftDetails); // ✅ NEW
+router.put('/master/:id', shiftController.updateMasterShift); // ✅ EDIT SHIFT
+router.get('/details/:shiftType', shiftController.getShiftDetails);
 router.delete('/master/:id', shiftController.deleteMasterShift);
 
 // Employee Assignments
@@ -138,7 +173,7 @@ router.delete('/assignments/:id', shiftController.deleteAssignment);
 // Get by Shift Type
 router.get('/type/:shiftType/employees', shiftController.getEmployeesByShiftType);
 
-// New endpoint for employee count by shift
+// Employee count by shift
 router.get('/employee-count', shiftController.getEmployeeCountByShift);
 
 // Employee Dashboard
