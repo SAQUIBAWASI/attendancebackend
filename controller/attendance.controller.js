@@ -1426,9 +1426,45 @@ exports.getEmployeeAttendance = async (req, res) => {
 };
 
 // ---------------- All Attendance ----------------
+// exports.getAllAttendance = async (req, res) => {
+//   try {
+//     const { employeeId, fromDate, toDate } = req.query;
+
+//     let filter = {};
+
+//     // 🔹 Employee Filter
+//     if (employeeId) {
+//       filter.employeeId = employeeId;
+//     }
+
+//     // 🔹 Date Filter
+//     if (fromDate && toDate) {
+//       filter.checkInTime = {
+//         $gte: new Date(fromDate),
+//         $lte: new Date(toDate + "T23:59:59"),
+//       };
+//     }
+
+//     // 🔹 Fetch with Filter
+//     const records = await Attendance.find(filter).sort({ checkInTime: -1 });
+
+//     res.status(200).json({
+//       message: "Attendance records fetched successfully",
+//       records,
+//     });
+//   } catch (err) {
+//     console.error("Get All Attendance Error:", err);
+//     res.status(500).json({
+//       message: "Failed to fetch attendance",
+//       error: err.message,
+//     });
+//   }
+// };
+
+// ---------------- All Attendance ----------------
 exports.getAllAttendance = async (req, res) => {
   try {
-    const { employeeId, fromDate, toDate } = req.query;
+    const { employeeId, fromDate, toDate, month, year, monthNum } = req.query;
 
     let filter = {};
 
@@ -1437,11 +1473,47 @@ exports.getAllAttendance = async (req, res) => {
       filter.employeeId = employeeId;
     }
 
-    // 🔹 Date Filter
-    if (fromDate && toDate) {
+    // 🔹 Month Filter (NEW)
+    if (month) {
+      // month format: "2026-04"
+      const [yearStr, monthStr] = month.split('-');
+      const startDate = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
+      const endDate = new Date(parseInt(yearStr), parseInt(monthStr), 0);
+      endDate.setHours(23, 59, 59, 999);
+      
+      filter.checkInTime = {
+        $gte: startDate,
+        $lte: endDate
+      };
+    }
+    // 🔹 Alternative month filter using year and monthNum
+    else if (year && monthNum) {
+      const startDate = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+      const endDate = new Date(parseInt(year), parseInt(monthNum), 0);
+      endDate.setHours(23, 59, 59, 999);
+      
+      filter.checkInTime = {
+        $gte: startDate,
+        $lte: endDate
+      };
+    }
+    // 🔹 Date Range Filter
+    else if (fromDate && toDate) {
       filter.checkInTime = {
         $gte: new Date(fromDate),
         $lte: new Date(toDate + "T23:59:59"),
+      };
+    }
+    // 🔹 Single Date Filter (fromDate only)
+    else if (fromDate) {
+      const startDate = new Date(fromDate);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(fromDate);
+      endDate.setHours(23, 59, 59, 999);
+      
+      filter.checkInTime = {
+        $gte: startDate,
+        $lte: endDate
       };
     }
 
