@@ -10457,6 +10457,15 @@ exports.getSalaries = async (req, res) => {
       // ============================================
       const monthlySalary = salaryData.salaryPerMonth;
       const dailyRate = monthlySalary / daysInMonth;
+      
+      // ✅ NEW RULE: Starting May 2026, 1 weekoff is earned for every 5 days present (including paid leaves & holidays)
+      const isMay2026OrLater = year > 2026 || (year === 2026 && monthNum >= 5);
+      if (isMay2026OrLater) {
+        const totalPresentEquivalent = effectiveWorkingDays + paidLeaveDays + holidayDaysInMonth;
+        const earnedWeekOffs = Math.floor(totalPresentEquivalent / 5);
+        weekOffs = Math.min(weekOffs, earnedWeekOffs);
+      }
+      
       let paidDays = effectiveWorkingDays + weekOffs + paidLeaveDays + holidayDaysInMonth;
       paidDays = Math.min(paidDays, daysInMonth);
       
