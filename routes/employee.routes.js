@@ -220,7 +220,7 @@ const {
   // 🆕 Salary increment controllers
   applySalaryIncrement, getEmployeeSalaryForDate, getSalaryIncrementHistory,
   getSalaryTimeline, getAllEmployeesSalaryStatus, applyPendingIncrements,
-  fixEmployeeCurrentSalary,
+  fixEmployeeCurrentSalary, forgotPassword, resetPassword
 } = require("../controller/employee.controller");
 
 const router = express.Router();
@@ -233,6 +233,8 @@ router.get("/get-employees", getEmployees);
 router.get("/get-employee", getEmployeeByEmail);
 router.get("/get-employee-by-phone", getEmployeeByPhone);
 router.post("/login", loginEmployee);
+router.post("/forgot-password", forgotPassword);
+router.post("/reset-password/:token", resetPassword);
 router.get("/attendance-summary", getEmployeeAttendanceSummary);
 router.put("/assign-location/:employeeId", assignLocation);
 router.get("/mylocation/:employeeId", getAssignedLocationByEmployeeId);

@@ -335,6 +335,9 @@ app.use("/api/medical-certificates", require("./routes/medicalCertificate.routes
 // ✅ Attendance Edit Requests
 app.use("/api/attendance-edit-requests", require("./routes/attendanceEditRequest.routes"));
 
+// ✅ Password Reset
+app.use("/api/password-reset", require("./routes/passwordReset.routes"));
+
 // ✅ Default test route
 app.get("/", (req, res) => {
   res.json({

@@ -442,6 +442,10 @@ const employeeSchema = new mongoose.Schema({
   // Permissions
   permissions: { type: [String], default: [] },
   
+  // Password Reset
+  resetPasswordToken: { type: String, default: null },
+  resetPasswordExpires: { type: Date, default: null },
+  
   // Salary Increment History
   salaryIncrements: [salaryIncrementSchema],
   futureIncrements: [futureSalaryIncrementSchema],

@@ -9387,7 +9387,8 @@ const getEmployeeShift = (employeeId, shiftsData, masterShifts) => {
     type: shiftType,
     startTime: startTime,
     endTime: endTime,
-    duration: duration
+    duration: duration,
+    isBrakeShift: assignedShift ? (assignedShift.isBrakeShift || assignedShift.shiftCategory === 'Brake') : false
   };
 };
 
@@ -9692,7 +9693,7 @@ exports.calculateSummary = async (req, res) => {
     const masterShifts = allShifts.filter(s => s.isMasterShift);
 
     const summaryMap = {};
-    const processedDates = {};
+    const employeeDateGroups = {};
 
     attendanceRecords.forEach((rec) => {
       if (!rec.employeeId || !rec.checkInTime) return;
@@ -9702,9 +9703,14 @@ exports.calculateSummary = async (req, res) => {
 
       const recordMonth = `${checkInDate.getFullYear()}-${String(checkInDate.getMonth() + 1).padStart(2, "0")}`;
       if (processedMonth && recordMonth !== processedMonth) return;
-
       if (checkInDate > new Date()) return;
 
+      if (!employeeDateGroups[employeeId]) employeeDateGroups[employeeId] = {};
+      if (!employeeDateGroups[employeeId][dateKey]) employeeDateGroups[employeeId][dateKey] = [];
+      employeeDateGroups[employeeId][dateKey].push(rec);
+    });
+
+    Object.keys(employeeDateGroups).forEach(employeeId => {
       if (!summaryMap[employeeId]) {
         const emp = employees.find(e => e.employeeId === employeeId) || {};
         const shiftInfo = getEmployeeShift(employeeId, allShifts, masterShifts);
@@ -9723,6 +9729,7 @@ exports.calculateSummary = async (req, res) => {
           onsiteYesDays: 0,
           onsiteNoDays: 0,
           shiftName: shiftInfo.name,
+          isBrakeShift: shiftInfo.isBrakeShift,
           shiftDuration: shiftInfo.duration,
           shiftStartTime: shiftInfo.startTime,
           shiftEndTime: shiftInfo.endTime,
@@ -9740,75 +9747,110 @@ exports.calculateSummary = async (req, res) => {
           workingDays: 0,
           reasonCount: { onsite: 0, fieldWork: 0, workFromHome: 0 }
         };
-        processedDates[employeeId] = new Set();
       }
-
-      if (processedDates[employeeId].has(dateKey)) return;
-      processedDates[employeeId].add(dateKey);
 
       const empSum = summaryMap[employeeId];
 
-      let hours = 0;
-      if (rec.totalHours !== undefined) {
-        hours = parseFloat(rec.totalHours);
-      } else if (rec.checkOutTime) {
-        hours = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
-      }
-
-      // ✅ SHIFT BASED DAY TYPE CALCULATION
-      const type = calculateShiftDayType(hours, empSum.shiftDuration);
-
-      if (type === "full") {
-        empSum.presentDays += 1;
-        empSum.totalWorkingDays += 1;
-      } else if (type === "half") {
-        empSum.halfDayWorking += 1;
-        empSum.totalWorkingDays += 0.5;
-      } else {
-        empSum.fullDayNotWorking += 1;
-      }
-
-      // ✅ SHIFT BASED OVERTIME CALCULATION
-      const ot = calculateShiftOT(
-        rec.checkOutTime, 
-        empSum.shiftEndTime, 
-        rec.checkInTime, 
-        hours,
-        empSum.shiftDuration
-      );
-      empSum.overTimeHours += ot;
-
-      // ✅ SHIFT BASED LATE CHECK CALCULATION
-      if (empSum.shiftStartTime) {
-        const [startH, startM] = empSum.shiftStartTime.split(":").map(Number);
-        const checkInH = checkInDate.getHours();
-        const checkInM = checkInDate.getMinutes();
-
-        // Add grace period of 5 minutes
-        if (checkInH > startH || (checkInH === startH && checkInM > startM + 5)) {
-          empSum.lateDays += 1;
+      Object.keys(employeeDateGroups[employeeId]).forEach(dateKey => {
+        let recordsForDay = employeeDateGroups[employeeId][dateKey];
+        
+        const isBrakeShift = empSum.isBrakeShift || (empSum.shiftName && (empSum.shiftName.toLowerCase().includes("brake") || empSum.shiftName.toLowerCase().includes("break")));
+        
+        if (!isBrakeShift) {
+          // User requested: "baki sab jaisa hai wo waisa hi rkhna hai"
+          // Keep only the first chronological check-in for non-break shifts (the last in array due to sort)
+          recordsForDay = [recordsForDay[recordsForDay.length - 1]];
         }
-      } else {
-        const h = checkInDate.getHours();
-        const m = checkInDate.getMinutes();
-        if (h > 10 || (h === 10 && m > 5)) {
-          empSum.lateDays += 1;
-        }
-      }
 
-      if (rec.onsite) {
-        empSum.onsiteDays += 1;
-        empSum.onsiteYesDays += 1;
-        empSum.reasonCount.onsite += 1;
-      } else {
-        empSum.onsiteNoDays += 1;
+        let totalHoursForDay = 0;
+        let firstCheckInDate = new Date(recordsForDay[recordsForDay.length - 1].checkInTime); 
+        let anyOnsite = false;
+        
+        recordsForDay.forEach(rec => {
+          let h = 0;
+          if (rec.totalHours !== undefined && rec.totalHours > 0) {
+            h = parseFloat(rec.totalHours);
+            // Cap absurdly high historical hours
+            if (h > 15) h = 10; 
+          } else if (rec.checkOutTime) {
+            h = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
+            if (h > 15) h = 10;
+          } else {
+            // Auto-checkout assumption for first half of brake shift
+            if (isBrakeShift) {
+              const checkInH = new Date(rec.checkInTime).getHours();
+              if (checkInH < 13) {
+                h = 6; // Assume 6 hours for morning shift if checkout missing
+              }
+            } else {
+              h = 9; // Assume normal full day if missing checkout for regular shift
+            }
+          }
+          totalHoursForDay += h;
+          
+          if (rec.onsite) anyOnsite = true;
+          
+          const cin = new Date(rec.checkInTime);
+          if (cin < firstCheckInDate) firstCheckInDate = cin;
+        });
 
-        if (rec.reason === "Work From Home") {
-          empSum.reasonCount.workFromHome += 1;
-        } else if (rec.reason === "Field Work") {
-          empSum.reasonCount.fieldWork += 1;
+        // ✅ SHIFT BASED DAY TYPE CALCULATION
+        const type = calculateShiftDayType(totalHoursForDay, empSum.shiftDuration);
+
+        if (type === "full") {
+          empSum.presentDays += 1;
+          empSum.totalWorkingDays += 1;
+        } else if (type === "half") {
+          empSum.halfDayWorking += 1;
+          empSum.totalWorkingDays += 0.5;
+        } else {
+          empSum.fullDayNotWorking += 1;
         }
-      }
+
+        // ✅ SHIFT BASED OVERTIME CALCULATION
+        const lastCheckOutTime = recordsForDay[0].checkOutTime; 
+        const ot = calculateShiftOT(
+          lastCheckOutTime, 
+          empSum.shiftEndTime, 
+          firstCheckInDate, 
+          totalHoursForDay,
+          empSum.shiftDuration
+        );
+        empSum.overTimeHours += ot;
+
+        // ✅ SHIFT BASED LATE CHECK CALCULATION
+        if (empSum.shiftStartTime) {
+          const [startH, startM] = empSum.shiftStartTime.split(":").map(Number);
+          const checkInH = firstCheckInDate.getHours();
+          const checkInM = firstCheckInDate.getMinutes();
+
+          if (checkInH > startH || (checkInH === startH && checkInM > startM + 5)) {
+            empSum.lateDays += 1;
+          }
+        } else {
+          const h = firstCheckInDate.getHours();
+          const m = firstCheckInDate.getMinutes();
+          if (h > 10 || (h === 10 && m > 5)) {
+            empSum.lateDays += 1;
+          }
+        }
+
+        if (anyOnsite) {
+          empSum.onsiteDays += 1;
+          empSum.onsiteYesDays += 1;
+          empSum.reasonCount.onsite += 1;
+        } else {
+          empSum.onsiteNoDays += 1;
+          const recWithReason = recordsForDay.find(r => r.reason);
+          if (recWithReason) {
+            if (recWithReason.reason === "Work From Home") {
+              empSum.reasonCount.workFromHome += 1;
+            } else if (recWithReason.reason === "Field Work") {
+              empSum.reasonCount.fieldWork += 1;
+            }
+          }
+        }
+      });
     });
 
     const summaryArray = Object.values(summaryMap);

@@ -2204,6 +2204,114 @@ const getAnniversariesToday = async (req, res) => {
   }
 };
 
+// ==================== PASSWORD RESET ====================
+// const crypto = require("crypto");
+// const nodemailer = require("nodemailer");
+
+// const forgotPassword = async (req, res) => {
+//   try {
+//     const { email } = req.body;
+//     if (!email) return res.status(400).json({ success: false, message: "Email is required" });
+
+//     const employee = await Employee.findOne({ email });
+//     if (!employee) return res.status(404).json({ success: false, message: "Employee not found" });
+
+//     // Generate token
+//     const token = crypto.randomBytes(32).toString("hex");
+    
+//     // Set token and expiration (1 hour)
+//     employee.resetPasswordToken = token;
+//     employee.resetPasswordExpires = Date.now() + 3600000;
+//     await employee.save();
+
+//     // Use environment variables or create a test account on the fly if not configured
+//     let transporter;
+    
+//     // Check if user has actually configured a real app password
+//     if (process.env.EMAIL_PASS && process.env.EMAIL_PASS !== "aapka_app_password") {
+//       transporter = nodemailer.createTransport({
+//         service: "gmail",
+//         auth: {
+//           user: process.env.EMAIL_USER,
+//           pass: process.env.EMAIL_PASS
+//         }
+//       });
+//     } else {
+//       // Fallback to Ethereal Email (Fake SMTP for testing)
+//       const testAccount = await nodemailer.createTestAccount();
+//       transporter = nodemailer.createTransport({
+//         host: "smtp.ethereal.email",
+//         port: 587,
+//         secure: false, // true for 465, false for other ports
+//         auth: {
+//           user: testAccount.user, // generated ethereal user
+//           pass: testAccount.pass, // generated ethereal password
+//         },
+//       });
+//       console.log("Using Ethereal Fake Email for testing. Emails won't reach real inboxes.");
+//     }
+
+//     const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+//     const resetUrl = `${clientUrl}/reset-password/${token}`;
+//     const mailOptions = {
+//       from: process.env.EMAIL_USER && process.env.EMAIL_PASS !== "aapka_app_password" ? process.env.EMAIL_USER : '"Attendance System" <support@attendance.com>',
+//       to: email,
+//       subject: "Password Reset Request",
+//       text: `You requested a password reset. Please click on the following link or paste it into your browser to reset your password:\n\n${resetUrl}\n\nIf you did not request this, please ignore this email.`
+//     };
+
+//     transporter.sendMail(mailOptions, (error, info) => {
+//       if (error) {
+//         console.error("Error sending email:", error);
+//         return res.status(500).json({ success: false, message: "Email could not be sent. Make sure EMAIL_USER and EMAIL_PASS are set correctly." });
+//       } else {
+//         if (info.messageId && nodemailer.getTestMessageUrl(info)) {
+//             console.log("Preview URL: %s", nodemailer.getTestMessageUrl(info));
+//             return res.status(200).json({ 
+//               success: true, 
+//               message: "Test email sent. Check backend console for preview link.",
+//               previewUrl: nodemailer.getTestMessageUrl(info) 
+//             });
+//         }
+//         return res.status(200).json({ success: true, message: "Password reset email sent." });
+//       }
+//     });
+//   } catch (error) {
+//     console.error("Forgot password error:", error);
+//     res.status(500).json({ success: false, message: "Server error", error: error.message });
+//   }
+// };
+
+// const resetPassword = async (req, res) => {
+//   try {
+//     const { token } = req.params;
+//     const { password } = req.body;
+
+//     if (!password) return res.status(400).json({ success: false, message: "New password is required" });
+
+//     const employee = await Employee.findOne({
+//       resetPasswordToken: token,
+//       resetPasswordExpires: { $gt: Date.now() }
+//     });
+
+//     if (!employee) {
+//       return res.status(400).json({ success: false, message: "Password reset token is invalid or has expired." });
+//     }
+
+//     // Update password and clear token fields
+//     employee.password = password; // Should hash in production, but following existing plain-text pattern if used
+//     employee.resetPasswordToken = undefined;
+//     employee.resetPasswordExpires = undefined;
+
+//     await employee.save();
+
+//     res.status(200).json({ success: true, message: "Password has been reset successfully." });
+//   } catch (error) {
+//     console.error("Reset password error:", error);
+//     res.status(500).json({ success: false, message: "Server error", error: error.message });
+//   }
+// };
+
 // ==================== FIX EMPLOYEE CURRENT SALARY ====================
 const fixEmployeeCurrentSalary = async (req, res) => {
   try {
@@ -2251,6 +2359,149 @@ const fixEmployeeCurrentSalary = async (req, res) => {
   }
 };
 
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
+
+// ============ FORGOT PASSWORD ============
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    console.log(`Password reset requested for: ${email}`);
+    
+    // Check if employee exists
+    const employee = await Employee.findOne({ email });
+    if (!employee) {
+      return res.status(404).json({ message: 'No employee found with this email address' });
+    }
+    
+    // Generate reset token (expires in 1 hour)
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    employee.resetPasswordToken = resetToken;
+    employee.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    await employee.save();
+    
+    // Create reset link
+    const resetLink = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+    
+    // Real email setup using Gmail
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.error("EMAIL_USER or EMAIL_PASS is missing in .env file");
+      return res.status(500).json({ message: "Email configuration is missing on the server." });
+    }
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { 
+        user: process.env.EMAIL_USER, 
+        pass: process.env.EMAIL_PASS 
+      },
+    });
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+      </head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+          <div style="text-align: center; padding: 20px 0; border-bottom: 2px solid #4F46E5;">
+            <h2 style="color: #4F46E5; margin: 0;">Attendance Management System</h2>
+          </div>
+          <div style="padding: 30px 20px;">
+            <h3 style="color: #333;">Hello ${employee.name || 'User'},</h3>
+            <p>We received a request to reset your password. Click the button below to create a new password:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetLink}" style="display: inline-block; padding: 12px 30px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                Reset Password
+              </a>
+            </div>
+            <p>Or copy this link to your browser:</p>
+            <p style="background-color: #f5f5f5; padding: 10px; border-radius: 5px; word-break: break-all;">
+              <a href="${resetLink}" style="color: #4F46E5;">${resetLink}</a>
+            </p>
+            <p><strong>Note:</strong> This link will expire in <strong>1 hour</strong>.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await transporter.sendMail({
+      from: `"Attendance System" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Reset Your Password - Attendance Management System",
+      html: htmlContent,
+    });
+
+    console.log(`Real email successfully sent to ${email}`);
+    
+    res.status(200).json({ 
+      success: true,
+      message: 'Password reset link has been sent to your email address!' 
+    });
+    
+  } catch (error) {
+    console.error('Forgot password error details:', error);
+    res.status(500).json({ 
+      message: 'Error sending reset email. Please try again later.' 
+    });
+  }
+};
+
+// ============ RESET PASSWORD ============
+const resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+    
+    console.log(`Reset password attempt with token: ${token}`);
+    
+    // Validate password strength
+    if (!password || password.length < 6) {
+      return res.status(400).json({ 
+        message: 'Password must be at least 6 characters long' 
+      });
+    }
+    
+    // Find employee with valid token
+    const employee = await Employee.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+    
+    if (!employee) {
+      return res.status(400).json({ 
+        message: 'Password reset token is invalid or has expired' 
+      });
+    }
+    
+    // Save password as plain text to match how loginEmployee checks it
+    employee.password = password;
+    employee.resetPasswordToken = undefined;
+    employee.resetPasswordExpires = undefined;
+    await employee.save();
+    
+    console.log(`Password reset successfully for: ${employee.email}`);
+    
+    res.status(200).json({ 
+      success: true,
+      message: 'Password has been reset successfully! You can now login with your new password.' 
+    });
+    
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ 
+      message: 'Error resetting password. Please try again.' 
+    });
+  }
+};
+
+
+
+
 module.exports = {
   getEmployeeByPhone,
   addEmployee,
@@ -2276,4 +2527,7 @@ module.exports = {
   getBirthdaysToday,
   getAnniversariesToday,
   fixEmployeeCurrentSalary,
+  forgotPassword,
+  resetPassword,
 };
+

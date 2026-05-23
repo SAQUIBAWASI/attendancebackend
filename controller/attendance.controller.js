@@ -1253,7 +1253,21 @@ exports.checkIn = async (req, res) => {
     });
 
     if (existingCheckIn) {
-      return res.status(400).json({ message: "Already checked-in for today" });
+      const checkInH = new Date(existingCheckIn.checkInTime).getHours();
+      const nowH = new Date().getHours();
+
+      // If previous check-in was in the morning (< 13:00) and now it is afternoon/evening (>= 14:00)
+      // This means they forgot to check out of the first half of a brake shift.
+      if (checkInH < 13 && nowH >= 14) {
+        const autoCheckOutTime = new Date(existingCheckIn.checkInTime.getTime() + 6 * 60 * 60 * 1000); // Assume 6 hours
+        existingCheckIn.checkOutTime = autoCheckOutTime;
+        existingCheckIn.totalHours = 6;
+        existingCheckIn.status = "checked-out";
+        existingCheckIn.reason = "Auto-checkout (missing first half checkout)";
+        await existingCheckIn.save();
+      } else {
+        return res.status(400).json({ message: "Already checked-in for today" });
+      }
     }
 
     // Save attendance record
