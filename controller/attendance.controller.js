@@ -1306,25 +1306,160 @@ exports.checkIn = async (req, res) => {
   }
 };
 
+// exports.checkOut = async (req, res) => {
+//   try {
+//     const { employeeId, latitude, longitude, reason } = req.body;
+//     if (!employeeId || latitude == null || longitude == null) {
+//       return res.status(400).json({ message: "Employee ID and location are required" });
+//     }
+
+//     // 1️⃣ Get Employee with assigned location
+//     const employee = await Employee.findOne({ employeeId }).populate("location");
+//     if (!employee) {
+//       return res.status(404).json({ message: "Employee not found" });
+//     }
+
+//     const assignedLocation = employee.location;
+//     if (!assignedLocation) {
+//       return res.status(404).json({ message: "No location assigned to employee" });
+//     }
+
+//     // 2️⃣ Calculate distance between employee and assigned location
+//     const distance = haversineDistance(
+//       assignedLocation.latitude,
+//       assignedLocation.longitude,
+//       latitude,
+//       longitude
+//     );
+
+//     const onsite = distance <= ONSITE_RADIUS_M;
+
+//     // 3️⃣ Find today's check-in
+//     const startOfToday = new Date();
+//     startOfToday.setHours(0, 0, 0, 0);
+
+//     const existingCheckIn = await Attendance.findOne({
+//       employeeId,
+//       checkInTime: { $gte: startOfToday },
+//       status: "checked-in",
+//     });
+
+//     if (!existingCheckIn) {
+//       return res.status(400).json({ message: "No check-in found for today" });
+//     }
+
+//     // 4️⃣ Calculate total hours
+//     const checkOutTime = new Date();
+//     const checkInTime = new Date(existingCheckIn.checkInTime);
+//     const totalHours = ((checkOutTime - checkInTime) / (1000 * 60 * 60)).toFixed(2);
+
+//     // 5️⃣ Update attendance record
+//     const updateData = {
+//       checkOutTime,
+//       totalHours,
+//       status: "checked-out",
+//       latitude,
+//       longitude,
+//       distance,
+//       onsite,
+//     };
+
+//     if (!onsite) {
+//       updateData.reason = reason || "No reason provided";
+//     }
+
+//     const attendance = await Attendance.findByIdAndUpdate(
+//       existingCheckIn._id,
+//       updateData,
+//       { new: true }
+//     );
+
+//     // ✅ Add employee name to response
+//     const employeeName = employee.name || "Employee";
+
+//     // ✅ Log checkout activity
+//     await logActivity({
+//       userId: employeeId,
+//       userName: employeeName,
+//       userEmail: employee.email || "",
+//       userRole: "employee",
+//       action: "logout",
+//       actionDetails: `Employee checked out after ${totalHours} hours`,
+//       ipAddress: req.ip || req.connection.remoteAddress,
+//       metadata: {
+//         checkInTime: checkInTime,
+//         checkOutTime: checkOutTime,
+//         totalHours: totalHours,
+//         location: assignedLocation.name,
+//         onsite: onsite,
+//         distance: distance
+//       },
+//     });
+
+//     res.status(200).json({
+//       message: onsite
+//         ? `✅ Goodbye, ${employeeName}! Check-out successful. Total hours: ${totalHours} (Inside assigned location: ${distance}m away)`
+//         : `✅ Goodbye, ${employeeName}! Check-out successful. Total hours: ${totalHours} (Outside assigned location: ${distance}m away)`,
+//       attendance,
+//       employeeName: employeeName, // ✅ Return employee name
+//       totalHours,
+//     });
+//   } catch (err) {
+//     console.error("Check-out error:", err);
+//     res.status(500).json({ message: "Check-Out failed", error: err.message });
+//   }
+// };
+
+
+
 exports.checkOut = async (req, res) => {
   try {
-    const { employeeId, latitude, longitude, reason } = req.body;
-    if (!employeeId || latitude == null || longitude == null) {
-      return res.status(400).json({ message: "Employee ID and location are required" });
+
+    const {
+      employeeId,
+      latitude,
+      longitude,
+      reason,
+    } = req.body;
+
+    if (
+      !employeeId ||
+      latitude == null ||
+      longitude == null
+    ) {
+      return res.status(400).json({
+        message:
+          "Employee ID and location are required",
+      });
     }
 
-    // 1️⃣ Get Employee with assigned location
-    const employee = await Employee.findOne({ employeeId }).populate("location");
+    // =========================
+    // GET EMPLOYEE
+    // =========================
+
+    const employee = await Employee.findOne({
+      employeeId,
+    }).populate("location");
+
     if (!employee) {
-      return res.status(404).json({ message: "Employee not found" });
+      return res.status(404).json({
+        message: "Employee not found",
+      });
     }
 
     const assignedLocation = employee.location;
+
     if (!assignedLocation) {
-      return res.status(404).json({ message: "No location assigned to employee" });
+      return res.status(404).json({
+        message:
+          "No location assigned to employee",
+      });
     }
 
-    // 2️⃣ Calculate distance between employee and assigned location
+    // =========================
+    // CALCULATE DISTANCE
+    // =========================
+
     const distance = haversineDistance(
       assignedLocation.latitude,
       assignedLocation.longitude,
@@ -1332,81 +1467,419 @@ exports.checkOut = async (req, res) => {
       longitude
     );
 
-    const onsite = distance <= ONSITE_RADIUS_M;
+    const onsite =
+      distance <= ONSITE_RADIUS_M;
 
-    // 3️⃣ Find today's check-in
+    // =========================
+    // FIND TODAY ATTENDANCE
+    // =========================
+
     const startOfToday = new Date();
+
     startOfToday.setHours(0, 0, 0, 0);
 
-    const existingCheckIn = await Attendance.findOne({
-      employeeId,
-      checkInTime: { $gte: startOfToday },
-      status: "checked-in",
-    });
+    const existingCheckIn =
+      await Attendance.findOne({
+        employeeId,
+        checkInTime: {
+          $gte: startOfToday,
+        },
+        status: {
+          $in: [
+            "checked-in",
+            "on-break",
+          ],
+        },
+      });
 
     if (!existingCheckIn) {
-      return res.status(400).json({ message: "No check-in found for today" });
+      return res.status(400).json({
+        message:
+          "No active check-in found for today",
+      });
     }
 
-    // 4️⃣ Calculate total hours
+    // =========================
+    // AUTO CLOSE ACTIVE BREAK
+    // =========================
+
+    const activeBreak =
+      existingCheckIn.breaks.find(
+        (b) => b.breakIn && !b.breakOut
+      );
+
+    if (activeBreak) {
+
+      activeBreak.breakOut =
+        new Date();
+
+      const breakMinutes =
+        (activeBreak.breakOut -
+          activeBreak.breakIn) /
+        (1000 * 60);
+
+      activeBreak.breakMinutes =
+        Math.round(breakMinutes);
+    }
+
+    // =========================
+    // TOTAL BREAK MINUTES
+    // =========================
+
+    existingCheckIn.totalBreakMinutes =
+      existingCheckIn.breaks.reduce(
+        (sum, b) =>
+          sum + (b.breakMinutes || 0),
+        0
+      );
+
+    // =========================
+    // TIME CALCULATIONS
+    // =========================
+
     const checkOutTime = new Date();
-    const checkInTime = new Date(existingCheckIn.checkInTime);
-    const totalHours = ((checkOutTime - checkInTime) / (1000 * 60 * 60)).toFixed(2);
 
-    // 5️⃣ Update attendance record
-    const updateData = {
-      checkOutTime,
-      totalHours,
-      status: "checked-out",
-      latitude,
-      longitude,
-      distance,
-      onsite,
-    };
-
-    if (!onsite) {
-      updateData.reason = reason || "No reason provided";
-    }
-
-    const attendance = await Attendance.findByIdAndUpdate(
-      existingCheckIn._id,
-      updateData,
-      { new: true }
+    const checkInTime = new Date(
+      existingCheckIn.checkInTime
     );
 
-    // ✅ Add employee name to response
-    const employeeName = employee.name || "Employee";
+    // Presence Hours
+    const totalHours =
+      (checkOutTime - checkInTime) /
+      (1000 * 60 * 60);
 
-    // ✅ Log checkout activity
+    // Working Hours
+    const workingHours =
+      totalHours -
+      (existingCheckIn.totalBreakMinutes /
+        60);
+
+    // OT Hours
+    const otHours =
+      workingHours >
+      existingCheckIn.assignedShiftHours
+        ? workingHours -
+          existingCheckIn.assignedShiftHours
+        : 0;
+
+    // Hourly Rate
+    const hourlyRate =
+      existingCheckIn.basicSalary /
+      existingCheckIn.workingDays /
+      existingCheckIn.assignedShiftHours;
+
+    // OT Rate
+    const otRate =
+      hourlyRate *
+      existingCheckIn.otMultiplier;
+
+    // OT Amount
+    const otAmount =
+      otHours * otRate;
+
+    // =========================
+    // UPDATE DATA
+    // =========================
+
+    existingCheckIn.checkOutTime =
+      checkOutTime;
+
+    existingCheckIn.totalHours =
+      totalHours.toFixed(2);
+
+    existingCheckIn.workingHours =
+      workingHours.toFixed(2);
+
+    existingCheckIn.otHours =
+      otHours.toFixed(2);
+
+    existingCheckIn.hourlyRate =
+      hourlyRate.toFixed(2);
+
+    existingCheckIn.otRate =
+      otRate.toFixed(2);
+
+    existingCheckIn.otAmount =
+      otAmount.toFixed(2);
+
+    existingCheckIn.status =
+      "checked-out";
+
+    existingCheckIn.latitude =
+      latitude;
+
+    existingCheckIn.longitude =
+      longitude;
+
+    existingCheckIn.distance =
+      distance;
+
+    existingCheckIn.onsite =
+      onsite;
+
+    if (!onsite) {
+      existingCheckIn.reason =
+        reason || "No reason provided";
+    }
+
+    await existingCheckIn.save();
+
+    // =========================
+    // EMPLOYEE NAME
+    // =========================
+
+    const employeeName =
+      employee.name || "Employee";
+
+    // =========================
+    // ACTIVITY LOG
+    // =========================
+
     await logActivity({
       userId: employeeId,
+
       userName: employeeName,
-      userEmail: employee.email || "",
+
+      userEmail:
+        employee.email || "",
+
       userRole: "employee",
+
       action: "logout",
-      actionDetails: `Employee checked out after ${totalHours} hours`,
-      ipAddress: req.ip || req.connection.remoteAddress,
+
+      actionDetails:
+        `Employee checked out after ${workingHours.toFixed(2)} working hours`,
+
+      ipAddress:
+        req.ip ||
+        req.connection.remoteAddress,
+
       metadata: {
-        checkInTime: checkInTime,
-        checkOutTime: checkOutTime,
-        totalHours: totalHours,
-        location: assignedLocation.name,
-        onsite: onsite,
-        distance: distance
+        checkInTime,
+        checkOutTime,
+
+        totalHours:
+          totalHours.toFixed(2),
+
+        workingHours:
+          workingHours.toFixed(2),
+
+        totalBreakMinutes:
+          existingCheckIn.totalBreakMinutes,
+
+        otHours:
+          otHours.toFixed(2),
+
+        otAmount:
+          otAmount.toFixed(2),
+
+        location:
+          assignedLocation.name,
+
+        onsite,
+
+        distance,
       },
     });
 
+    // =========================
+    // RESPONSE
+    // =========================
+
     res.status(200).json({
       message: onsite
-        ? `✅ Goodbye, ${employeeName}! Check-out successful. Total hours: ${totalHours} (Inside assigned location: ${distance}m away)`
-        : `✅ Goodbye, ${employeeName}! Check-out successful. Total hours: ${totalHours} (Outside assigned location: ${distance}m away)`,
-      attendance,
-      employeeName: employeeName, // ✅ Return employee name
-      totalHours,
+        ? `✅ Goodbye, ${employeeName}! Check-out successful`
+        : `✅ Goodbye, ${employeeName}! Check-out successful (Outside office location)`,
+
+      employeeName,
+
+      attendance: existingCheckIn,
+
+      summary: {
+        totalHours:
+          totalHours.toFixed(2),
+
+        breakMinutes:
+          existingCheckIn.totalBreakMinutes,
+
+        workingHours:
+          workingHours.toFixed(2),
+
+        otHours:
+          otHours.toFixed(2),
+
+        otAmount:
+          otAmount.toFixed(2),
+      },
     });
+
   } catch (err) {
-    console.error("Check-out error:", err);
-    res.status(500).json({ message: "Check-Out failed", error: err.message });
+
+    console.error(
+      "Check-out error:",
+      err
+    );
+
+    res.status(500).json({
+      message: "Check-Out failed",
+      error: err.message,
+    });
+
+  }
+};
+
+
+
+// =========================
+// BREAK-IN
+// =========================
+
+exports.breakIn = async (req, res) => {
+  try {
+
+    const { employeeId, reason } = req.body;
+
+    if (!employeeId) {
+      return res.status(400).json({
+        message: "Employee ID is required",
+      });
+    }
+
+    // Today's attendance
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const attendance = await Attendance.findOne({
+      employeeId,
+      checkInTime: { $gte: startOfToday },
+      status: { $in: ["checked-in", "on-break"] },
+    });
+
+    if (!attendance) {
+      return res.status(404).json({
+        message: "No active attendance found",
+      });
+    }
+
+    // Check already on break
+    const activeBreak = attendance.breaks.find(
+      (b) => b.breakIn && !b.breakOut
+    );
+
+    if (activeBreak) {
+      return res.status(400).json({
+        message: "Already on break",
+      });
+    }
+
+    // Add new break
+    attendance.breaks.push({
+      breakIn: new Date(),
+      reason: reason || "Break",
+    });
+
+    attendance.status = "on-break";
+
+    await attendance.save();
+
+    res.status(200).json({
+      message: "Break started successfully",
+      attendance,
+    });
+
+  } catch (err) {
+
+    console.error("Break-In Error:", err);
+
+    res.status(500).json({
+      message: "Break-In failed",
+      error: err.message,
+    });
+
+  }
+};
+
+
+
+// =========================
+// BREAK-OUT
+// =========================
+
+exports.breakOut = async (req, res) => {
+  try {
+
+    const { employeeId } = req.body;
+
+    if (!employeeId) {
+      return res.status(400).json({
+        message: "Employee ID is required",
+      });
+    }
+
+    // Today's attendance
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const attendance = await Attendance.findOne({
+      employeeId,
+      checkInTime: { $gte: startOfToday },
+    });
+
+    if (!attendance) {
+      return res.status(404).json({
+        message: "Attendance not found",
+      });
+    }
+
+    // Find active break
+    const activeBreak = attendance.breaks.find(
+      (b) => b.breakIn && !b.breakOut
+    );
+
+    if (!activeBreak) {
+      return res.status(400).json({
+        message: "No active break found",
+      });
+    }
+
+    // Break Out Time
+    activeBreak.breakOut = new Date();
+
+    // Calculate break minutes
+    const breakMinutes =
+      (activeBreak.breakOut - activeBreak.breakIn)
+      / (1000 * 60);
+
+    activeBreak.breakMinutes =
+      Math.round(breakMinutes);
+
+    // Total Break Minutes
+    attendance.totalBreakMinutes =
+      attendance.breaks.reduce(
+        (sum, b) => sum + (b.breakMinutes || 0),
+        0
+      );
+
+    attendance.status = "checked-in";
+
+    await attendance.save();
+
+    res.status(200).json({
+      message: "Break ended successfully",
+      breakMinutes: activeBreak.breakMinutes,
+      totalBreakMinutes: attendance.totalBreakMinutes,
+      attendance,
+    });
+
+  } catch (err) {
+
+    console.error("Break-Out Error:", err);
+
+    res.status(500).json({
+      message: "Break-Out failed",
+      error: err.message,
+    });
+
   }
 };
 

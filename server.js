@@ -4,15 +4,15 @@
 // // ============================================
 // // 🔥 CRITICAL DNS FIX - MUST BE HERE (TOP)
 // // ============================================
-// const dns = require("dns");
+const dns = require("dns");
 
-// // Force Public DNS Servers
-// dns.setServers([
-//   "8.8.8.8",        // Google Primary
-//   "8.8.4.4",        // Google Secondary
-//   "1.1.1.1",        // Cloudflare
-//   "208.67.222.222"  // OpenDNS
-// ]);
+// Force Public DNS Servers
+dns.setServers([
+  "8.8.8.8",        // Google Primary
+  "8.8.4.4",        // Google Secondary
+  "1.1.1.1",        // Cloudflare
+  "208.67.222.222"  // OpenDNS
+]);
 
 // // 🔥 Force IPv4 Lookup
 // const originalLookup = dns.lookup;

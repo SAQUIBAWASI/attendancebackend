@@ -70,6 +70,10 @@ const router = express.Router();
 router.post("/checkin", attendanceController.checkIn);
 router.post("/checkout", attendanceController.checkOut);
 
+router.post("/break-in", attendanceController.breakIn);
+
+router.post("/break-out", attendanceController.breakOut);
+
 // Employee-specific
 router.get("/myattendance/:employeeId", attendanceController.getEmployeeAttendance);
 
