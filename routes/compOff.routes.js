@@ -42,7 +42,9 @@ const {
   getCompOffRequests,
   getEmployeeCompOffRequests,
   approveCompOffRequest,
-  rejectCompOffRequest
+  rejectCompOffRequest,
+  getAllCompOffSettings,
+  addCompOffSettings
 } = require("../controller/compOff.controller");
 
 // ============ COMP-OFF ROUTES ============
@@ -59,5 +61,13 @@ router.get("/comp-off-requests/employee/:employeeId", getEmployeeCompOffRequests
 router.get("/comp-off-requests", getCompOffRequests);
 router.put("/comp-off-requests/:id/approve", approveCompOffRequest);
 router.put("/comp-off-requests/:id/reject", rejectCompOffRequest);
+
+
+// 📌 Add Comp-Off Settings
+router.post("/add-comp-off-settings", addCompOffSettings);
+
+// 📌 Get All Comp-Off Settings
+router.get("/get-all-comp-off-settings", getAllCompOffSettings);
+
 
 module.exports = router;

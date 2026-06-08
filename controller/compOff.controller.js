@@ -203,6 +203,8 @@ const Leave = require("../models/Leave");
 const { logActivity } = require("./userActivity.controller");
 const Notification = require("../models/Notification");
 const Admin = require("../models/Admin");
+const CompOffSettings = require("../models/CompOffSettings"); // ✅ New model import
+
 
 // ============ COMP-OFF FUNCTIONS ============
 
@@ -401,33 +403,158 @@ exports.deleteCompOff = async (req, res) => {
 
 // ============ COMP-OFF REQUEST FUNCTIONS ============
 
-// ✅ Create comp-off request (Employee)
+// // ✅ Create comp-off request (Employee)
+// exports.createCompOffRequest = async (req, res) => {
+//   try {
+//     console.log("📩 Received comp-off request:", req.body);
+
+//     const { 
+//       employeeId, 
+//       employeeName, 
+//       originalLeaveId,
+//       workDate, 
+//       reason 
+//     } = req.body;
+
+//     // Validation
+//     if (!employeeId || !employeeName || !originalLeaveId || !workDate) {
+//       return res.status(400).json({ 
+//         error: "Missing required fields: employeeId, employeeName, originalLeaveId, workDate" 
+//       });
+//     }
+
+//     // Check if leave exists
+//     const leave = await Leave.findById(originalLeaveId);
+//     if (!leave) {
+//       return res.status(404).json({ error: "Leave not found" });
+//     }
+
+//     // Check if already requested for this leave
+//     const existingRequest = await CompOffRequest.findOne({
+//       employeeId,
+//       originalLeaveId,
+//       status: "pending"
+//     });
+
+//     if (existingRequest) {
+//       return res.status(400).json({ error: "You already have a pending request for this leave" });
+//     }
+
+//     const compOffRequest = new CompOffRequest({
+//       employeeId,
+//       employeeName,
+//       originalLeaveId,
+//       workDate,
+//       reason: reason || "Comp-off request",
+//       status: "pending"
+//     });
+
+//     await compOffRequest.save();
+
+//     // Notify admins
+//     const admins = await Admin.find({ role: { $regex: /^admin$/i } });
+//     for (const admin of admins) {
+//       await Notification.create({
+//         userId: admin.email,
+//         role: "admin",
+//         title: "New Comp-off Request",
+//         message: `${employeeName} requested comp-off for ${new Date(workDate).toLocaleDateString()}`,
+//         type: "comp_off_request",
+//         metadata: {
+//           requestId: compOffRequest._id,
+//           employeeId,
+//           leaveId: originalLeaveId
+//         }
+//       });
+//     }
+
+//     res.status(201).json({
+//       message: "Comp-off request submitted successfully",
+//       compOffRequest
+//     });
+
+//   } catch (error) {
+//     console.error("❌ Error creating comp-off request:", error);
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
+
+
+/**
+ * ✅ Create comp-off request (Employee)
+ */
+
 exports.createCompOffRequest = async (req, res) => {
   try {
     console.log("📩 Received comp-off request:", req.body);
 
-    const { 
-      employeeId, 
-      employeeName, 
+    const {
+      employeeId,
+      employeeName,
       originalLeaveId,
-      workDate, 
-      reason 
+      workDate,
+      reason
     } = req.body;
 
-    // Validation
+    // ✅ Validation
     if (!employeeId || !employeeName || !originalLeaveId || !workDate) {
-      return res.status(400).json({ 
-        error: "Missing required fields: employeeId, employeeName, originalLeaveId, workDate" 
+      return res.status(400).json({
+        error:
+          "Missing required fields: employeeId, employeeName, originalLeaveId, workDate"
       });
     }
 
-    // Check if leave exists
+    // ✅ Check leave exists
     const leave = await Leave.findById(originalLeaveId);
+
     if (!leave) {
-      return res.status(404).json({ error: "Leave not found" });
+      return res.status(404).json({
+        error: "Leave not found"
+      });
     }
 
-    // Check if already requested for this leave
+    // ✅ Check Comp-Off Settings
+    const compOffSetting = await CompOffSettings.findOne({
+      status: "active"
+    }).sort({ createdAt: -1 });
+
+    if (!compOffSetting) {
+      return res.status(400).json({
+        error: "Comp-Off is not active by admin"
+      });
+    }
+
+    // ✅ Validity Check
+    const today = new Date();
+
+    const validityFrom = new Date(
+      compOffSetting.validityFrom
+    );
+
+    const validityTo = new Date(
+      compOffSetting.validityTo
+    );
+
+    if (today < validityFrom || today > validityTo) {
+
+      // Auto expire
+      compOffSetting.status = "expired";
+      await compOffSetting.save();
+
+      return res.status(400).json({
+        error: "Comp-Off validity expired"
+      });
+    }
+
+    // ✅ Check remaining comp-off
+    if (compOffSetting.totalCompOff <= 0) {
+      return res.status(400).json({
+        error: "No Comp-Off balance available"
+      });
+    }
+
+    // ✅ Check pending request
     const existingRequest = await CompOffRequest.findOne({
       employeeId,
       originalLeaveId,
@@ -435,9 +562,13 @@ exports.createCompOffRequest = async (req, res) => {
     });
 
     if (existingRequest) {
-      return res.status(400).json({ error: "You already have a pending request for this leave" });
+      return res.status(400).json({
+        error:
+          "You already have a pending request for this leave"
+      });
     }
 
+    // ✅ Create request
     const compOffRequest = new CompOffRequest({
       employeeId,
       employeeName,
@@ -449,14 +580,25 @@ exports.createCompOffRequest = async (req, res) => {
 
     await compOffRequest.save();
 
-    // Notify admins
-    const admins = await Admin.find({ role: { $regex: /^admin$/i } });
+    // ✅ Reduce comp-off count
+    compOffSetting.totalCompOff =
+      compOffSetting.totalCompOff - 1;
+
+    await compOffSetting.save();
+
+    // ✅ Notify admins
+    const admins = await Admin.find({
+      role: { $regex: /^admin$/i }
+    });
+
     for (const admin of admins) {
       await Notification.create({
         userId: admin.email,
         role: "admin",
         title: "New Comp-off Request",
-        message: `${employeeName} requested comp-off for ${new Date(workDate).toLocaleDateString()}`,
+        message: `${employeeName} requested comp-off for ${new Date(
+          workDate
+        ).toLocaleDateString()}`,
         type: "comp_off_request",
         metadata: {
           requestId: compOffRequest._id,
@@ -467,13 +609,21 @@ exports.createCompOffRequest = async (req, res) => {
     }
 
     res.status(201).json({
+      success: true,
       message: "Comp-off request submitted successfully",
+      remainingCompOff: compOffSetting.totalCompOff,
       compOffRequest
     });
 
   } catch (error) {
-    console.error("❌ Error creating comp-off request:", error);
-    res.status(500).json({ error: error.message });
+    console.error(
+      "❌ Error creating comp-off request:",
+      error
+    );
+
+    res.status(500).json({
+      error: error.message
+    });
   }
 };
 
@@ -497,25 +647,89 @@ exports.getCompOffRequests = async (req, res) => {
   }
 };
 
-// ✅ Get employee's comp-off requests
+// // ✅ Get employee's comp-off requests
+// exports.getEmployeeCompOffRequests = async (req, res) => {
+//   try {
+//     const { employeeId } = req.params;
+    
+//     const requests = await CompOffRequest.find({ employeeId })
+//       .populate('originalLeaveId')
+//       .sort({ createdAt: -1 });
+    
+//     res.json({
+//       success: true,
+//       records: requests
+//     });
+//   } catch (error) {
+//     console.error("❌ Error fetching employee comp-off requests:", error);
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
+
+
+/**
+ * ✅ Get employee's comp-off requests
+ */
+
 exports.getEmployeeCompOffRequests = async (req, res) => {
   try {
     const { employeeId } = req.params;
-    
-    const requests = await CompOffRequest.find({ employeeId })
-      .populate('originalLeaveId')
+
+    // ✅ Get employee requests
+    const requests = await CompOffRequest.find({
+      employeeId
+    })
+      .populate("originalLeaveId")
       .sort({ createdAt: -1 });
-    
+
+    // ✅ Get active comp-off settings
+    const compOffSetting =
+      await CompOffSettings.findOne({
+        status: "active"
+      }).sort({ createdAt: -1 });
+
+    // ✅ Total comp-off from settings
+    const totalCompOff =
+      compOffSetting?.totalCompOff || 0;
+
+    // ✅ Used comp-off count
+    const usedCompOffCount = requests.filter(
+      (item) =>
+        item.status === "approved" ||
+        item.status === "pending"
+    ).length;
+
+    // ✅ Remaining comp-off count
+    const remainingCompOffCount =
+      totalCompOff - usedCompOffCount;
+
     res.json({
       success: true,
+
+      totalCompOff,
+
+      usedCompOffCount,
+
+      remainingCompOffCount:
+        remainingCompOffCount > 0
+          ? remainingCompOffCount
+          : 0,
+
       records: requests
     });
+
   } catch (error) {
-    console.error("❌ Error fetching employee comp-off requests:", error);
-    res.status(500).json({ error: error.message });
+    console.error(
+      "❌ Error fetching employee comp-off requests:",
+      error
+    );
+
+    res.status(500).json({
+      error: error.message
+    });
   }
 };
-
 // ✅ Approve comp-off request
 exports.approveCompOffRequest = async (req, res) => {
   try {
@@ -656,5 +870,71 @@ exports.updateCompOff = async (req, res) => {
   } catch (error) {
     console.error("❌ Error updating comp-off:", error);
     res.status(500).json({ error: error.message });
+  }
+};
+
+
+
+/**
+ * 📌 Add Comp-Off Settings
+ */
+
+exports.addCompOffSettings = async (req, res) => {
+  try {
+    const {
+      totalCompOff,
+      validityFrom,
+      validityTo
+    } = req.body;
+
+    const compOff = new CompOffSettings({
+      totalCompOff,
+      validityFrom,
+      validityTo,
+      status: "active"
+    });
+
+    await compOff.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Comp-Off settings added successfully",
+      data: compOff
+    });
+
+  } catch (error) {
+    console.error("❌ Error adding comp-off settings:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+/**
+ * 📌 Get All Comp-Off Settings
+ */
+
+exports.getAllCompOffSettings = async (req, res) => {
+  try {
+
+    const data = await CompOffSettings.find()
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: data.length,
+      data
+    });
+
+  } catch (error) {
+    console.error("❌ Error fetching comp-off settings:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
