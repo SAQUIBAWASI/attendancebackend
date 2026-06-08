@@ -10000,12 +10000,29 @@ exports.getSummary = async (req, res) => {
       filter.employeeId = employeeId;
     }
 
-    let data = await AttendanceSummary.find(filter).sort({ createdAt: -1 });
+    let data = await AttendanceSummary.find(filter)
+      .sort({ createdAt: -1 });
+
+    // ✅ Add role & weekOffPerMonth field from Employee schema
+    const updatedData = await Promise.all(
+      data.map(async (item) => {
+        const employee = await Employee.findOne(
+          { employeeId: item.employeeId },
+          { role: 1, weekOffPerMonth: 1 }
+        );
+
+        return {
+          ...item.toObject(),
+          role: employee?.role || "",
+          weekOffPerMonth: employee?.weekOffPerMonth || 0
+        };
+      })
+    );
 
     res.json({
       success: true,
-      count: data.length,
-      summary: data,
+      count: updatedData.length,
+      summary: updatedData,
       note: "Data from DB (Manual edits respected)"
     });
   } catch (err) {
@@ -10016,7 +10033,6 @@ exports.getSummary = async (req, res) => {
     });
   }
 };
-
 /**
  * 📌 Get Employee Details for Specific Employee
  */
