@@ -44,7 +44,9 @@ const {
   approveCompOffRequest,
   rejectCompOffRequest,
   getAllCompOffSettings,
-  addCompOffSettings
+  addCompOffSettings,
+  updateCompOffSettings,
+  deleteCompOffSettings
 } = require("../controller/compOff.controller");
 
 // ============ COMP-OFF ROUTES ============
@@ -68,6 +70,13 @@ router.post("/add-comp-off-settings", addCompOffSettings);
 
 // 📌 Get All Comp-Off Settings
 router.get("/get-all-comp-off-settings", getAllCompOffSettings);
+
+
+// 📌 Update Comp-Off Settings
+router.put("/update-comp-off-settings/:id", updateCompOffSettings);
+
+// 📌 Delete Comp-Off Settings
+router.delete("/delete-comp-off-settings/:id", deleteCompOffSettings);
 
 
 module.exports = router;

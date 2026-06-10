@@ -1731,158 +1731,146 @@ exports.checkOut = async (req, res) => {
 
 
 // =========================
-// BREAK-IN
+// BREAK-IN CONTROLLER - FIXED
 // =========================
-
 exports.breakIn = async (req, res) => {
   try {
-
     const { employeeId, reason } = req.body;
 
     if (!employeeId) {
       return res.status(400).json({
+        success: false,
         message: "Employee ID is required",
       });
     }
 
-    // Today's attendance
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-
-    const attendance = await Attendance.findOne({
-      employeeId,
-      checkInTime: { $gte: startOfToday },
-      status: { $in: ["checked-in", "on-break"] },
-    });
+    // Latest attendance find karo (bina date filter ke)
+    const attendance = await Attendance.findOne({ 
+      employeeId: employeeId 
+    }).sort({ checkInTime: -1 });
 
     if (!attendance) {
       return res.status(404).json({
-        message: "No active attendance found",
+        success: false,
+        message: "No attendance found. Please check in first.",
       });
     }
 
-    // Check already on break
-    const activeBreak = attendance.breaks.find(
-      (b) => b.breakIn && !b.breakOut
-    );
-
-    if (activeBreak) {
+    // Sirf status check
+    if (attendance.status === "on-break") {
       return res.status(400).json({
-        message: "Already on break",
+        success: false,
+        message: "You are already on a break",
       });
     }
 
-    // Add new break
+    if (attendance.status === "checked-out") {
+      return res.status(400).json({
+        success: false,
+        message: "You have already checked out for today",
+      });
+    }
+
+    // Break add karo
     attendance.breaks.push({
       breakIn: new Date(),
+      breakOut: null,
+      breakMinutes: 0,
       reason: reason || "Break",
     });
 
     attendance.status = "on-break";
-
     await attendance.save();
 
     res.status(200).json({
+      success: true,
       message: "Break started successfully",
       attendance,
     });
 
   } catch (err) {
-
     console.error("Break-In Error:", err);
-
     res.status(500).json({
-      message: "Break-In failed",
-      error: err.message,
+      success: false,
+      message: err.message,
     });
-
   }
 };
 
-
-
 // =========================
-// BREAK-OUT
+// BREAK-OUT CONTROLLER - FIXED
 // =========================
-
 exports.breakOut = async (req, res) => {
   try {
-
     const { employeeId } = req.body;
 
     if (!employeeId) {
       return res.status(400).json({
+        success: false,
         message: "Employee ID is required",
       });
     }
 
-    // Today's attendance
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-
-    const attendance = await Attendance.findOne({
-      employeeId,
-      checkInTime: { $gte: startOfToday },
-    });
+    // Latest attendance find karo jiska status on-break ho
+    const attendance = await Attendance.findOne({ 
+      employeeId: employeeId,
+      status: "on-break"
+    }).sort({ checkInTime: -1 });
 
     if (!attendance) {
-      return res.status(404).json({
-        message: "Attendance not found",
+      return res.status(400).json({
+        success: false,
+        message: "You are not on a break",
       });
     }
 
-    // Find active break
-    const activeBreak = attendance.breaks.find(
-      (b) => b.breakIn && !b.breakOut
-    );
+    // Active break dhundho
+    let activeBreak = null;
+    for (let i = attendance.breaks.length - 1; i >= 0; i--) {
+      if (attendance.breaks[i].breakIn && !attendance.breaks[i].breakOut) {
+        activeBreak = attendance.breaks[i];
+        break;
+      }
+    }
 
     if (!activeBreak) {
       return res.status(400).json({
+        success: false,
         message: "No active break found",
       });
     }
 
-    // Break Out Time
+    // Break out
     activeBreak.breakOut = new Date();
+    const breakMinutes = Math.round((activeBreak.breakOut - new Date(activeBreak.breakIn)) / 1000 / 60);
+    activeBreak.breakMinutes = breakMinutes;
 
-    // Calculate break minutes
-    const breakMinutes =
-      (activeBreak.breakOut - activeBreak.breakIn)
-      / (1000 * 60);
+    // Total break minutes calculate karo
+    let totalBreak = 0;
+    for (const b of attendance.breaks) {
+      totalBreak += (b.breakMinutes || 0);
+    }
+    attendance.totalBreakMinutes = totalBreak;
 
-    activeBreak.breakMinutes =
-      Math.round(breakMinutes);
-
-    // Total Break Minutes
-    attendance.totalBreakMinutes =
-      attendance.breaks.reduce(
-        (sum, b) => sum + (b.breakMinutes || 0),
-        0
-      );
-
+    // Status wapas checked-in
     attendance.status = "checked-in";
-
     await attendance.save();
 
     res.status(200).json({
+      success: true,
       message: "Break ended successfully",
-      breakMinutes: activeBreak.breakMinutes,
-      totalBreakMinutes: attendance.totalBreakMinutes,
-      attendance,
+      breakMinutes: breakMinutes,
+      totalBreakMinutes: totalBreak,
     });
 
   } catch (err) {
-
     console.error("Break-Out Error:", err);
-
     res.status(500).json({
-      message: "Break-Out failed",
-      error: err.message,
+      success: false,
+      message: err.message,
     });
-
   }
 };
-
 // ---------------- Employee Attendance ----------------
 exports.getEmployeeAttendance = async (req, res) => {
   try {

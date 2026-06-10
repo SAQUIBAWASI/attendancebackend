@@ -704,18 +704,34 @@ exports.getEmployeeCompOffRequests = async (req, res) => {
     const remainingCompOffCount =
       totalCompOff - usedCompOffCount;
 
+    // ✅ Get validity dates from settings
+    const validityFrom = compOffSetting?.validityFrom || null;
+    const validityTo = compOffSetting?.validityTo || null;
+
+    // ✅ Check if validity period is still active
+    const now = new Date();
+    let isValid = false;
+    
+    if (validityFrom && validityTo) {
+      const fromDate = new Date(validityFrom);
+      const toDate = new Date(validityTo);
+      // Set time to end of day for toDate
+      toDate.setHours(23, 59, 59, 999);
+      
+      if (now >= fromDate && now <= toDate) {
+        isValid = true;
+      }
+    }
+
     res.json({
       success: true,
-
       totalCompOff,
-
       usedCompOffCount,
-
-      remainingCompOffCount:
-        remainingCompOffCount > 0
-          ? remainingCompOffCount
-          : 0,
-
+      remainingCompOffCount: remainingCompOffCount > 0 ? remainingCompOffCount : 0,
+      validityFrom: validityFrom,
+      validityTo: validityTo,
+      isValidPeriod: isValid,
+      status: compOffSetting?.status || "inactive",
       records: requests
     });
 
@@ -726,6 +742,7 @@ exports.getEmployeeCompOffRequests = async (req, res) => {
     );
 
     res.status(500).json({
+      success: false,
       error: error.message
     });
   }
@@ -931,6 +948,103 @@ exports.getAllCompOffSettings = async (req, res) => {
 
   } catch (error) {
     console.error("❌ Error fetching comp-off settings:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+
+/**
+ * 📌 Update Comp-Off Settings
+ */
+
+exports.updateCompOffSettings = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      totalCompOff,
+      validityFrom,
+      validityTo,
+      status
+    } = req.body;
+
+    const compOff = await CompOffSettings.findById(id);
+
+    if (!compOff) {
+      return res.status(404).json({
+        success: false,
+        message: "Comp-Off settings not found"
+      });
+    }
+
+    // ✅ Update fields
+    if (totalCompOff !== undefined) {
+      compOff.totalCompOff = totalCompOff;
+    }
+
+    if (validityFrom) {
+      compOff.validityFrom = validityFrom;
+    }
+
+    if (validityTo) {
+      compOff.validityTo = validityTo;
+    }
+
+    if (status) {
+      compOff.status = status;
+    }
+
+    await compOff.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Comp-Off settings updated successfully",
+      data: compOff
+    });
+
+  } catch (error) {
+    console.error("❌ Error updating comp-off settings:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+
+/**
+ * 📌 Delete Comp-Off Settings
+ */
+
+exports.deleteCompOffSettings = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const compOff = await CompOffSettings.findById(id);
+
+    if (!compOff) {
+      return res.status(404).json({
+        success: false,
+        message: "Comp-Off settings not found"
+      });
+    }
+
+    await CompOffSettings.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: "Comp-Off settings deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("❌ Error deleting comp-off settings:", error);
 
     res.status(500).json({
       success: false,
