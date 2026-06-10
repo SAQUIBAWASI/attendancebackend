@@ -224,7 +224,19 @@ const shiftSchema = new mongoose.Schema(
       selectedDescription: String,
       startTime: String,
       endTime: String,
-      assignedDate: Date
+      assignedDate: Date,
+      effectiveFrom: Date,
+      scheduledChange: {
+        shiftType: String,
+        shiftName: String,
+        shiftCategory: String,
+        selectedTimeRange: String,
+        selectedDescription: String,
+        isBrakeShift: { type: Boolean, default: false },
+        effectiveFrom: Date,
+        effectiveMonth: Number,
+        effectiveYear: Number
+      }
     },
 
     // Legacy fields

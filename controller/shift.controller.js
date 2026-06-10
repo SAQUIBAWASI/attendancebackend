@@ -891,6 +891,90 @@ const { sendPushToUser } = require("./notification.controller");
 
 console.log("✅ Shift Controller Loaded");
 
+const startOfDay = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const parseEffectiveFrom = (input) => {
+  if (!input) return null;
+
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+
+    // YYYY-MM (month picker) or YYYY-MM-DD
+    if (/^\d{4}-\d{2}(-\d{2})?$/.test(trimmed)) {
+      const [year, month, day = "01"] = trimmed.split("-");
+      return startOfDay(new Date(Number(year), Number(month) - 1, Number(day)));
+    }
+
+    // DD-MM-YYYY
+    const dmy = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (dmy) {
+      return startOfDay(new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1])));
+    }
+  }
+
+  const parsed = startOfDay(new Date(input));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getMasterShiftDetails = async (shiftType) => {
+  const masterShift = await Shift.findOne({
+    shiftType: shiftType.toUpperCase(),
+    isMasterShift: true
+  });
+
+  let timeRange = "Not specified";
+  let description = "No description";
+
+  if (masterShift?.timeSlots?.length) {
+    if (masterShift.isBrakeShift && masterShift.timeSlots.length > 1) {
+      timeRange = `${masterShift.timeSlots[0].timeRange} - ${masterShift.timeSlots[1].timeRange}`;
+      description = "Brake shift with afternoon break";
+    } else {
+      timeRange = masterShift.timeSlots[0].timeRange;
+      description = masterShift.timeSlots[0].description;
+    }
+  }
+
+  return { masterShift, timeRange, description };
+};
+
+const applyShiftTypeToAssignment = (assignment, shiftType, masterShift, timeRange, description) => {
+  assignment.shiftType = shiftType.toUpperCase();
+  assignment.shiftName = masterShift?.shiftName || shiftType;
+  assignment.shiftCategory = masterShift?.shiftCategory || "Regular";
+  assignment.isBrakeShift = masterShift?.isBrakeShift || false;
+  assignment.timeSlots = masterShift?.timeSlots || [];
+
+  if (assignment.employeeAssignment) {
+    assignment.employeeAssignment.selectedTimeRange = timeRange;
+    assignment.employeeAssignment.selectedDescription = description;
+  }
+};
+
+const applyScheduledChangeIfDue = async (assignment) => {
+  const scheduled = assignment.employeeAssignment?.scheduledChange;
+  if (!scheduled?.shiftType || !scheduled?.effectiveFrom) return false;
+
+  const effectiveDate = startOfDay(scheduled.effectiveFrom);
+  if (effectiveDate > startOfDay(new Date())) return false;
+
+  const { masterShift, timeRange, description } = await getMasterShiftDetails(scheduled.shiftType);
+  applyShiftTypeToAssignment(assignment, scheduled.shiftType, masterShift, timeRange, description);
+
+  if (assignment.employeeAssignment) {
+    assignment.employeeAssignment.effectiveFrom = effectiveDate;
+    delete assignment.employeeAssignment.scheduledChange;
+    assignment.markModified("employeeAssignment");
+  }
+
+  await assignment.save();
+  return true;
+};
+
 // ✅ 1. CREATE MASTER SHIFT WITH SINGLE TIME SLOT
 exports.createMasterShift = async (req, res) => {
   try {
@@ -1170,6 +1254,16 @@ exports.getEmployeeAssignments = async (req, res) => {
       "employeeAssignment.employeeId": { $exists: true }
     });
     
+    for (const assignment of newAssignments) {
+      await applyScheduledChangeIfDue(assignment);
+    }
+    
+    const refreshedAssignments = await Shift.find({ 
+      isMasterShift: false,
+      isActive: true,
+      "employeeAssignment.employeeId": { $exists: true }
+    });
+    
     const legacyAssignments = await Shift.find({ 
       employeeId: { $exists: true, $ne: null },
       isMasterShift: { $exists: false }
@@ -1191,7 +1285,7 @@ exports.getEmployeeAssignments = async (req, res) => {
       };
     });
     
-    const allAssignments = [...newAssignments, ...convertedLegacy];
+    const allAssignments = [...refreshedAssignments, ...convertedLegacy];
 
     const activeAssignments = await Promise.all(allAssignments.map(async (assignment) => {
         const empId = assignment.employeeAssignment?.employeeId || assignment.employeeId;
@@ -1331,7 +1425,7 @@ exports.updateAssignment = async (req, res) => {
     console.log("📝 UPDATE ASSIGNMENT REQUEST - ID:", req.params.id);
     
     const { id } = req.params;
-    const { employeeName, shiftType } = req.body;
+    const { employeeName, shiftType, effectiveFrom } = req.body;
 
     const assignment = await Shift.findById(id);
     if (!assignment) {
@@ -1341,27 +1435,33 @@ exports.updateAssignment = async (req, res) => {
       });
     }
 
-    const masterShift = await Shift.findOne({ 
-      shiftType: shiftType.toUpperCase(),
-      isMasterShift: true
-    });
+    await applyScheduledChangeIfDue(assignment);
+
+    const { masterShift, timeRange, description } = await getMasterShiftDetails(shiftType);
+    const parsedEffectiveFrom = parseEffectiveFrom(effectiveFrom);
+    const today = startOfDay(new Date());
+    const scheduleForFuture = parsedEffectiveFrom && parsedEffectiveFrom > today;
 
     if (assignment.employeeAssignment) {
       assignment.employeeAssignment.employeeName = employeeName || assignment.employeeAssignment.employeeName;
-      assignment.shiftType = shiftType.toUpperCase();
-      assignment.shiftName = masterShift?.shiftName || shiftType;
-      assignment.shiftCategory = masterShift?.shiftCategory || 'Regular';
-      assignment.isBrakeShift = masterShift?.isBrakeShift || false;
-      
-      if (masterShift && masterShift.timeSlots && masterShift.timeSlots.length > 0) {
-        if (masterShift.isBrakeShift && masterShift.timeSlots.length > 1) {
-          assignment.employeeAssignment.selectedTimeRange = `${masterShift.timeSlots[0].timeRange} - ${masterShift.timeSlots[1].timeRange}`;
-          assignment.employeeAssignment.selectedDescription = "Brake shift with afternoon break";
-        } else {
-          const timeSlot = masterShift.timeSlots[0];
-          assignment.employeeAssignment.selectedTimeRange = timeSlot.timeRange;
-          assignment.employeeAssignment.selectedDescription = timeSlot.description;
-        }
+
+      if (scheduleForFuture) {
+        assignment.employeeAssignment.scheduledChange = {
+          shiftType: shiftType.toUpperCase(),
+          shiftName: masterShift?.shiftName || shiftType,
+          shiftCategory: masterShift?.shiftCategory || "Regular",
+          selectedTimeRange: timeRange,
+          selectedDescription: description,
+          isBrakeShift: masterShift?.isBrakeShift || false,
+          effectiveFrom: parsedEffectiveFrom,
+          effectiveMonth: parsedEffectiveFrom.getMonth() + 1,
+          effectiveYear: parsedEffectiveFrom.getFullYear()
+        };
+      } else {
+        applyShiftTypeToAssignment(assignment, shiftType, masterShift, timeRange, description);
+        assignment.employeeAssignment.effectiveFrom = parsedEffectiveFrom || today;
+        delete assignment.employeeAssignment.scheduledChange;
+        assignment.markModified("employeeAssignment");
       }
     } else {
       assignment.employeeName = employeeName || assignment.employeeName;
@@ -1374,25 +1474,32 @@ exports.updateAssignment = async (req, res) => {
 
     const empId = assignment.employeeAssignment?.employeeId || assignment.employeeId;
     if (empId) {
+      const notifyMessage = scheduleForFuture
+        ? `Your shift will change to Shift ${shiftType} from ${parsedEffectiveFrom.toLocaleDateString("en-GB")}`
+        : `Your shift has been changed to Shift ${shiftType}`;
+
        await Notification.create({
         userId: empId,
         role: "employee",
-        title: "Shift Updated",
-        message: `Your shift has been changed to Shift ${shiftType}`,
+        title: scheduleForFuture ? "Shift Change Scheduled" : "Shift Updated",
+        message: notifyMessage,
         type: "attendance"
       });
       
       sendPushToUser(empId, {
-        title: "Shift Updated",
-        body: `Admin updated your shift to ${shiftType}`,
+        title: scheduleForFuture ? "Shift Change Scheduled" : "Shift Updated",
+        body: notifyMessage,
         url: "/employee/dashboard"
       });
     }
     
     res.status(200).json({ 
       success: true,
-      message: "Assignment updated successfully", 
-      data: assignment 
+      message: scheduleForFuture
+        ? `Shift change scheduled from ${parsedEffectiveFrom.toLocaleDateString("en-GB")}`
+        : "Assignment updated successfully",
+      data: assignment,
+      scheduled: scheduleForFuture
     });
   } catch (error) {
     console.error("❌ UPDATE ASSIGNMENT ERROR:", error);
@@ -1610,6 +1717,15 @@ exports.getShiftForEmployee = async (req, res) => {
       isMasterShift: false
     });
 
+    if (employeeShift) {
+      await applyScheduledChangeIfDue(employeeShift);
+      employeeShift = await Shift.findOne({ 
+        "employeeAssignment.employeeId": employeeId,
+        isActive: true,
+        isMasterShift: false
+      });
+    }
+
     if (!employeeShift) {
       employeeShift = await Shift.findOne({ 
         employeeId: employeeId,
@@ -1643,6 +1759,8 @@ exports.getShiftForEmployee = async (req, res) => {
       responseData.timeRange = timeRange;
       responseData.description = employeeShift.employeeAssignment.selectedDescription || "Shift timing";
       responseData.assignedDate = employeeShift.employeeAssignment.assignedDate;
+      responseData.effectiveFrom = employeeShift.employeeAssignment.effectiveFrom;
+      responseData.scheduledChange = employeeShift.employeeAssignment.scheduledChange || null;
     } 
     else if (employeeShift.startTime && employeeShift.endTime) {
       responseData.startTime = employeeShift.startTime;
