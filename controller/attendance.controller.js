@@ -1192,6 +1192,8 @@ const Employee = require("../models/Employee");
 // const Shift = require("../models/Shift"); // Assuming Shift model exists
 const Location = require("../models/Location");
 const { logActivity } = require("./userActivity.controller");
+const AttendanceSummary = require("../models/AttendanceSummary");
+
 
 
 // Constants
@@ -1212,16 +1214,109 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   return Math.round(R * c);
 }
 
+// exports.checkIn = async (req, res) => {
+//   try {
+//     const { employeeId, employeeEmail, latitude, longitude, reason } = req.body;
+
+//     // Required fields check
+//     if (!employeeId || !employeeEmail || !latitude || !longitude) {
+//       return res.status(400).json({ message: "Employee ID, email, and location are required" });
+//     }
+
+//     // Get employee with assigned location
+//     const employee = await Employee.findOne({ employeeId }).populate("location");
+//     if (!employee) {
+//       return res.status(404).json({ message: "Employee not found" });
+//     }
+
+//     const assignedLocation = employee.location;
+//     if (!assignedLocation) {
+//       return res.status(404).json({ message: "No location assigned to employee" });
+//     }
+
+//     // Calculate distance
+//     const distance = haversineDistance(
+//       assignedLocation.latitude,
+//       assignedLocation.longitude,
+//       latitude,
+//       longitude
+//     );
+
+//     const onsite = distance <= ONSITE_RADIUS_M;
+
+//     // Check if already checked in today
+//     const startOfToday = new Date();
+//     startOfToday.setHours(0, 0, 0, 0);
+
+//     const existingCheckIn = await Attendance.findOne({
+//       employeeId,
+//       checkInTime: { $gte: startOfToday },
+//       status: "checked-in",
+//     });
+
+//     if (existingCheckIn) {
+//       const checkInH = new Date(existingCheckIn.checkInTime).getHours();
+//       const nowH = new Date().getHours();
+
+//       // If previous check-in was in the morning (< 13:00) and now it is afternoon/evening (>= 14:00)
+//       // This means they forgot to check out of the first half of a brake shift.
+//       if (checkInH < 13 && nowH >= 14) {
+//         const autoCheckOutTime = new Date(existingCheckIn.checkInTime.getTime() + 6 * 60 * 60 * 1000); // Assume 6 hours
+//         existingCheckIn.checkOutTime = autoCheckOutTime;
+//         existingCheckIn.totalHours = 6;
+//         existingCheckIn.status = "checked-out";
+//         existingCheckIn.reason = "Auto-checkout (missing first half checkout)";
+//         await existingCheckIn.save();
+//       } else {
+//         return res.status(400).json({ message: "Already checked-in for today" });
+//       }
+//     }
+
+//     // Save attendance record
+//     const attendanceData = {
+//       employeeId,
+//       employeeEmail,
+//       checkInTime: new Date(),
+//       latitude,
+//       longitude,
+//       distance,
+//       onsite,
+//       officeName: assignedLocation.name,
+//       status: "checked-in",
+//     };
+
+//     // ✅ Store reason only if provided
+//     if (reason) {
+//       attendanceData.reason = reason.trim();
+//     }
+
+//     const attendance = await Attendance.create(attendanceData);
+
+//     // ✅ Add employee name to response (not to database)
+//     const employeeName = employee.name || employeeEmail.split('@')[0];
+
+//     res.status(200).json({
+//       message: onsite
+//         ? `✅ Welcome to the office, ${employeeName}! Check-in successful (Inside assigned location: ${distance}m away)`
+//         : `✅ Check-in successful, ${employeeName} (Outside assigned location: ${distance}m away)`,
+//       attendance,
+//       employeeName: employeeName, // ✅ Return employee name
+//     });
+//   } catch (err) {
+//     console.error("Check-in error:", err);
+//     res.status(500).json({ message: "Check-In failed", error: err.message });
+//   }
+// }; agr kaam nhi kre to ye comment out kr lo 
+
+
 exports.checkIn = async (req, res) => {
   try {
     const { employeeId, employeeEmail, latitude, longitude, reason } = req.body;
 
-    // Required fields check
     if (!employeeId || !employeeEmail || !latitude || !longitude) {
       return res.status(400).json({ message: "Employee ID, email, and location are required" });
     }
 
-    // Get employee with assigned location
     const employee = await Employee.findOne({ employeeId }).populate("location");
     if (!employee) {
       return res.status(404).json({ message: "Employee not found" });
@@ -1232,7 +1327,6 @@ exports.checkIn = async (req, res) => {
       return res.status(404).json({ message: "No location assigned to employee" });
     }
 
-    // Calculate distance
     const distance = haversineDistance(
       assignedLocation.latitude,
       assignedLocation.longitude,
@@ -1242,7 +1336,6 @@ exports.checkIn = async (req, res) => {
 
     const onsite = distance <= ONSITE_RADIUS_M;
 
-    // Check if already checked in today
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
@@ -1256,10 +1349,8 @@ exports.checkIn = async (req, res) => {
       const checkInH = new Date(existingCheckIn.checkInTime).getHours();
       const nowH = new Date().getHours();
 
-      // If previous check-in was in the morning (< 13:00) and now it is afternoon/evening (>= 14:00)
-      // This means they forgot to check out of the first half of a brake shift.
       if (checkInH < 13 && nowH >= 14) {
-        const autoCheckOutTime = new Date(existingCheckIn.checkInTime.getTime() + 6 * 60 * 60 * 1000); // Assume 6 hours
+        const autoCheckOutTime = new Date(existingCheckIn.checkInTime.getTime() + 6 * 60 * 60 * 1000);
         existingCheckIn.checkOutTime = autoCheckOutTime;
         existingCheckIn.totalHours = 6;
         existingCheckIn.status = "checked-out";
@@ -1270,7 +1361,6 @@ exports.checkIn = async (req, res) => {
       }
     }
 
-    // Save attendance record
     const attendanceData = {
       employeeId,
       employeeEmail,
@@ -1283,14 +1373,11 @@ exports.checkIn = async (req, res) => {
       status: "checked-in",
     };
 
-    // ✅ Store reason only if provided
     if (reason) {
       attendanceData.reason = reason.trim();
     }
 
     const attendance = await Attendance.create(attendanceData);
-
-    // ✅ Add employee name to response (not to database)
     const employeeName = employee.name || employeeEmail.split('@')[0];
 
     res.status(200).json({
@@ -1298,7 +1385,7 @@ exports.checkIn = async (req, res) => {
         ? `✅ Welcome to the office, ${employeeName}! Check-in successful (Inside assigned location: ${distance}m away)`
         : `✅ Check-in successful, ${employeeName} (Outside assigned location: ${distance}m away)`,
       attendance,
-      employeeName: employeeName, // ✅ Return employee name
+      employeeName: employeeName,
     });
   } catch (err) {
     console.error("Check-in error:", err);
@@ -1412,53 +1499,340 @@ exports.checkIn = async (req, res) => {
 
 
 
+// exports.checkOut = async (req, res) => {
+//   try {
+
+//     const {
+//       employeeId,
+//       latitude,
+//       longitude,
+//       reason,
+//     } = req.body;
+
+//     if (
+//       !employeeId ||
+//       latitude == null ||
+//       longitude == null
+//     ) {
+//       return res.status(400).json({
+//         message:
+//           "Employee ID and location are required",
+//       });
+//     }
+
+//     // =========================
+//     // GET EMPLOYEE
+//     // =========================
+
+//     const employee = await Employee.findOne({
+//       employeeId,
+//     }).populate("location");
+
+//     if (!employee) {
+//       return res.status(404).json({
+//         message: "Employee not found",
+//       });
+//     }
+
+//     const assignedLocation = employee.location;
+
+//     if (!assignedLocation) {
+//       return res.status(404).json({
+//         message:
+//           "No location assigned to employee",
+//       });
+//     }
+
+//     // =========================
+//     // CALCULATE DISTANCE
+//     // =========================
+
+//     const distance = haversineDistance(
+//       assignedLocation.latitude,
+//       assignedLocation.longitude,
+//       latitude,
+//       longitude
+//     );
+
+//     const onsite =
+//       distance <= ONSITE_RADIUS_M;
+
+//     // =========================
+//     // FIND TODAY ATTENDANCE
+//     // =========================
+
+//     const startOfToday = new Date();
+
+//     startOfToday.setHours(0, 0, 0, 0);
+
+//     const existingCheckIn =
+//       await Attendance.findOne({
+//         employeeId,
+//         checkInTime: {
+//           $gte: startOfToday,
+//         },
+//         status: {
+//           $in: [
+//             "checked-in",
+//             "on-break",
+//           ],
+//         },
+//       });
+
+//     if (!existingCheckIn) {
+//       return res.status(400).json({
+//         message:
+//           "No active check-in found for today",
+//       });
+//     }
+
+//     // =========================
+//     // AUTO CLOSE ACTIVE BREAK
+//     // =========================
+
+//     const activeBreak =
+//       existingCheckIn.breaks.find(
+//         (b) => b.breakIn && !b.breakOut
+//       );
+
+//     if (activeBreak) {
+
+//       activeBreak.breakOut =
+//         new Date();
+
+//       const breakMinutes =
+//         (activeBreak.breakOut -
+//           activeBreak.breakIn) /
+//         (1000 * 60);
+
+//       activeBreak.breakMinutes =
+//         Math.round(breakMinutes);
+//     }
+
+//     // =========================
+//     // TOTAL BREAK MINUTES
+//     // =========================
+
+//     existingCheckIn.totalBreakMinutes =
+//       existingCheckIn.breaks.reduce(
+//         (sum, b) =>
+//           sum + (b.breakMinutes || 0),
+//         0
+//       );
+
+//     // =========================
+//     // TIME CALCULATIONS
+//     // =========================
+
+//     const checkOutTime = new Date();
+
+//     const checkInTime = new Date(
+//       existingCheckIn.checkInTime
+//     );
+
+//     // Presence Hours
+//     const totalHours =
+//       (checkOutTime - checkInTime) /
+//       (1000 * 60 * 60);
+
+//     // Working Hours
+//     const workingHours =
+//       totalHours -
+//       (existingCheckIn.totalBreakMinutes /
+//         60);
+
+//     // OT Hours
+//     const otHours =
+//       workingHours >
+//       existingCheckIn.assignedShiftHours
+//         ? workingHours -
+//           existingCheckIn.assignedShiftHours
+//         : 0;
+
+//     // Hourly Rate
+//     const hourlyRate =
+//       existingCheckIn.basicSalary /
+//       existingCheckIn.workingDays /
+//       existingCheckIn.assignedShiftHours;
+
+//     // OT Rate
+//     const otRate =
+//       hourlyRate *
+//       existingCheckIn.otMultiplier;
+
+//     // OT Amount
+//     const otAmount =
+//       otHours * otRate;
+
+//     // =========================
+//     // UPDATE DATA
+//     // =========================
+
+//     existingCheckIn.checkOutTime =
+//       checkOutTime;
+
+//     existingCheckIn.totalHours =
+//       totalHours.toFixed(2);
+
+//     existingCheckIn.workingHours =
+//       workingHours.toFixed(2);
+
+//     existingCheckIn.otHours =
+//       otHours.toFixed(2);
+
+//     existingCheckIn.hourlyRate =
+//       hourlyRate.toFixed(2);
+
+//     existingCheckIn.otRate =
+//       otRate.toFixed(2);
+
+//     existingCheckIn.otAmount =
+//       otAmount.toFixed(2);
+
+//     existingCheckIn.status =
+//       "checked-out";
+
+//     existingCheckIn.latitude =
+//       latitude;
+
+//     existingCheckIn.longitude =
+//       longitude;
+
+//     existingCheckIn.distance =
+//       distance;
+
+//     existingCheckIn.onsite =
+//       onsite;
+
+//     if (!onsite) {
+//       existingCheckIn.reason =
+//         reason || "No reason provided";
+//     }
+
+//     await existingCheckIn.save();
+
+//     // =========================
+//     // EMPLOYEE NAME
+//     // =========================
+
+//     const employeeName =
+//       employee.name || "Employee";
+
+//     // =========================
+//     // ACTIVITY LOG
+//     // =========================
+
+//     await logActivity({
+//       userId: employeeId,
+
+//       userName: employeeName,
+
+//       userEmail:
+//         employee.email || "",
+
+//       userRole: "employee",
+
+//       action: "logout",
+
+//       actionDetails:
+//         `Employee checked out after ${workingHours.toFixed(2)} working hours`,
+
+//       ipAddress:
+//         req.ip ||
+//         req.connection.remoteAddress,
+
+//       metadata: {
+//         checkInTime,
+//         checkOutTime,
+
+//         totalHours:
+//           totalHours.toFixed(2),
+
+//         workingHours:
+//           workingHours.toFixed(2),
+
+//         totalBreakMinutes:
+//           existingCheckIn.totalBreakMinutes,
+
+//         otHours:
+//           otHours.toFixed(2),
+
+//         otAmount:
+//           otAmount.toFixed(2),
+
+//         location:
+//           assignedLocation.name,
+
+//         onsite,
+
+//         distance,
+//       },
+//     });
+
+//     // =========================
+//     // RESPONSE
+//     // =========================
+
+//     res.status(200).json({
+//       message: onsite
+//         ? `✅ Goodbye, ${employeeName}! Check-out successful`
+//         : `✅ Goodbye, ${employeeName}! Check-out successful (Outside office location)`,
+
+//       employeeName,
+
+//       attendance: existingCheckIn,
+
+//       summary: {
+//         totalHours:
+//           totalHours.toFixed(2),
+
+//         breakMinutes:
+//           existingCheckIn.totalBreakMinutes,
+
+//         workingHours:
+//           workingHours.toFixed(2),
+
+//         otHours:
+//           otHours.toFixed(2),
+
+//         otAmount:
+//           otAmount.toFixed(2),
+//       },
+//     });
+
+//   } catch (err) {
+
+//     console.error(
+//       "Check-out error:",
+//       err
+//     );
+
+//     res.status(500).json({
+//       message: "Check-Out failed",
+//       error: err.message,
+//     });
+
+//   }
+// }; agr kaam nhi kiya to ye comment out kr od ok
+
+
 exports.checkOut = async (req, res) => {
   try {
+    const { employeeId, latitude, longitude, reason } = req.body;
 
-    const {
-      employeeId,
-      latitude,
-      longitude,
-      reason,
-    } = req.body;
-
-    if (
-      !employeeId ||
-      latitude == null ||
-      longitude == null
-    ) {
-      return res.status(400).json({
-        message:
-          "Employee ID and location are required",
-      });
+    if (!employeeId || latitude == null || longitude == null) {
+      return res.status(400).json({ message: "Employee ID and location are required" });
     }
 
-    // =========================
-    // GET EMPLOYEE
-    // =========================
-
-    const employee = await Employee.findOne({
-      employeeId,
-    }).populate("location");
-
+    const employee = await Employee.findOne({ employeeId }).populate("location");
     if (!employee) {
-      return res.status(404).json({
-        message: "Employee not found",
-      });
+      return res.status(404).json({ message: "Employee not found" });
     }
 
     const assignedLocation = employee.location;
-
     if (!assignedLocation) {
-      return res.status(404).json({
-        message:
-          "No location assigned to employee",
-      });
+      return res.status(404).json({ message: "No location assigned to employee" });
     }
-
-    // =========================
-    // CALCULATE DISTANCE
-    // =========================
 
     const distance = haversineDistance(
       assignedLocation.latitude,
@@ -1466,265 +1840,171 @@ exports.checkOut = async (req, res) => {
       latitude,
       longitude
     );
-
-    const onsite =
-      distance <= ONSITE_RADIUS_M;
-
-    // =========================
-    // FIND TODAY ATTENDANCE
-    // =========================
+    const onsite = distance <= ONSITE_RADIUS_M;
 
     const startOfToday = new Date();
-
     startOfToday.setHours(0, 0, 0, 0);
 
-    const existingCheckIn =
-      await Attendance.findOne({
-        employeeId,
-        checkInTime: {
-          $gte: startOfToday,
-        },
-        status: {
-          $in: [
-            "checked-in",
-            "on-break",
-          ],
-        },
-      });
+    const existingCheckIn = await Attendance.findOne({
+      employeeId,
+      checkInTime: { $gte: startOfToday },
+      status: { $in: ["checked-in", "on-break"] },
+    });
 
     if (!existingCheckIn) {
-      return res.status(400).json({
-        message:
-          "No active check-in found for today",
-      });
+      return res.status(400).json({ message: "No active check-in found for today" });
     }
 
-    // =========================
-    // AUTO CLOSE ACTIVE BREAK
-    // =========================
-
-    const activeBreak =
-      existingCheckIn.breaks.find(
-        (b) => b.breakIn && !b.breakOut
-      );
-
+    const activeBreak = existingCheckIn.breaks.find((b) => b.breakIn && !b.breakOut);
     if (activeBreak) {
-
-      activeBreak.breakOut =
-        new Date();
-
-      const breakMinutes =
-        (activeBreak.breakOut -
-          activeBreak.breakIn) /
-        (1000 * 60);
-
-      activeBreak.breakMinutes =
-        Math.round(breakMinutes);
+      activeBreak.breakOut = new Date();
+      const breakMinutes = (activeBreak.breakOut - activeBreak.breakIn) / (1000 * 60);
+      activeBreak.breakMinutes = Math.round(breakMinutes);
     }
 
-    // =========================
-    // TOTAL BREAK MINUTES
-    // =========================
-
-    existingCheckIn.totalBreakMinutes =
-      existingCheckIn.breaks.reduce(
-        (sum, b) =>
-          sum + (b.breakMinutes || 0),
-        0
-      );
-
-    // =========================
-    // TIME CALCULATIONS
-    // =========================
+    existingCheckIn.totalBreakMinutes = existingCheckIn.breaks.reduce((sum, b) => sum + (b.breakMinutes || 0), 0);
 
     const checkOutTime = new Date();
+    const checkInTime = new Date(existingCheckIn.checkInTime);
+    const totalHours = (checkOutTime - checkInTime) / (1000 * 60 * 60);
+    const workingHours = totalHours - (existingCheckIn.totalBreakMinutes / 60);
+    const assignedShiftHours = employee.shiftHours || 8;
+    const otHours = workingHours > assignedShiftHours ? workingHours - assignedShiftHours : 0;
 
-    const checkInTime = new Date(
-      existingCheckIn.checkInTime
-    );
+    const hourlyRate = existingCheckIn.basicSalary / existingCheckIn.workingDays / existingCheckIn.assignedShiftHours;
+    const otRate = hourlyRate * existingCheckIn.otMultiplier;
+    const otAmount = otHours * otRate;
 
-    // Presence Hours
-    const totalHours =
-      (checkOutTime - checkInTime) /
-      (1000 * 60 * 60);
-
-    // Working Hours
-    const workingHours =
-      totalHours -
-      (existingCheckIn.totalBreakMinutes /
-        60);
-
-    // OT Hours
-    const otHours =
-      workingHours >
-      existingCheckIn.assignedShiftHours
-        ? workingHours -
-          existingCheckIn.assignedShiftHours
-        : 0;
-
-    // Hourly Rate
-    const hourlyRate =
-      existingCheckIn.basicSalary /
-      existingCheckIn.workingDays /
-      existingCheckIn.assignedShiftHours;
-
-    // OT Rate
-    const otRate =
-      hourlyRate *
-      existingCheckIn.otMultiplier;
-
-    // OT Amount
-    const otAmount =
-      otHours * otRate;
-
-    // =========================
-    // UPDATE DATA
-    // =========================
-
-    existingCheckIn.checkOutTime =
-      checkOutTime;
-
-    existingCheckIn.totalHours =
-      totalHours.toFixed(2);
-
-    existingCheckIn.workingHours =
-      workingHours.toFixed(2);
-
-    existingCheckIn.otHours =
-      otHours.toFixed(2);
-
-    existingCheckIn.hourlyRate =
-      hourlyRate.toFixed(2);
-
-    existingCheckIn.otRate =
-      otRate.toFixed(2);
-
-    existingCheckIn.otAmount =
-      otAmount.toFixed(2);
-
-    existingCheckIn.status =
-      "checked-out";
-
-    existingCheckIn.latitude =
-      latitude;
-
-    existingCheckIn.longitude =
-      longitude;
-
-    existingCheckIn.distance =
-      distance;
-
-    existingCheckIn.onsite =
-      onsite;
+    existingCheckIn.checkOutTime = checkOutTime;
+    existingCheckIn.totalHours = totalHours.toFixed(2);
+    existingCheckIn.workingHours = workingHours.toFixed(2);
+    existingCheckIn.otHours = otHours.toFixed(2);
+    existingCheckIn.hourlyRate = hourlyRate.toFixed(2);
+    existingCheckIn.otRate = otRate.toFixed(2);
+    existingCheckIn.otAmount = otAmount.toFixed(2);
+    existingCheckIn.status = "checked-out";
+    existingCheckIn.latitude = latitude;
+    existingCheckIn.longitude = longitude;
+    existingCheckIn.distance = distance;
+    existingCheckIn.onsite = onsite;
 
     if (!onsite) {
-      existingCheckIn.reason =
-        reason || "No reason provided";
+      existingCheckIn.reason = reason || "No reason provided";
     }
 
     await existingCheckIn.save();
 
-    // =========================
-    // EMPLOYEE NAME
-    // =========================
+    // ============================================
+    // ============================================
+    // EXTRA DAYS TRACKING - ADD THIS LOGIC
+    // ============================================
+    // ============================================
+    const today = new Date();
+    const currentMonth = today.getMonth() + 1;
+    const currentYear = today.getFullYear();
+    const monthKey = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
 
-    const employeeName =
-      employee.name || "Employee";
+    // Get employee with extraDays array
+    const emp = await Employee.findOne({ employeeId });
 
-    // =========================
-    // ACTIVITY LOG
-    // =========================
+    if (emp) {
+      // Get count of working days this month
+      const startOfMonth = new Date(currentYear, currentMonth - 1, 1);
+      const endOfMonth = new Date(currentYear, currentMonth, 0, 23, 59, 59);
+
+      const attendanceCount = await Attendance.countDocuments({
+        employeeId: employeeId,
+        status: "checked-out",
+        checkInTime: { $gte: startOfMonth, $lte: endOfMonth }
+      });
+
+      // If total working days exceed assignedWorkingDays
+      if (attendanceCount > (emp.assignedWorkingDays || 26)) {
+        // Check if this day is already recorded as extra day
+        const existingExtraDay = emp.extraDays.find(ed => {
+          const edDate = new Date(ed.date);
+          return edDate.toDateString() === today.toDateString();
+        });
+
+        if (!existingExtraDay) {
+          const extraHours = Math.max(0, workingHours - assignedShiftHours);
+          const usedBefore = new Date(today);
+          usedBefore.setMonth(usedBefore.getMonth() - 1); // 1 month before
+
+          const extraDayEntry = {
+            date: today,
+            day: today.toLocaleDateString('en-US', { 
+              weekday: 'long', 
+              day: 'numeric', 
+              month: 'long', 
+              year: 'numeric' 
+            }),
+            totalHours: Math.round(workingHours * 100) / 100,
+            extraHours: Math.round(extraHours * 100) / 100,
+            checkInTime: checkInTime,
+            checkOutTime: checkOutTime,
+            isCompOffRequested: false,
+            compOffRequestId: null,
+            month: monthKey,
+            year: currentYear,
+            monthNumber: currentMonth,
+            usedBefore: usedBefore,
+            status: 'active'
+          };
+
+          emp.extraDays.push(extraDayEntry);
+          await emp.save();
+
+          console.log(`✅ Extra day recorded for ${emp.name} on ${today.toDateString()}`);
+        }
+      }
+    }
+
+    const employeeName = employee.name || "Employee";
 
     await logActivity({
       userId: employeeId,
-
       userName: employeeName,
-
-      userEmail:
-        employee.email || "",
-
+      userEmail: employee.email || "",
       userRole: "employee",
-
       action: "logout",
-
-      actionDetails:
-        `Employee checked out after ${workingHours.toFixed(2)} working hours`,
-
-      ipAddress:
-        req.ip ||
-        req.connection.remoteAddress,
-
+      actionDetails: `Employee checked out after ${workingHours.toFixed(2)} working hours`,
+      ipAddress: req.ip || req.connection.remoteAddress,
       metadata: {
         checkInTime,
         checkOutTime,
-
-        totalHours:
-          totalHours.toFixed(2),
-
-        workingHours:
-          workingHours.toFixed(2),
-
-        totalBreakMinutes:
-          existingCheckIn.totalBreakMinutes,
-
-        otHours:
-          otHours.toFixed(2),
-
-        otAmount:
-          otAmount.toFixed(2),
-
-        location:
-          assignedLocation.name,
-
+        totalHours: totalHours.toFixed(2),
+        workingHours: workingHours.toFixed(2),
+        totalBreakMinutes: existingCheckIn.totalBreakMinutes,
+        otHours: otHours.toFixed(2),
+        otAmount: otAmount.toFixed(2),
+        location: assignedLocation.name,
         onsite,
-
         distance,
       },
     });
-
-    // =========================
-    // RESPONSE
-    // =========================
 
     res.status(200).json({
       message: onsite
         ? `✅ Goodbye, ${employeeName}! Check-out successful`
         : `✅ Goodbye, ${employeeName}! Check-out successful (Outside office location)`,
-
       employeeName,
-
       attendance: existingCheckIn,
-
       summary: {
-        totalHours:
-          totalHours.toFixed(2),
-
-        breakMinutes:
-          existingCheckIn.totalBreakMinutes,
-
-        workingHours:
-          workingHours.toFixed(2),
-
-        otHours:
-          otHours.toFixed(2),
-
-        otAmount:
-          otAmount.toFixed(2),
+        totalHours: totalHours.toFixed(2),
+        breakMinutes: existingCheckIn.totalBreakMinutes,
+        workingHours: workingHours.toFixed(2),
+        otHours: otHours.toFixed(2),
+        otAmount: otAmount.toFixed(2),
       },
     });
 
   } catch (err) {
-
-    console.error(
-      "Check-out error:",
-      err
-    );
-
+    console.error("Check-out error:", err);
     res.status(500).json({
       message: "Check-Out failed",
       error: err.message,
     });
-
   }
 };
 
@@ -2331,5 +2611,258 @@ exports.getMonthlyAbsenceSummary = async (req, res) => {
   } catch (err) {
     console.error("Monthly Absence Error:", err);
     res.status(500).json({ message: "Failed to fetch monthly absence", error: err.message });
+  }
+};
+
+
+
+/**
+ * Get extra days for an employee
+ * Static assigned working days = 26
+ * Extra days = presentDays - 26 (if presentDays > 26)
+ */
+exports.getExtraDays = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { month } = req.query;
+
+    if (!employeeId) {
+      return res.status(400).json({
+        error: "employeeId is required"
+      });
+    }
+
+    // Get employee details
+    const employee = await Employee.findOne({ employeeId });
+    if (!employee) {
+      return res.status(404).json({
+        error: `Employee not found with ID: ${employeeId}`
+      });
+    }
+
+    // Set month range
+    let targetMonth = month;
+    let startDate, endDate;
+    
+    if (targetMonth) {
+      const [year, monthNum] = targetMonth.split('-').map(Number);
+      startDate = new Date(year, monthNum - 1, 1);
+      endDate = new Date(year, monthNum, 0, 23, 59, 59);
+    } else {
+      const now = new Date();
+      const year = now.getFullYear();
+      const monthNum = now.getMonth() + 1;
+      targetMonth = `${year}-${String(monthNum).padStart(2, '0')}`;
+      startDate = new Date(year, monthNum - 1, 1);
+      endDate = new Date(year, monthNum, 0, 23, 59, 59);
+    }
+
+    // Get attendance summary
+    let summary = await AttendanceSummary.findOne({
+      employeeId: employeeId,
+      month: targetMonth
+    });
+
+    // Get all attendance records for the month
+    const attendanceRecords = await Attendance.find({
+      employeeId: employeeId,
+      checkInTime: { $gte: startDate, $lte: endDate }
+    }).sort({ checkInTime: 1 });
+
+    // Static assigned working days
+    const ASSIGNED_WORKING_DAYS = 26;
+    const presentDays = summary?.presentDays || 0;
+
+    // ========== EXTRA DAYS (present days - 26) ==========
+    const extraDaysCount = presentDays > ASSIGNED_WORKING_DAYS ? presentDays - ASSIGNED_WORKING_DAYS : 0;
+    
+    let extraDaysList = [];
+    if (extraDaysCount > 0) {
+      // Sirf un attendance records ko lo jo present hain
+      const presentOnlyRecords = attendanceRecords.filter(record => 
+        record.checkInTime && 
+        record.checkOutTime
+      );
+      
+      // Sort by date descending and take first extraDaysCount records
+      const sortedByDate = [...presentOnlyRecords].sort((a, b) => 
+        new Date(b.checkInTime) - new Date(a.checkInTime)
+      );
+      
+      const extraDayRecords = sortedByDate.slice(0, extraDaysCount);
+      
+      extraDaysList = extraDayRecords.map((record, index) => ({
+        sr: index + 1,
+        date: record.checkInTime,
+        day: new Date(record.checkInTime).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+        checkIn: record.checkInTime,
+        checkOut: record.checkOutTime,
+        totalHours: record.totalHours || record.workingHours || 0
+      }));
+    }
+
+    // Response
+    const response = {
+      employeeId: employee.employeeId,
+      employeeName: employee.name,
+      month: targetMonth,
+      assignedWorkingDays: ASSIGNED_WORKING_DAYS,
+      presentDays: presentDays,
+      extraDays: {
+        count: extraDaysCount,
+        list: extraDaysList
+      }
+    };
+
+    res.status(200).json(response);
+
+  } catch (error) {
+    console.error("Error in getExtraDays:", error);
+    res.status(500).json({
+      error: error.message
+    });
+  }
+};
+
+
+// ============================================
+// GET EXTRA DAYS FOR EMPLOYEE
+// ============================================
+exports.getMyExtraDays = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { month } = req.query;
+
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Employee ID is required'
+      });
+    }
+
+    const employee = await Employee.findOne({ employeeId });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        error: 'Employee not found'
+      });
+    }
+
+    let extraDays = employee.extraDays || [];
+
+    // UPDATE STATUS FOR EACH EXTRA DAY
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    extraDays = extraDays.map(ed => {
+      // If comp-off is approved, check expiry
+      if (ed.isCompOffRequested && ed.compOffRequestId) {
+        // Check if comp-off request is approved
+        // You can also fetch from ExtraDayCompOff collection if needed
+        
+        // If usedBefore date is passed, mark as expired
+        if (ed.usedBefore && new Date(ed.usedBefore) < today) {
+          ed.status = 'expired';
+        } else if (ed.status !== 'used') {
+          ed.status = 'active';
+        }
+      } else {
+        // If not requested yet, check if apply window is still open
+        const applyBeforeDate = new Date(ed.date);
+        applyBeforeDate.setMonth(applyBeforeDate.getMonth() - 1); // 1 month before extra day
+        if (applyBeforeDate < today) {
+          ed.status = 'expired';
+        } else {
+          ed.status = 'active';
+        }
+      }
+      return ed;
+    });
+
+    // Save updated statuses back to employee
+    employee.extraDays = extraDays;
+    await employee.save();
+
+    // Filter by month if provided
+    if (month) {
+      extraDays = extraDays.filter(ed => ed.month === month);
+    }
+
+    // Sort by date (newest first)
+    extraDays.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Calculate summary
+    const totalExtraDays = extraDays.length;
+    const totalExtraHours = extraDays.reduce((sum, ed) => sum + (ed.extraHours || 0), 0);
+    const activeCount = extraDays.filter(ed => ed.status === 'active').length;
+    const expiredCount = extraDays.filter(ed => ed.status === 'expired').length;
+    const usedCount = extraDays.filter(ed => ed.status === 'used').length;
+
+    // Format response same as dummy data
+    const formattedExtraDays = extraDays.map((ed, index) => ({
+      sr: index + 1,
+      date: ed.date,
+      day: ed.day || new Date(ed.date).toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric' 
+      }),
+      totalHours: ed.totalHours || 0,
+      extraHours: ed.extraHours || 0,
+      usedBefore: ed.usedBefore || (() => {
+        const d = new Date(ed.date);
+        d.setMonth(d.getMonth() - 1);
+        return d;
+      })(),
+      status: ed.status || 'active',
+      isCompOffRequested: ed.isCompOffRequested || false,
+      compOffRequestId: ed.compOffRequestId || null
+    }));
+
+    // Group by month
+    const monthWiseData = {};
+    formattedExtraDays.forEach(ed => {
+      const monthKey = new Date(ed.date).toISOString().slice(0, 7);
+      if (!monthWiseData[monthKey]) {
+        monthWiseData[monthKey] = {
+          month: monthKey,
+          count: 0,
+          totalExtraHours: 0,
+          days: []
+        };
+      }
+      monthWiseData[monthKey].count++;
+      monthWiseData[monthKey].totalExtraHours += (ed.extraHours || 0);
+      monthWiseData[monthKey].days.push(ed);
+    });
+
+    // Count by status
+    const statusCounts = {
+      active: activeCount,
+      expired: expiredCount,
+      used: usedCount
+    };
+
+    res.status(200).json({
+      success: true,
+      employeeId: employee.employeeId,
+      employeeName: employee.name,
+      assignedWorkingDays: employee.assignedWorkingDays || 26,
+      presentDays: employee.presentDays || 0, // Add this field or calculate
+      extraDays: {
+        count: formattedExtraDays.length,
+        list: formattedExtraDays
+      },
+      monthWiseData: monthWiseData,
+      statusCounts: statusCounts
+    });
+
+  } catch (error) {
+    console.error('Error in getMyExtraDays:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
   }
 };

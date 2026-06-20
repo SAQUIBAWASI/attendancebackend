@@ -85,6 +85,7 @@ router.get("/absenttoday", attendanceController.getAbsentToday);
 router.get("/summary", attendanceController.getAttendanceSummary);
 router.put("/update", attendanceController.updateAttendance);
 router.get("/monthly-absence", attendanceController.getMonthlyAbsenceSummary);
+router.get("/extra-days/:employeeId", attendanceController.getMyExtraDays);
 
 
 module.exports = router;

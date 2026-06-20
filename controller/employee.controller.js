@@ -1715,6 +1715,62 @@ const getEmployeeByPhone = async (req, res) => {
   }
 };
 
+// // ==================== ADD EMPLOYEE ====================
+// const addEmployee = async (req, res) => {
+//   try {
+//     const {
+//       firstName, lastName, email, password, department, role,
+//       dob, addressLine1, addressLine2, city, state, pinCode, country,
+//       weekOffType, weekOffCount, shiftType, shiftHours,
+//       joinDate, phone, employeeId, locationId,
+//       parentsName, alternateNumber, salaryPerMonth, weekOffPerMonth,
+//       permissions, maxCL, maxSL, maxEL, maxCompOff,
+//       ctc, basicPay, hra, conveyanceAllowance, medicalAllowance,
+//       performanceAllowance, specialAllowance, ptax, gmc, gmcAmount, otherDeductions
+//     } = req.body;
+
+//     const name = `${firstName || ''} ${lastName || ''}`.trim();
+//     const existingEmployee = await Employee.findOne({ $or: [{ email }, { employeeId }, { phone }] });
+
+//     if (existingEmployee) {
+//       return res.status(400).json({ success: false, message: "Employee with this email, ID or phone already exists" });
+//     }
+
+//     const newEmployee = new Employee({
+//       name, firstName, lastName, email, password, department, role,
+//       dob: dob ? new Date(dob) : null,
+//       addressLine1, addressLine2, city, state, pinCode, country: country || "India",
+//       weekOffType, weekOffCount: weekOffCount || 0,
+//       shiftType: shiftType || "A", shiftHours: shiftHours || 8,
+//       joinDate: joinDate ? new Date(joinDate) : null, phone, employeeId, location: locationId,
+//       parentsName, alternateNumber,
+//       salaryPerMonth: Number(salaryPerMonth) || 0, ctc: Number(ctc) || 0,
+//       basicPay: Number(basicPay) || 0, hra: Number(hra) || 0,
+//       conveyanceAllowance: Number(conveyanceAllowance) || 0,
+//       medicalAllowance: Number(medicalAllowance) || 0,
+//       performanceAllowance: Number(performanceAllowance) || 0,
+//       specialAllowance: Number(specialAllowance) || 0,
+//       ptax: Number(ptax) || 0, gmc: gmc || "", gmcAmount: Number(gmcAmount) || 0,
+//       otherDeductions: Number(otherDeductions) || 0,
+//       weekOffPerMonth: Number(weekOffPerMonth) || 0,
+//       permissions: permissions || [],
+//       maxCL: maxCL !== undefined ? Number(maxCL) : 0,
+//       maxSL: maxSL !== undefined ? Number(maxSL) : 0,
+//       maxEL: maxEL !== undefined ? Number(maxEL) : 0,
+//       maxCompOff: maxCompOff !== undefined ? Number(maxCompOff) : 0,
+//       salaryIncrements: [],
+//       futureIncrements: []
+//     });
+
+//     await newEmployee.save();
+//     res.status(201).json({ success: true, message: "Employee added successfully", employee: newEmployee });
+//   } catch (error) {
+//     console.error("Add employee error:", error);
+//     res.status(500).json({ success: false, message: "Server error", error: error.message });
+//   }
+// };
+
+
 // ==================== ADD EMPLOYEE ====================
 const addEmployee = async (req, res) => {
   try {
@@ -1736,6 +1792,14 @@ const addEmployee = async (req, res) => {
       return res.status(400).json({ success: false, message: "Employee with this email, ID or phone already exists" });
     }
 
+    // ============================================
+    // CALCULATE ASSIGNED WORKING DAYS
+    // ============================================
+    // Default month days = 30 (or 26 as standard)
+    const defaultMonthDays = 30;
+    const weekOffPerMonthValue = Number(weekOffPerMonth) || 0;
+    const assignedWorkingDays = defaultMonthDays - weekOffPerMonthValue;
+
     const newEmployee = new Employee({
       name, firstName, lastName, email, password, department, role,
       dob: dob ? new Date(dob) : null,
@@ -1752,18 +1816,27 @@ const addEmployee = async (req, res) => {
       specialAllowance: Number(specialAllowance) || 0,
       ptax: Number(ptax) || 0, gmc: gmc || "", gmcAmount: Number(gmcAmount) || 0,
       otherDeductions: Number(otherDeductions) || 0,
-      weekOffPerMonth: Number(weekOffPerMonth) || 0,
+      weekOffPerMonth: weekOffPerMonthValue,
       permissions: permissions || [],
       maxCL: maxCL !== undefined ? Number(maxCL) : 0,
       maxSL: maxSL !== undefined ? Number(maxSL) : 0,
       maxEL: maxEL !== undefined ? Number(maxEL) : 0,
       maxCompOff: maxCompOff !== undefined ? Number(maxCompOff) : 0,
       salaryIncrements: [],
-      futureIncrements: []
+      futureIncrements: [],
+      
+      // ============================================
+      // NEW FIELD - ASSIGNED WORKING DAYS
+      // ============================================
+      assignedWorkingDays: assignedWorkingDays > 0 ? assignedWorkingDays : 26
     });
 
     await newEmployee.save();
-    res.status(201).json({ success: true, message: "Employee added successfully", employee: newEmployee });
+    res.status(201).json({ 
+      success: true, 
+      message: "Employee added successfully", 
+      employee: newEmployee 
+    });
   } catch (error) {
     console.error("Add employee error:", error);
     res.status(500).json({ success: false, message: "Server error", error: error.message });
@@ -2502,6 +2575,191 @@ const resetPassword = async (req, res) => {
 
 
 
+// ============================================
+// UPDATE EMPLOYEE IDS - EMP → TH
+// ============================================
+const convertEmployeeIdsToTH = async (req, res) => {
+  try {
+    // 1. Find all employees with EMP prefix
+    const employees = await Employee.find({
+      employeeId: { $regex: /^EMP/i }
+    });
+
+    if (employees.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No employees found with EMP prefix',
+        updatedCount: 0,
+        employees: []
+      });
+    }
+
+    const results = [];
+    const errors = [];
+
+    // 2. Loop through each employee and update ID
+    for (const employee of employees) {
+      try {
+        const oldId = employee.employeeId;
+        
+        // Extract numeric part (remove EMP)
+        const numPart = oldId.replace(/[^0-9]/g, '');
+        const newId = `TH${numPart}`;
+
+        // Check if new ID already exists
+        const existingEmployee = await Employee.findOne({ employeeId: newId });
+        
+        if (existingEmployee) {
+          errors.push({
+            oldId,
+            newId,
+            error: 'TH ID already exists, skipping'
+          });
+          continue;
+        }
+
+        // Update employee ID
+        employee.employeeId = newId;
+        await employee.save();
+
+        results.push({
+          oldId,
+          newId,
+          employeeName: employee.name,
+          status: 'updated'
+        });
+
+      } catch (err) {
+        errors.push({
+          oldId: employee.employeeId,
+          error: err.message
+        });
+      }
+    }
+
+    // 3. Response
+    res.status(200).json({
+      success: true,
+      message: `Updated ${results.length} employees from EMP to TH`,
+      totalFound: employees.length,
+      updatedCount: results.length,
+      failedCount: errors.length,
+      updated: results,
+      errors: errors.length > 0 ? errors : undefined
+    });
+
+  } catch (error) {
+    console.error('Error converting employee IDs:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+};
+
+
+
+// ============================================
+// APPLY SALARY INCREMENT - SIMPLIFIED
+// ============================================
+const applyEmployeeSalaryIncrement = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { incrementType, incrementValue, effectiveDate, reason } = req.body;
+
+    // Validation
+    if (!incrementType || !['percentage', 'amount'].includes(incrementType)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid incrementType. Must be "percentage" or "amount"'
+      });
+    }
+
+    if (!incrementValue || incrementValue <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid incrementValue. Must be greater than 0'
+      });
+    }
+
+    if (!effectiveDate) {
+      return res.status(400).json({
+        success: false,
+        error: 'effectiveDate is required'
+      });
+    }
+
+    // Find employee
+    const employee = await Employee.findById(id);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        error: 'Employee not found'
+      });
+    }
+
+    // Store old salary
+    const oldSalary = employee.salaryPerMonth || 0;
+
+    // Calculate new salary
+    let newSalary;
+    if (incrementType === 'percentage') {
+      newSalary = oldSalary + (oldSalary * (incrementValue / 100));
+    } else {
+      newSalary = oldSalary + incrementValue;
+    }
+    newSalary = Math.round(newSalary);
+
+    // Prepare effective date
+    const effectiveFrom = new Date(effectiveDate);
+    effectiveFrom.setHours(0, 0, 0, 0);
+    const effectiveMonth = effectiveFrom.getMonth() + 1;
+    const effectiveYear = effectiveFrom.getFullYear();
+
+    // Create increment record - WITHOUT approvedBy
+    const incrementRecord = {
+      incrementType,
+      incrementValue,
+      oldSalaryPerMonth: oldSalary,
+      newSalaryPerMonth: newSalary,
+      effectiveFrom,
+      effectiveMonth,
+      effectiveYear,
+      reason: reason || "Salary hike",
+      createdAt: new Date()
+    };
+
+    // Push to increments array
+    employee.salaryIncrements.push(incrementRecord);
+
+    // Update current salary
+    employee.salaryPerMonth = newSalary;
+
+    await employee.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Salary increment applied successfully',
+      data: {
+        employee: {
+          _id: employee._id,
+          name: employee.name,
+          employeeId: employee.employeeId,
+          salaryPerMonth: employee.salaryPerMonth,
+          increment: incrementRecord
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error applying salary increment:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+};
+
 module.exports = {
   getEmployeeByPhone,
   addEmployee,
@@ -2529,5 +2787,7 @@ module.exports = {
   fixEmployeeCurrentSalary,
   forgotPassword,
   resetPassword,
+  convertEmployeeIdsToTH,
+  applyEmployeeSalaryIncrement
 };
 

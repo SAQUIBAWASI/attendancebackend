@@ -218,6 +218,10 @@ const { sendPushToUser } = require("./notification.controller");
 const Admin = require("../models/Admin");
 const CompOff = require("../models/CompOff"); // ✅ Add this
 const Employee = require("../models/Employee"); // ✅ Employee for balances
+const ExtraDayCompOff = require('../models/ExtraDayCompOff');
+const Attendance = require("../models/Attendance");
+const Shift = require("../models/Shift");
+
 
 // ✅ Get leave balances
 exports.getLeaveBalances = async (req, res) => {
@@ -578,6 +582,432 @@ exports.getOnLeaveToday = async (req, res) => {
       success: false,
       message: "Server error",
       error: error.message
+    });
+  }
+};
+
+
+
+// ============================================
+// 1. REQUEST COMP-OFF - Create new comp-off request
+// ============================================
+exports.requestExtraDayCompOff = async (req, res) => {
+  try {
+    const {
+      employeeId,
+      employeeName,
+      extraDayDate,
+      extraDayDetails,
+      leaveId,
+      leaveDetails,
+      reason
+    } = req.body;
+
+    // Validation
+    if (!employeeId || !extraDayDate || !reason) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: employeeId, extraDayDate, reason'
+      });
+    }
+
+    // Check if already requested for this extra day
+    const existingRequest = await ExtraDayCompOff.findOne({
+      employeeId: employeeId,
+      extraDayDate: new Date(extraDayDate),
+      status: { $in: ['pending', 'approved'] }
+    });
+
+    if (existingRequest) {
+      return res.status(400).json({
+        success: false,
+        error: 'You have already requested comp-off for this extra day'
+      });
+    }
+
+    // Check limit - max 5 active comp-offs per employee
+    const activeCount = await ExtraDayCompOff.countDocuments({
+      employeeId: employeeId,
+      status: { $in: ['pending', 'approved'] }
+    });
+
+    if (activeCount >= 5) {
+      return res.status(400).json({
+        success: false,
+        error: 'You have reached the maximum limit of 5 comp-off requests'
+      });
+    }
+
+    // Create comp-off request
+    const compOffRequest = new ExtraDayCompOff({
+      employeeId,
+      employeeName,
+      extraDayDate: new Date(extraDayDate),
+      extraDayDetails: extraDayDetails || {},
+      leaveId: leaveId || null,
+      leaveDetails: leaveDetails || {},
+      reason,
+      status: 'pending'
+    });
+
+    await compOffRequest.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Comp-off request submitted successfully',
+      data: compOffRequest
+    });
+
+  } catch (error) {
+    console.error('Error in requestExtraDayCompOff:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+};
+
+// ============================================
+// 2. GET ALL REQUESTS - Get all comp-off requests with filters
+// ============================================
+exports.getAllExtraDayCompOffRequests = async (req, res) => {
+  try {
+    const { 
+      employeeId, 
+      month, 
+      status,
+      page = 1,
+      limit = 10,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    let filter = {};
+
+    // Filter by employeeId
+    if (employeeId) {
+      filter.employeeId = employeeId;
+    }
+
+    // Filter by status
+    if (status && ['pending', 'approved', 'rejected'].includes(status)) {
+      filter.status = status;
+    }
+
+    // Filter by month
+    if (month) {
+      const [year, monthNum] = month.split('-').map(Number);
+      const startDate = new Date(year, monthNum - 1, 1);
+      const endDate = new Date(year, monthNum, 0, 23, 59, 59);
+      filter.createdAt = { $gte: startDate, $lte: endDate };
+    }
+
+    // Pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Sorting
+    const sort = {};
+    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    // Get requests with pagination
+    const requests = await ExtraDayCompOff.find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(limitNum);
+
+    // Get total count
+    const totalCount = await ExtraDayCompOff.countDocuments(filter);
+
+    // Get counts by status
+    const statusCounts = await ExtraDayCompOff.aggregate([
+      { $match: filter },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+
+    const counts = {
+      total: totalCount,
+      pending: 0,
+      approved: 0,
+      rejected: 0
+    };
+
+    statusCounts.forEach(item => {
+      if (item._id === 'pending') counts.pending = item.count;
+      else if (item._id === 'approved') counts.approved = item.count;
+      else if (item._id === 'rejected') counts.rejected = item.count;
+    });
+
+    res.status(200).json({
+      success: true,
+      requests: requests,
+      counts: counts,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limitNum)
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in getAllExtraDayCompOffRequests:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+};
+
+
+
+
+exports.getCompOffRequestsByEmployeeId = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Employee ID is required'
+      });
+    }
+
+    const requests = await ExtraDayCompOff.find({ employeeId: employeeId })
+      .sort({ createdAt: -1 });
+
+    // Counts by status
+    const counts = {
+      total: requests.length,
+      pending: requests.filter(r => r.status === 'pending').length,
+      approved: requests.filter(r => r.status === 'approved').length,
+      rejected: requests.filter(r => r.status === 'rejected').length
+    };
+
+    res.status(200).json({
+      success: true,
+      requests: requests,
+      counts: counts
+    });
+
+  } catch (error) {
+    console.error('Error in getCompOffRequestsByEmployeeId:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+};
+
+
+
+// ============================================
+// 4. UPDATE COMP-OFF STATUS (APPROVE/REJECT) WITH ATTENDANCE - FIXED
+// ============================================
+exports.updateCompOffStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, rejectedReason } = req.body;
+
+    if (!status || !['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid status. Must be "approved" or "rejected"'
+      });
+    }
+
+    const request = await ExtraDayCompOff.findById(id);
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: 'Comp-off request not found'
+      });
+    }
+
+    if (request.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        error: `Request is already ${request.status}`
+      });
+    }
+
+    request.status = status;
+    request.updatedAt = new Date();
+
+    if (status === 'approved') {
+      request.approvedBy = req.admin?.name || 'Admin';
+      request.approvedAt = new Date();
+      request.convertedToCompOff = true;
+      
+      // USE LEAVE DATE - NOT EXTRA DAY DATE
+      const leaveDate = request.leaveDetails?.startDate || request.extraDayDate || new Date();
+      request.workDate = new Date(leaveDate);
+
+      try {
+        const employee = await Employee.findOne({ employeeId: request.employeeId });
+        
+        if (employee) {
+          const leaveDateObj = new Date(leaveDate);
+          leaveDateObj.setHours(0, 0, 0, 0);
+          
+          // ============================================
+          // GET SHIFT TIMINGS FROM SHIFT SCHEMA
+          // ============================================
+          let checkInTime = new Date(leaveDateObj);
+          let checkOutTime = new Date(leaveDateObj);
+          let shiftHours = employee.shiftHours || 8;
+          
+          try {
+            // Find shift for this employee
+            const shift = await Shift.findOne({
+              'employeeAssignment.employeeId': request.employeeId
+            });
+            
+            if (shift && shift.employeeAssignment && shift.employeeAssignment.selectedTimeRange) {
+              const timeRange = shift.employeeAssignment.selectedTimeRange; // "10:00 AM - 07:00 PM"
+              const times = timeRange.split(' - ');
+              
+              if (times.length === 2) {
+                const startTimeStr = times[0].trim(); // "10:00 AM"
+                const endTimeStr = times[1].trim(); // "07:00 PM"
+                
+                // Parse start time
+                const startParts = startTimeStr.match(/(\d+):(\d+)\s*(AM|PM)/);
+                if (startParts) {
+                  let startHour = parseInt(startParts[1]);
+                  const startMinute = parseInt(startParts[2]);
+                  const startAmPm = startParts[3];
+                  
+                  if (startAmPm === 'PM' && startHour !== 12) startHour += 12;
+                  if (startAmPm === 'AM' && startHour === 12) startHour = 0;
+                  
+                  checkInTime = new Date(leaveDateObj);
+                  checkInTime.setHours(startHour, startMinute, 0, 0);
+                }
+                
+                // Parse end time
+                const endParts = endTimeStr.match(/(\d+):(\d+)\s*(AM|PM)/);
+                if (endParts) {
+                  let endHour = parseInt(endParts[1]);
+                  const endMinute = parseInt(endParts[2]);
+                  const endAmPm = endParts[3];
+                  
+                  if (endAmPm === 'PM' && endHour !== 12) endHour += 12;
+                  if (endAmPm === 'AM' && endHour === 12) endHour = 0;
+                  
+                  // If end time is before start time, add a day
+                  if (endHour < startHour || (endHour === startHour && endMinute < startMinute)) {
+                    checkOutTime = new Date(leaveDateObj);
+                    checkOutTime.setDate(checkOutTime.getDate() + 1);
+                  } else {
+                    checkOutTime = new Date(leaveDateObj);
+                  }
+                  checkOutTime.setHours(endHour, endMinute, 0, 0);
+                }
+                
+                // Calculate shift hours
+                const diffMs = checkOutTime - checkInTime;
+                shiftHours = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
+              }
+            }
+          } catch (shiftError) {
+            console.error('Error fetching shift:', shiftError);
+            // Fallback to default timings
+            checkInTime = new Date(leaveDateObj);
+            checkInTime.setHours(10, 0, 0, 0); // 10:00 AM
+            checkOutTime = new Date(leaveDateObj);
+            checkOutTime.setHours(19, 0, 0, 0); // 07:00 PM
+            shiftHours = employee.shiftHours || 8;
+          }
+          
+          // Check if attendance already exists for this leave date
+          const existingAttendance = await Attendance.findOne({
+            employeeId: request.employeeId,
+            checkInTime: {
+              $gte: new Date(leaveDateObj),
+              $lt: new Date(leaveDateObj.getTime() + 24 * 60 * 60 * 1000)
+            }
+          });
+
+          if (existingAttendance) {
+            // Update existing attendance to comp-off
+            existingAttendance.status = 'comp-off';
+            existingAttendance.checkInTime = checkInTime;
+            existingAttendance.checkOutTime = checkOutTime;
+            existingAttendance.totalHours = shiftHours || employee.shiftHours || 0;
+            existingAttendance.workingHours = shiftHours || employee.shiftHours || 0;
+            existingAttendance.assignedShiftHours = shiftHours || employee.shiftHours || 0;
+            existingAttendance.otHours = 0;
+            existingAttendance.reason = `Comp-off (Approved on ${new Date().toLocaleDateString()}) - Against ${request.leaveDetails?.leaveType || 'Leave'}`;
+            existingAttendance.isCompOff = true;
+            existingAttendance.compOffRequestId = request._id;
+            existingAttendance.updatedAt = new Date();
+            
+            await existingAttendance.save();
+            request.attendanceId = existingAttendance._id;
+          } else {
+            // Create new attendance record for leave date with shift timings
+            const attendanceData = {
+              employeeId: request.employeeId,
+              employeeEmail: employee.email || '',
+              checkInTime: checkInTime,
+              checkOutTime: checkOutTime,
+              status: 'comp-off',
+              totalBreakMinutes: 0,
+              totalHours: shiftHours || employee.shiftHours || 0,
+              workingHours: shiftHours || employee.shiftHours || 0,
+              assignedShiftHours: shiftHours || employee.shiftHours || 0,
+              otHours: 0,
+              basicSalary: employee.salaryPerMonth || 0,
+              workingDays: employee.workingDays || 26,
+              otMultiplier: 2,
+              hourlyRate: (employee.salaryPerMonth || 0) / ((employee.workingDays || 26) * (employee.shiftHours || 8)),
+              otRate: 0,
+              otAmount: 0,
+              latitude: 0,
+              longitude: 0,
+              distance: 0,
+              onsite: false,
+              officeName: 'Comp-off',
+              reason: `Comp-off (Approved on ${new Date().toLocaleDateString()}) - Against ${request.leaveDetails?.leaveType || 'Leave'}`,
+              comment: `Comp-off approved for leave: ${request.leaveDetails?.leaveType || 'Leave'} from ${request.leaveDetails?.startDate ? new Date(request.leaveDetails.startDate).toLocaleDateString() : ''} to ${request.leaveDetails?.endDate ? new Date(request.leaveDetails.endDate).toLocaleDateString() : ''} (Extra day: ${request.extraDayDetails?.day || request.extraDayDate})`,
+              breaks: [],
+              isCompOff: true,
+              compOffRequestId: request._id
+            };
+
+            const attendance = new Attendance(attendanceData);
+            await attendance.save();
+            request.attendanceId = attendance._id;
+          }
+        }
+      } catch (attendanceError) {
+        console.error('Error creating/updating attendance for comp-off:', attendanceError);
+      }
+
+    } else if (status === 'rejected') {
+      if (rejectedReason) {
+        request.rejectedReason = rejectedReason;
+      }
+    }
+
+    await request.save();
+
+    const updatedRequest = await ExtraDayCompOff.findById(id);
+
+    res.status(200).json({
+      success: true,
+      message: `Comp-off request ${status} successfully`,
+      data: updatedRequest
+    });
+
+  } catch (error) {
+    console.error('Error in updateCompOffStatus:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
     });
   }
 };
