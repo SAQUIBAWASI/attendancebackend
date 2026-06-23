@@ -397,48 +397,17 @@ const employeeSchema = new mongoose.Schema({
     default: 26,
   },
 
-   // ============================================
-// SALARY INCREMENTS ARRAY - WITHOUT approvedBy
-// ============================================
 salaryIncrements: {
   type: [{
-    incrementType: { 
-      type: String, 
-      enum: ['percentage', 'amount'],
-      required: true
-    },
-    incrementValue: { 
-      type: Number, 
-      required: true 
-    },
-    oldSalaryPerMonth: { 
-      type: Number, 
-      default: 0 
-    },
-    newSalaryPerMonth: { 
-      type: Number, 
-      default: 0 
-    },
-    effectiveFrom: { 
-      type: Date, 
-      required: true 
-    },
-    effectiveMonth: { 
-      type: Number, 
-      required: true 
-    },
-    effectiveYear: { 
-      type: Number, 
-      required: true 
-    },
-    reason: { 
-      type: String, 
-      default: "" 
-    },
-    createdAt: { 
-      type: Date, 
-      default: Date.now 
-    }
+    incrementType: { type: String, enum: ['percentage', 'amount'] },
+    incrementValue: { type: Number },
+    oldSalaryPerMonth: { type: Number, default: 0 },
+    newSalaryPerMonth: { type: Number, default: 0 },
+    effectiveFrom: { type: Date },
+    effectiveMonth: { type: Number },
+    effectiveYear: { type: Number },
+    reason: { type: String, default: "" },
+    createdAt: { type: Date, default: Date.now }
   }],
   default: []
 },

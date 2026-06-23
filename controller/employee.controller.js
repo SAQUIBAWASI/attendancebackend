@@ -1696,6 +1696,9 @@ const CandidateExperience = require("../models/CandidateExperience");
 const CandidateDocuments = require("../models/CandidateDocuments");
 const Employee = require("../models/Employee");
 const { logActivity } = require("./userActivity.controller");
+const ClaimedOT = require('../models/ClaimedOT');
+const Attendance = require('../models/Attendance');
+
 
 // ==================== GET EMPLOYEE BY PHONE ====================
 const getEmployeeByPhone = async (req, res) => {
@@ -2660,7 +2663,7 @@ const convertEmployeeIdsToTH = async (req, res) => {
 
 
 // ============================================
-// APPLY SALARY INCREMENT - SIMPLIFIED
+// APPLY SALARY INCREMENT - WITHOUT CHANGING SALARY
 // ============================================
 const applyEmployeeSalaryIncrement = async (req, res) => {
   try {
@@ -2698,10 +2701,10 @@ const applyEmployeeSalaryIncrement = async (req, res) => {
       });
     }
 
-    // Store old salary
+    // Store old salary (current salary)
     const oldSalary = employee.salaryPerMonth || 0;
 
-    // Calculate new salary
+    // Calculate new salary (for record only)
     let newSalary;
     if (incrementType === 'percentage') {
       newSalary = oldSalary + (oldSalary * (incrementValue / 100));
@@ -2716,7 +2719,7 @@ const applyEmployeeSalaryIncrement = async (req, res) => {
     const effectiveMonth = effectiveFrom.getMonth() + 1;
     const effectiveYear = effectiveFrom.getFullYear();
 
-    // Create increment record - WITHOUT approvedBy
+    // Create increment record - ONLY ADD TO ARRAY
     const incrementRecord = {
       incrementType,
       incrementValue,
@@ -2729,23 +2732,23 @@ const applyEmployeeSalaryIncrement = async (req, res) => {
       createdAt: new Date()
     };
 
-    // Push to increments array
+    // ✅ ONLY PUSH TO ARRAY - DO NOT UPDATE salaryPerMonth
     employee.salaryIncrements.push(incrementRecord);
 
-    // Update current salary
-    employee.salaryPerMonth = newSalary;
+    // ❌ DO NOT UPDATE salaryPerMonth
+    // employee.salaryPerMonth = newSalary;  // COMMENTED OUT
 
     await employee.save();
 
     res.status(200).json({
       success: true,
-      message: 'Salary increment applied successfully',
+      message: 'Salary increment record added successfully',
       data: {
         employee: {
           _id: employee._id,
           name: employee.name,
           employeeId: employee.employeeId,
-          salaryPerMonth: employee.salaryPerMonth,
+          salaryPerMonth: employee.salaryPerMonth, // Still old salary
           increment: incrementRecord
         }
       }
@@ -2759,6 +2762,583 @@ const applyEmployeeSalaryIncrement = async (req, res) => {
     });
   }
 };
+
+
+
+
+// ==================== SINGLE & BULK OT CLAIM (Combined) ====================
+// ✅ Handles both single and multiple OT claims in one function
+const claimOT = async (req, res) => {
+  try {
+    const { employeeId, employeeName, attendanceId, otHours, reason, claims } = req.body;
+    
+    // ============ BULK CLAIM (Multiple Records) ============
+    if (claims && Array.isArray(claims) && claims.length > 0) {
+      // Validate bulk claims
+      const validationErrors = [];
+      const validClaims = [];
+      const attendanceIds = [];
+
+      for (let i = 0; i < claims.length; i++) {
+        const claim = claims[i];
+        
+        if (!claim.employeeId) {
+          validationErrors.push(`Claim ${i + 1}: employeeId is required`);
+          continue;
+        }
+        if (!claim.attendanceId) {
+          validationErrors.push(`Claim ${i + 1}: attendanceId is required`);
+          continue;
+        }
+        if (!claim.otHours || claim.otHours <= 0) {
+          validationErrors.push(`Claim ${i + 1}: otHours must be greater than 0`);
+          continue;
+        }
+        if (!claim.reason) {
+          validationErrors.push(`Claim ${i + 1}: reason is required`);
+          continue;
+        }
+
+        attendanceIds.push(claim.attendanceId);
+        validClaims.push({
+          employeeId: claim.employeeId,
+          employeeName: claim.employeeName || 'Unknown',
+          attendanceId: claim.attendanceId,
+          date: claim.date || new Date(),
+          otHours: claim.otHours,
+          reason: claim.reason,
+          status: 'pending'
+        });
+      }
+
+      if (validationErrors.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed for bulk claims',
+          errors: validationErrors
+        });
+      }
+
+      // Check for duplicates in bulk claims
+      const duplicateChecks = validClaims.map(claim => ({
+        employeeId: claim.employeeId,
+        attendanceId: claim.attendanceId
+      }));
+
+      const existingClaims = await ClaimedOT.find({
+        $or: duplicateChecks
+      });
+
+      if (existingClaims.length > 0) {
+        const duplicateAttendanceIds = existingClaims.map(c => c.attendanceId.toString());
+        return res.status(400).json({
+          success: false,
+          message: 'Some records are already claimed',
+          duplicateAttendanceIds: duplicateAttendanceIds,
+          duplicateCount: existingClaims.length
+        });
+      }
+
+      // Check if attendance records exist
+      const attendanceRecords = await Attendance.find({
+        _id: { $in: attendanceIds }
+      });
+
+      if (attendanceRecords.length !== attendanceIds.length) {
+        const foundIds = attendanceRecords.map(a => a._id.toString());
+        const missingIds = attendanceIds.filter(id => !foundIds.includes(id.toString()));
+        return res.status(404).json({
+          success: false,
+          message: 'Some attendance records not found',
+          missingAttendanceIds: missingIds
+        });
+      }
+
+      // Create bulk claims
+      const createdClaims = await ClaimedOT.insertMany(validClaims);
+
+      // Update attendance records to mark OT as claimed
+      await Attendance.updateMany(
+        { _id: { $in: attendanceIds } },
+        { $set: { isOTClaimed: true } }
+      );
+
+      const totalOT = createdClaims.reduce((sum, c) => sum + c.otHours, 0);
+
+      return res.status(201).json({
+        success: true,
+        message: `${createdClaims.length} OT claims submitted successfully`,
+        count: createdClaims.length,
+        totalOTHours: totalOT,
+        records: createdClaims
+      });
+    }
+
+    // ============ SINGLE CLAIM ============
+    else if (employeeId && attendanceId && otHours && reason) {
+      // Validate single claim
+      if (otHours <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'OT hours must be greater than 0'
+        });
+      }
+
+      // Check if already claimed
+      const existingClaim = await ClaimedOT.findOne({ employeeId, attendanceId });
+      if (existingClaim) {
+        return res.status(400).json({
+          success: false,
+          message: 'OT already claimed for this record',
+          claimId: existingClaim._id,
+          status: existingClaim.status
+        });
+      }
+
+      // Check if attendance record exists
+      const attendance = await Attendance.findById(attendanceId);
+      if (!attendance) {
+        return res.status(404).json({
+          success: false,
+          message: 'Attendance record not found'
+        });
+      }
+
+      // Create single claim
+      const newClaim = new ClaimedOT({
+        employeeId,
+        employeeName: employeeName || 'Unknown',
+        attendanceId,
+        date: attendance.checkInTime || new Date(),
+        otHours,
+        reason,
+        status: 'pending'
+      });
+
+      await newClaim.save();
+
+      // Update attendance record
+      await Attendance.findByIdAndUpdate(attendanceId, {
+        $set: { isOTClaimed: true }
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: 'OT claimed successfully',
+        record: newClaim
+      });
+    }
+
+    // ============ INVALID REQUEST ============
+    else {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid request. Provide either claims array for bulk claim or single claim fields (employeeId, attendanceId, otHours, reason)'
+      });
+    }
+
+  } catch (error) {
+    console.error('Error in OT claim:', error);
+    
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Duplicate claim detected. OT already claimed for this record'
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Error processing OT claim',
+      error: error.message
+    });
+  }
+};
+
+
+
+// ==================== GET ALL OT CLAIMS WITH EMPLOYEE & ATTENDANCE DETAILS ====================
+const getAllOTClaimsWithDetails = async (req, res) => {
+  try {
+    const { status, employeeId, fromDate, toDate, page = 1, limit = 10 } = req.query;
+    
+    // Build filter
+    let filter = {};
+    if (status) filter.status = status;
+    if (employeeId) filter.employeeId = employeeId;
+    
+    if (fromDate || toDate) {
+      filter.date = {};
+      if (fromDate) filter.date.$gte = new Date(fromDate);
+      if (toDate) filter.date.$lte = new Date(toDate);
+    }
+
+    // Pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Get claims with pagination
+    const claims = await ClaimedOT.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean(); // Use lean() for better performance
+
+    // Get total count for pagination
+    const totalCount = await ClaimedOT.countDocuments(filter);
+
+    // Get all unique employee IDs and attendance IDs
+    const employeeIds = [...new Set(claims.map(c => c.employeeId))];
+    const attendanceIds = claims.map(c => c.attendanceId);
+
+    // Fetch employee details with salaryPerMonth
+    const employees = await Employee.find(
+      { employeeId: { $in: employeeIds } },
+      'employeeId name email department designation profileImage salaryPerMonth'
+    ).lean();
+
+    // Fetch attendance details
+    const attendances = await Attendance.find(
+      { _id: { $in: attendanceIds } },
+      'checkInTime checkOutTime totalHours assignedShiftHours status onsite distance reason'
+    ).lean();
+
+    // Create maps for quick lookup
+    const employeeMap = {};
+    employees.forEach(emp => {
+      employeeMap[emp.employeeId] = emp;
+    });
+
+    const attendanceMap = {};
+    attendances.forEach(att => {
+      attendanceMap[att._id.toString()] = att;
+    });
+
+    // Combine data
+    const claimsWithDetails = claims.map(claim => {
+      const attendance = attendanceMap[claim.attendanceId?.toString()] || null;
+      const employee = employeeMap[claim.employeeId] || null;
+
+      return {
+        ...claim,
+        employeeDetails: employee ? {
+          employeeId: employee.employeeId,
+          name: employee.name,
+          email: employee.email,
+          department: employee.department,
+          designation: employee.designation,
+          profileImage: employee.profileImage || null,
+          salaryPerMonth: employee.salaryPerMonth || 0
+        } : null,
+        attendanceDetails: attendance ? {
+          checkInTime: attendance.checkInTime,
+          checkOutTime: attendance.checkOutTime,
+          totalHours: attendance.totalHours,
+          assignedShiftHours: attendance.assignedShiftHours,
+          status: attendance.status,
+          onsite: attendance.onsite,
+          distance: attendance.distance,
+          reason: attendance.reason
+        } : null,
+        // Add formatted fields
+        formattedDate: claim.date ? new Date(claim.date).toLocaleDateString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        }) : null,
+        formattedOTHours: claim.otHours ? `${claim.otHours}h` : '0h',
+        statusBadge: claim.status === 'pending' ? '🟡 Pending' :
+                     claim.status === 'approved' ? '🟢 Approved' :
+                     claim.status === 'rejected' ? '🔴 Rejected' : '⚪ Unknown'
+      };
+    });
+
+    // Calculate summary
+    const summary = {
+      totalClaims: totalCount,
+      totalOTHours: claimsWithDetails.reduce((sum, c) => sum + (c.otHours || 0), 0),
+      pendingCount: claimsWithDetails.filter(c => c.status === 'pending').length,
+      approvedCount: claimsWithDetails.filter(c => c.status === 'approved').length,
+      rejectedCount: claimsWithDetails.filter(c => c.status === 'rejected').length,
+      totalPages: Math.ceil(totalCount / limitNum),
+      currentPage: pageNum,
+      perPage: limitNum
+    };
+
+    res.status(200).json({
+      success: true,
+      summary: summary,
+      claims: claimsWithDetails
+    });
+
+  } catch (error) {
+    console.error('Error fetching OT claims with details:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching OT claims',
+      error: error.message
+    });
+  }
+};
+
+
+
+// controllers/claimedOTController.js
+
+// ==================== UPDATE OT CLAIM STATUS (Single & Bulk Combined) ====================
+const updateOTClaimStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, rejectedReason, approvedBy, notes, otAmount, multiplier, claimIds } = req.body;
+    
+    // Validate status
+    if (!status || !['pending', 'approved', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid status is required: pending, approved, or rejected'
+      });
+    }
+
+    // ==================== BULK UPDATE ====================
+    if (claimIds && Array.isArray(claimIds) && claimIds.length > 0) {
+      const claims = await ClaimedOT.find({ _id: { $in: claimIds } });
+      if (claims.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'No claims found with the provided IDs'
+        });
+      }
+
+      const nonPendingClaims = claims.filter(c => c.status !== 'pending');
+      if (nonPendingClaims.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `${nonPendingClaims.length} claim(s) are already processed. Only pending claims can be updated`,
+          nonPendingClaimIds: nonPendingClaims.map(c => c._id)
+        });
+      }
+
+      const updateData = {
+        status,
+        updatedAt: new Date()
+      };
+
+      if (status === 'approved') {
+        updateData.approvedBy = approvedBy || 'Admin';
+        updateData.approvedAt = new Date();
+        updateData.rejectedReason = null;
+        if (otAmount !== undefined) {
+          updateData.otAmount = Math.round(otAmount * 100) / 100;
+        }
+        if (multiplier !== undefined) {
+          updateData.multiplier = multiplier;
+        }
+      }
+
+      if (status === 'rejected') {
+        updateData.rejectedReason = rejectedReason || 'No reason provided';
+        updateData.approvedBy = null;
+        updateData.approvedAt = null;
+        updateData.otAmount = 0;
+        updateData.multiplier = 0;
+      }
+
+      if (notes) updateData.notes = notes;
+
+      const result = await ClaimedOT.updateMany(
+        { _id: { $in: claimIds } },
+        updateData
+      );
+
+      if (status === 'rejected') {
+        const attendanceIds = claims.map(c => c.attendanceId);
+        await Attendance.updateMany(
+          { _id: { $in: attendanceIds } },
+          { $set: { isOTClaimed: false } }
+        );
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `${result.modifiedCount} OT claims ${status} successfully`,
+        modifiedCount: result.modifiedCount
+      });
+    }
+
+    // ==================== SINGLE UPDATE ====================
+    else if (id) {
+      const claim = await ClaimedOT.findById(id);
+      if (!claim) {
+        return res.status(404).json({
+          success: false,
+          message: 'OT claim not found'
+        });
+      }
+
+      if (claim.status !== 'pending' && status !== claim.status) {
+        return res.status(400).json({
+          success: false,
+          message: `Claim is already ${claim.status}. Only pending claims can be updated`
+        });
+      }
+
+      const updateData = {
+        status,
+        updatedAt: new Date()
+      };
+
+      if (status === 'approved') {
+        updateData.approvedBy = approvedBy || 'Admin';
+        updateData.approvedAt = new Date();
+        updateData.rejectedReason = null;
+        if (otAmount !== undefined) {
+          updateData.otAmount = Math.round(otAmount * 100) / 100;
+        }
+        if (multiplier !== undefined) {
+          updateData.multiplier = multiplier;
+        }
+      }
+
+      if (status === 'rejected') {
+        updateData.rejectedReason = rejectedReason || 'No reason provided';
+        updateData.approvedBy = null;
+        updateData.approvedAt = null;
+        updateData.otAmount = 0;
+        updateData.multiplier = 0;
+      }
+
+      if (notes) updateData.notes = notes;
+
+      const updatedClaim = await ClaimedOT.findByIdAndUpdate(
+        id,
+        updateData,
+        { new: true, runValidators: true }
+      );
+
+      if (status === 'rejected') {
+        await Attendance.findByIdAndUpdate(claim.attendanceId, {
+          $set: { isOTClaimed: false }
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `OT claim ${status} successfully`,
+        claim: updatedClaim
+      });
+    }
+
+    else {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid request. Provide either id or claimIds array'
+      });
+    }
+
+  } catch (error) {
+    console.error('Error updating OT claim status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating OT claim status',
+      error: error.message
+    });
+  }
+};
+
+
+
+
+// ==================== GET CLAIMED OT BY EMPLOYEE ====================
+const getClaimedOTByEmployee = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { status, fromDate, toDate } = req.query;
+
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Employee ID is required'
+      });
+    }
+
+    // Build filter
+    let filter = { employeeId };
+    if (status) filter.status = status;
+    
+    if (fromDate || toDate) {
+      filter.date = {};
+      if (fromDate) filter.date.$gte = new Date(fromDate);
+      if (toDate) filter.date.$lte = new Date(toDate);
+    }
+
+    // Get claims
+    const claims = await ClaimedOT.find(filter)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Get employee details
+    const employee = await Employee.findOne(
+      { employeeId },
+      'employeeId name email department designation profileImage salaryPerMonth'
+    ).lean();
+
+    // Get attendance details
+    const attendanceIds = claims.map(c => c.attendanceId);
+    const attendances = await Attendance.find(
+      { _id: { $in: attendanceIds } }
+    ).lean();
+
+    const attendanceMap = {};
+    attendances.forEach(att => {
+      attendanceMap[att._id.toString()] = att;
+    });
+
+    // Calculate summary
+    const summary = {
+      totalClaims: claims.length,
+      totalOTHours: claims.reduce((sum, c) => sum + (c.otHours || 0), 0),
+      totalOTAmount: claims.reduce((sum, c) => sum + (c.otAmount || 0), 0),
+      pending: claims.filter(c => c.status === 'pending').length,
+      approved: claims.filter(c => c.status === 'approved').length,
+      rejected: claims.filter(c => c.status === 'rejected').length
+    };
+
+    // Combine data
+    const claimsWithDetails = claims.map(claim => ({
+      ...claim,
+      employeeDetails: employee || null,
+      attendanceDetails: attendanceMap[claim.attendanceId?.toString()] || null,
+      formattedDate: claim.date ? new Date(claim.date).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }) : null,
+      formattedOTHours: claim.otHours ? `${claim.otHours}h` : '0h',
+      formattedOTAmount: claim.otAmount ? `₹${claim.otAmount.toFixed(2)}` : '₹0.00',
+      statusBadge: claim.status === 'pending' ? '🟡 Pending' :
+                   claim.status === 'approved' ? '🟢 Approved' :
+                   claim.status === 'rejected' ? '🔴 Rejected' : '⚪ Unknown'
+    }));
+
+    res.status(200).json({
+      success: true,
+      employee: employee || null,
+      summary: summary,
+      claims: claimsWithDetails
+    });
+
+  } catch (error) {
+    console.error('Error fetching employee OT claims:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching employee OT claims',
+      error: error.message
+    });
+  }
+};
+
+
 
 module.exports = {
   getEmployeeByPhone,
@@ -2788,6 +3368,10 @@ module.exports = {
   forgotPassword,
   resetPassword,
   convertEmployeeIdsToTH,
-  applyEmployeeSalaryIncrement
+  applyEmployeeSalaryIncrement,
+  claimOT,
+  getAllOTClaimsWithDetails,
+  updateOTClaimStatus,
+  getClaimedOTByEmployee
 };
 

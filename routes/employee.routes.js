@@ -220,7 +220,8 @@ const {
   // 🆕 Salary increment controllers
   applySalaryIncrement, getEmployeeSalaryForDate, getSalaryIncrementHistory,
   getSalaryTimeline, getAllEmployeesSalaryStatus, applyPendingIncrements,
-  fixEmployeeCurrentSalary, forgotPassword, resetPassword
+  fixEmployeeCurrentSalary, forgotPassword, resetPassword, claimOT,
+  getAllOTClaimsWithDetails, updateOTClaimStatus, getClaimedOTByEmployee
 } = require("../controller/employee.controller");
 
 const router = express.Router();
@@ -260,5 +261,12 @@ router.put('/convert-ids', convertEmployeeIdsToTH);
 
 // Apply salary increment
 router.put('/applysalary-increment/:id', applyEmployeeSalaryIncrement);
+router.post('/claimot', claimOT);
+router.get('/allotclaimed', getAllOTClaimsWithDetails);
+router.put('/update-otclaimedstatus/:id', updateOTClaimStatus);
+
+router.get('/employeeotclaimed/:employeeId', getClaimedOTByEmployee);
+
+
 
 module.exports = router;
