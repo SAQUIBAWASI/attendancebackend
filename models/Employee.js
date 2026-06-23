@@ -389,6 +389,93 @@ const employeeSchema = new mongoose.Schema({
   employeeId: { type: String, unique: true, required: true },
   joinDate: { type: Date, required: true },
   dob: { type: Date },
+
+
+
+  assignedWorkingDays: {
+    type: Number,
+    default: 26,
+  },
+
+   // ============================================
+// SALARY INCREMENTS ARRAY - WITHOUT approvedBy
+// ============================================
+salaryIncrements: {
+  type: [{
+    incrementType: { 
+      type: String, 
+      enum: ['percentage', 'amount'],
+      required: true
+    },
+    incrementValue: { 
+      type: Number, 
+      required: true 
+    },
+    oldSalaryPerMonth: { 
+      type: Number, 
+      default: 0 
+    },
+    newSalaryPerMonth: { 
+      type: Number, 
+      default: 0 
+    },
+    effectiveFrom: { 
+      type: Date, 
+      required: true 
+    },
+    effectiveMonth: { 
+      type: Number, 
+      required: true 
+    },
+    effectiveYear: { 
+      type: Number, 
+      required: true 
+    },
+    reason: { 
+      type: String, 
+      default: "" 
+    },
+    createdAt: { 
+      type: Date, 
+      default: Date.now 
+    }
+  }],
+  default: []
+},
+
+// Employee schema mein ye field add karo
+extraDays: {
+  type: [{
+    date: { type: Date, required: true },
+    day: { type: String },
+    totalHours: { type: Number, default: 0 },
+    extraHours: { type: Number, default: 0 },
+    checkInTime: { type: Date },
+    checkOutTime: { type: Date },
+    isCompOffRequested: { type: Boolean, default: false },
+    compOffRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'ExtraDayCompOff', default: null },
+    month: { type: String }, // "2026-08"
+    year: { type: Number },
+    monthNumber: { type: Number },
+    // ============================================
+    // NEW FIELDS - ADD THESE
+    // ============================================
+    usedBefore: { 
+      type: Date, 
+      default: function() {
+        const date = new Date(this.date);
+        date.setMonth(date.getMonth() - 1); // Default 1 month before
+        return date;
+      }
+    },
+    status: { 
+      type: String, 
+      enum: ['active', 'expired', 'used'], 
+      default: 'active' 
+    }
+  }],
+  default: []
+},
   
   // Department & Role
   departmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', default: null },

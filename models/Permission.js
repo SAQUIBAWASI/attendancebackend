@@ -4,22 +4,18 @@ const permissionSchema = new mongoose.Schema(
   {
     employeeId: {
       type: String, // or ObjectId later
-      required: true,
     },
 
     employeeName: {
       type: String,
-      required: true,
     },
 
     reason: {
       type: String,
-      required: true,
     },
 
     duration: {
       type: Number, // in minutes (ex: 30)
-      required: true,
     },
 
     startTime: {

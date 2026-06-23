@@ -35,6 +35,10 @@ const {
   getLeavesWithStatus,
   getOnLeaveToday, // ✅ New function
   getLeaveBalances,
+  requestExtraDayCompOff,
+  getAllExtraDayCompOffRequests,
+  getCompOffRequestsByEmployeeId,
+  updateCompOffStatus
 } = require("../controller/leave.controller");
 
 // ✅ Leaves Today (NEW)
@@ -52,5 +56,14 @@ router.get("/balances/:employeeId", getLeaveBalances);
 
 // ✅ Approve / Reject / Update
 router.put("/updateleaves/:id", updateLeaveStatus);
+
+// Request comp-off for extra day
+router.post('/requestforcompoffs', requestExtraDayCompOff);
+
+// Get all comp-off requests (with filters)
+router.get('/all', getAllExtraDayCompOffRequests);
+router.get('/getcompoffrequestforuser/:employeeId', getCompOffRequestsByEmployeeId);
+router.put('/compoff-status/:id', updateCompOffStatus);
+
 
 module.exports = router;

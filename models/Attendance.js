@@ -204,6 +204,7 @@ const attendanceSchema = new mongoose.Schema(
         "checked-in",
         "checked-out",
         "on-break",
+        "comp-off"
       ],
       default: "checked-in",
     },

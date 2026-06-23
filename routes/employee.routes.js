@@ -216,7 +216,7 @@ const {
   getAssignedLocationByEmployeeId, updateEmployee, deleteEmployee,
   submitResignation, addEmployeeExperience, getEmployeeExperiences,
   getEmployeeCandidateDocuments, getEmployeeLetters, getBirthdaysToday,
-  getAnniversariesToday,
+  getAnniversariesToday, convertEmployeeIdsToTH, applyEmployeeSalaryIncrement,
   // 🆕 Salary increment controllers
   applySalaryIncrement, getEmployeeSalaryForDate, getSalaryIncrementHistory,
   getSalaryTimeline, getAllEmployeesSalaryStatus, applyPendingIncrements,
@@ -255,4 +255,10 @@ router.get("/salary-status/all", getAllEmployeesSalaryStatus);
 router.post("/salary/apply-pending-increments", applyPendingIncrements);
 // Fix employee current salary (temporary fix for existing data)
 router.post("/:id/fix-salary", fixEmployeeCurrentSalary);
+
+router.put('/convert-ids', convertEmployeeIdsToTH);
+
+// Apply salary increment
+router.put('/applysalary-increment/:id', applyEmployeeSalaryIncrement);
+
 module.exports = router;
