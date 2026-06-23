@@ -227,6 +227,10 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+const taskRoutes = require("./routes/task.routes");
+const employeeTaskRoutes = require("./routes/employeeTask.routes");
+
+
 
 // ✅ Initialize Express app
 const app = express();
@@ -301,6 +305,8 @@ app.use("/api/salary", require("./routes/salary.routes"));
 app.use("/api/user-activity", require("./routes/userActivity.routes"));
 app.use("/api/expense", require("./routes/expense.routes"));
 app.use("/api/holidays", require("./routes/holiday.routes"));
+app.use("/api/tasks", require("./routes/task.routes"));
+app.use("/api/employee/tasks", require("./routes/employeeTask.routes"));
 
 // ✅ Client Requests
 app.use("/api/client-requests", require("./routes/clientRequest.routes"));
@@ -354,6 +360,7 @@ app.get("/", (req, res) => {
       location: "/api/location",
       salary: "/api/salary",
       holidays: "/api/holidays",
+      tasks: "/api/tasks",
       attendance: {
         checkin: "POST /api/attendance/checkin",
         checkout: "POST /api/attendance/checkout",
