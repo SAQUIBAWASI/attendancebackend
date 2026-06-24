@@ -1698,6 +1698,7 @@ const Employee = require("../models/Employee");
 const { logActivity } = require("./userActivity.controller");
 const ClaimedOT = require('../models/ClaimedOT');
 const Attendance = require('../models/Attendance');
+const Issue = require("../models/Issues");
 
 
 // ==================== GET EMPLOYEE BY PHONE ====================
@@ -3340,6 +3341,268 @@ const getClaimedOTByEmployee = async (req, res) => {
 
 
 
+// =====================================================
+// RAISE ISSUE
+// =====================================================
+
+const raiseIssue = async (req, res) => {
+  try {
+
+    // employeeId from params
+    const { employeeId } = req.params;
+
+    const {
+      employeeName,
+      department,
+      issueTitle,
+      issueDescription,
+      issueType,
+      priority
+    } = req.body;
+
+    // Required field validation
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee ID is required"
+      });
+    }
+
+    if (!issueTitle) {
+      return res.status(400).json({
+        success: false,
+        message: "Issue title is required"
+      });
+    }
+
+    if (!issueDescription) {
+      return res.status(400).json({
+        success: false,
+        message: "Issue description is required"
+      });
+    }
+
+    // Create Issue
+    const issue = await Issue.create({
+      employeeId,
+      employeeName,
+      department,
+      issueTitle,
+      issueDescription,
+      issueType,
+      priority
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Issue raised successfully",
+      data: issue
+    });
+
+  } catch (error) {
+    console.log("RAISE ISSUE ERROR =>", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+// =====================================================
+// GET ALL ISSUES
+// =====================================================
+
+const getAllIssues = async (req, res) => {
+  try {
+
+    const issues = await Issue.find()
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      totalIssues: issues.length,
+      data: issues
+    });
+
+  } catch (error) {
+    console.log("GET ALL ISSUES ERROR =>", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+
+// =====================================================
+// GET EMPLOYEE ISSUES BY EMPLOYEE ID
+// =====================================================
+
+const getEmployeeIssues = async (req, res) => {
+  try {
+
+    // employeeId from params
+    const { employeeId } = req.params;
+
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee ID is required"
+      });
+    }
+
+    const issues = await Issue.find({ employeeId })
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      totalIssues: issues.length,
+      data: issues
+    });
+
+  } catch (error) {
+    console.log("GET EMPLOYEE ISSUES ERROR =>", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+
+// =====================================================
+// UPDATE ISSUE
+// =====================================================
+
+const updateIssue = async (req, res) => {
+  try {
+
+    // issueId from params
+    const { issueId } = req.params;
+
+    const {
+      issueTitle,
+      issueDescription,
+      issueType,
+      priority,
+      status,
+      adminRemark
+    } = req.body;
+
+    if (!issueId) {
+      return res.status(400).json({
+        success: false,
+        message: "Issue ID is required"
+      });
+    }
+
+    const issue = await Issue.findById(issueId);
+
+    if (!issue) {
+      return res.status(404).json({
+        success: false,
+        message: "Issue not found"
+      });
+    }
+
+    // Update fields
+    if (issueTitle) {
+      issue.issueTitle = issueTitle;
+    }
+
+    if (issueDescription) {
+      issue.issueDescription = issueDescription;
+    }
+
+    if (issueType) {
+      issue.issueType = issueType;
+    }
+
+    if (priority) {
+      issue.priority = priority;
+    }
+
+    if (status) {
+      issue.status = status;
+
+      if (status === "Resolved") {
+        issue.resolvedAt = new Date();
+      }
+    }
+
+    if (adminRemark !== undefined) {
+      issue.adminRemark = adminRemark;
+    }
+
+    await issue.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Issue updated successfully",
+      data: issue
+    });
+
+  } catch (error) {
+    console.log("UPDATE ISSUE ERROR =>", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+
+// =====================================================
+// DELETE ISSUE
+// =====================================================
+
+const deleteIssue = async (req, res) => {
+  try {
+
+    // issueId from params
+    const { issueId } = req.params;
+
+    if (!issueId) {
+      return res.status(400).json({
+        success: false,
+        message: "Issue ID is required"
+      });
+    }
+
+    const issue = await Issue.findById(issueId);
+
+    if (!issue) {
+      return res.status(404).json({
+        success: false,
+        message: "Issue not found"
+      });
+    }
+
+    await Issue.findByIdAndDelete(issueId);
+
+    res.status(200).json({
+      success: true,
+      message: "Issue deleted successfully"
+    });
+
+  } catch (error) {
+    console.log("DELETE ISSUE ERROR =>", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 module.exports = {
   getEmployeeByPhone,
   addEmployee,
@@ -3372,6 +3635,11 @@ module.exports = {
   claimOT,
   getAllOTClaimsWithDetails,
   updateOTClaimStatus,
-  getClaimedOTByEmployee
+  getClaimedOTByEmployee,
+  raiseIssue,
+  getAllIssues,
+  getEmployeeIssues,
+  updateIssue,
+  deleteIssue
 };
 

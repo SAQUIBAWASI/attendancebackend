@@ -221,7 +221,12 @@ const {
   applySalaryIncrement, getEmployeeSalaryForDate, getSalaryIncrementHistory,
   getSalaryTimeline, getAllEmployeesSalaryStatus, applyPendingIncrements,
   fixEmployeeCurrentSalary, forgotPassword, resetPassword, claimOT,
-  getAllOTClaimsWithDetails, updateOTClaimStatus, getClaimedOTByEmployee
+  getAllOTClaimsWithDetails, updateOTClaimStatus, getClaimedOTByEmployee,
+  raiseIssue,
+  getAllIssues,
+  getEmployeeIssues,
+  updateIssue,
+  deleteIssue
 } = require("../controller/employee.controller");
 
 const router = express.Router();
@@ -267,6 +272,23 @@ router.put('/update-otclaimedstatus/:id', updateOTClaimStatus);
 
 router.get('/employeeotclaimed/:employeeId', getClaimedOTByEmployee);
 
+// =====================================================
+// ROUTES
+// =====================================================
 
+// Raise Issue
+router.post("/raise-issue/:employeeId", raiseIssue);
+
+// Get All Issues
+router.get("/get-all-issues", getAllIssues);
+
+// Get Employee Issues
+router.get("/get-employee-issues/:employeeId", getEmployeeIssues);
+
+// Update Issue
+router.put("/update-issue/:issueId", updateIssue);
+
+// Delete Issue
+router.delete("/delete-issue/:issueId", deleteIssue);
 
 module.exports = router;
