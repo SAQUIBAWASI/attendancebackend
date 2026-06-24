@@ -2049,11 +2049,16 @@ exports.updateTaskByEmployee = async (req, res) => {
   try {
     const { taskId, employeeId } = req.params;
 
-    const {
+    let {
       updateText,
       progress,
-      remark
+      remark,
+      expenses = []
     } = req.body;
+
+    // ============================================
+    // VALIDATION
+    // ============================================
 
     if (!mongoose.Types.ObjectId.isValid(taskId)) {
       return res.status(400).json({
@@ -2078,7 +2083,10 @@ exports.updateTaskByEmployee = async (req, res) => {
       });
     }
 
-    // Check employee assigned
+    // ============================================
+    // CHECK ASSIGNED EMPLOYEE
+    // ============================================
+
     const isAssigned = task.assignedTo.some(
       (id) => id.toString() === employeeId
     );
@@ -2090,37 +2098,132 @@ exports.updateTaskByEmployee = async (req, res) => {
       });
     }
 
+    // ============================================
+    // PARSE EXPENSES
+    // ============================================
+
+    if (typeof expenses === "string") {
+      try {
+        expenses = JSON.parse(expenses);
+      } catch (error) {
+        expenses = [];
+      }
+    }
+
+    // ============================================
+    // ATTACHMENTS UPLOAD
+    // ============================================
+
+    let uploadedAttachments = [];
+
+    if (req.files && req.files.length > 0) {
+      uploadedAttachments = req.files.map((file) => ({
+        fileName: file.originalname,
+        fileUrl: file.path.replace(/\\/g, "/"),
+      }));
+    }
+
+    // ============================================
+    // EMPLOYEE UPDATE ENTRY
+    // ============================================
+
     task.employeeUpdates.push({
       employeeId,
-      updateText,
+      updateText: updateText || "",
       progress: progress || 0,
       remark: remark || "",
-      updatedAt: new Date()
+      attachments: uploadedAttachments,
+      updatedAt: new Date(),
     });
 
-    // Update task progress
+    // ============================================
+    // ADD EXPENSES
+    // ============================================
+
+    if (
+      Array.isArray(expenses) &&
+      expenses.length > 0
+    ) {
+      expenses.forEach((expense) => {
+        task.expenses.push({
+          location: {
+            address:
+              expense.location?.address || "",
+
+            latitude:
+              expense.location?.latitude || 0,
+
+            longitude:
+              expense.location?.longitude || 0,
+          },
+
+          distance:
+            Number(expense.distance) || 0,
+
+          expenseAmount:
+            Number(expense.expenseAmount) || 0,
+
+          description:
+            expense.description || "",
+
+          receiptImage:
+            expense.receiptImage || null,
+
+          expenseDate:
+            expense.expenseDate || new Date(),
+
+          addedBy: employeeId,
+
+          approvalStatus: "Pending",
+        });
+      });
+    }
+
+    // ============================================
+    // UPDATE TASK PROGRESS
+    // ============================================
+
     if (progress !== undefined) {
-      task.progress = progress;
+      task.progress = Number(progress);
 
       if (Number(progress) >= 100) {
         task.status = "Completed";
-      } else if (Number(progress) > 0) {
+      }
+      else if (Number(progress) > 0) {
         task.status = "In Progress";
+      }
+      else {
+        task.status = "Pending";
       }
     }
 
     await task.save();
 
-    const updatedTask = await Task.findById(taskId)
+    // ============================================
+    // POPULATE UPDATED TASK
+    // ============================================
+
+    const updatedTask = await Task.findById(
+      taskId
+    )
+      .populate(
+        "assignedTo",
+        "fullName email employeeId"
+      )
       .populate(
         "employeeUpdates.employeeId",
+        "fullName email employeeId"
+      )
+      .populate(
+        "expenses.addedBy",
         "fullName email employeeId"
       );
 
     return res.status(200).json({
       success: true,
-      message: "Task updated successfully",
-      task: updatedTask
+      message:
+        "Task updated successfully",
+      task: updatedTask,
     });
 
   } catch (error) {
@@ -2131,7 +2234,243 @@ exports.updateTaskByEmployee = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
+    });
+  }
+};
+
+
+
+// ============================================
+// GET MY CREATED TASKS (EMPLOYEE)
+// ============================================
+exports.getMyCreatedTasks = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employeeId",
+      });
+    }
+
+    const tasks = await Task.find({
+      createdBy: employeeId,
+      createdByType: "employee",
+    })
+      .populate(
+        "assignedTo",
+        "fullName email employeeId"
+      )
+      .populate(
+        "department",
+        "departmentName"
+      )
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: tasks.length,
+      tasks,
+    });
+
+  } catch (error) {
+    console.error(
+      "Get My Created Tasks Error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+
+
+
+// ============================================
+// REPORT TASK ISSUE
+// ============================================
+exports.reportTaskIssue = async (req, res) => {
+  try {
+    const { taskId, employeeId } = req.params;
+
+    const {
+      issueTitle,
+      issueDescription,
+      priority,
+    } = req.body;
+
+    const task = await Task.findById(taskId);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found",
+      });
+    }
+
+    const isAssigned = task.assignedTo.some(
+      (id) => id.toString() === employeeId
+    );
+
+    if (!isAssigned) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You are not assigned to this task",
+      });
+    }
+
+    task.reportedIssues.push({
+      employeeId,
+      issueTitle,
+      issueDescription,
+      priority: priority || "Medium",
+    });
+
+    await task.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Issue reported successfully",
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+
+
+// ============================================
+// GET ALL REPORTED ISSUES
+// ============================================
+exports.getAllReportedIssues = async (req, res) => {
+  try {
+    const tasks = await Task.find({
+      reportedIssues: {
+        $exists: true,
+        $ne: [],
+      },
+    })
+      .populate(
+        "reportedIssues.employeeId",
+        "fullName email employeeId"
+      )
+      .sort({ createdAt: -1 });
+
+    const reportedIssues = [];
+
+    tasks.forEach((task) => {
+      task.reportedIssues.forEach((issue) => {
+        reportedIssues.push({
+          taskId: task._id,
+          taskName: task.taskName,
+          title: task.title,
+          priority: task.priority,
+          taskStatus: task.status,
+          dueDate: task.dueDate,
+
+          issue: {
+            issueId: issue._id,
+            employee: issue.employeeId,
+            issueTitle: issue.issueTitle,
+            issueDescription: issue.issueDescription,
+            priority: issue.priority,
+            status: issue.status,
+            reportedAt: issue.reportedAt,
+          },
+        });
+      });
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: reportedIssues.length,
+      issues: reportedIssues,
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+
+// ============================================
+// GET MY REPORTED ISSUES
+// ============================================
+exports.getMyReportedIssues = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employeeId",
+      });
+    }
+
+    const tasks = await Task.find({
+      "reportedIssues.employeeId": employeeId,
+    })
+      .populate(
+        "reportedIssues.employeeId",
+        "fullName email employeeId"
+      )
+      .sort({ createdAt: -1 });
+
+    const issues = [];
+
+    tasks.forEach((task) => {
+      task.reportedIssues.forEach((issue) => {
+        if (
+          issue.employeeId &&
+          issue.employeeId._id.toString() === employeeId
+        ) {
+          issues.push({
+            taskId: task._id,
+            taskName: task.taskName,
+            title: task.title,
+            taskPriority: task.priority,
+            taskStatus: task.status,
+            dueDate: task.dueDate,
+
+            issueId: issue._id,
+            issueTitle: issue.issueTitle,
+            issueDescription: issue.issueDescription,
+            issuePriority: issue.priority,
+            issueStatus: issue.status,
+            reportedAt: issue.reportedAt,
+          });
+        }
+      });
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: issues.length,
+      issues,
+    });
+
+  } catch (error) {
+    console.error(
+      "Get My Reported Issues Error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
     });
   }
 };

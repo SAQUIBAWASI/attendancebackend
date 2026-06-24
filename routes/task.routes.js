@@ -80,7 +80,11 @@ const {
   updateProject,
   deleteProject,
   getMyAssignedTasks,
-  updateTaskByEmployee
+  updateTaskByEmployee,
+  getMyCreatedTasks,
+  reportTaskIssue,
+  getAllReportedIssues,
+  getMyReportedIssues
 } = require("../controller/taskController");
 
 // ✅ Admin APIs
@@ -132,6 +136,72 @@ const uploadVoiceNote = multer({
 });
 
 
+
+
+// ============================================
+// ATTACHMENT UPLOAD
+// ============================================
+
+const attachmentUploadPath = "uploads/task-attachments";
+
+if (!fs.existsSync(attachmentUploadPath)) {
+  fs.mkdirSync(attachmentUploadPath, {
+    recursive: true,
+  });
+}
+
+const attachmentStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, attachmentUploadPath);
+  },
+
+  filename: (req, file, cb) => {
+    cb(
+      null,
+      `attachment-${Date.now()}-${Math.round(
+        Math.random() * 1e9
+      )}${path.extname(file.originalname)}`
+    );
+  },
+});
+
+const attachmentFileFilter = (
+  req,
+  file,
+  cb
+) => {
+  const allowedTypes = [
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ];
+
+  if (
+    allowedTypes.includes(file.mimetype)
+  ) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error(
+        "Only Images, PDF, DOC, DOCX, XLS, XLSX files are allowed"
+      ),
+      false
+    );
+  }
+};
+
+const uploadAttachments = multer({
+  storage: attachmentStorage,
+  fileFilter: attachmentFileFilter,
+});
+
+
+
 // 1. Create Task
 router.post("/createtask",   uploadVoiceNote.single("voiceNote"),   createTask);
 
@@ -174,7 +244,15 @@ router.put("/updateproject/:id", updateProject);
 router.delete("/delete/:id", deleteProject);
 
 router.get("/my-assigned-tasks/:employeeId", getMyAssignedTasks);
-router.put("/employee/update-task/:taskId/:employeeId", updateTaskByEmployee);
+router.get("/my-created-tasks/:employeeId", getMyCreatedTasks);
+router.put("/employee/update-task/:taskId/:employeeId",   uploadAttachments.array("attachments", 10),  updateTaskByEmployee);
+
+
+router.post("/report-issue/:taskId/:employeeId", reportTaskIssue);
+
+router.get("/reported-issues", getAllReportedIssues);
+
+router.get("/reported-issues/:employeeId", getMyReportedIssues);
 
 
 module.exports = router;

@@ -216,6 +216,46 @@ const taskSchema = new mongoose.Schema(
         },
       },
     ],
+
+
+    reportedIssues: [
+  {
+    employeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
+    },
+
+    issueTitle: {
+      type: String,
+    },
+
+    issueDescription: {
+      type: String,
+    },
+
+    priority: {
+      type: String,
+      enum: ["Low", "Medium", "High", "Critical"],
+      default: "Medium",
+    },
+
+    status: {
+      type: String,
+      enum: [
+        "Open",
+        "In Progress",
+        "Resolved",
+        "Closed",
+      ],
+      default: "Open",
+    },
+
+    reportedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+],
   },
   {
     timestamps: true,
