@@ -73,25 +73,79 @@ const {
   getDepartmentTasks,
   getTaskStats,
   getOverdueTasks,
-  exportTaskReport
+  exportTaskReport,
+  createProject,
+  getAllProjects,
+  getProjectById,
+  updateProject,
+  deleteProject,
+  getMyAssignedTasks,
+  updateTaskByEmployee
 } = require("../controller/taskController");
 
 // ✅ Admin APIs
 
+
+
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+
+const uploadPath = "uploads/voice-notes";
+
+if (!fs.existsSync(uploadPath)) {
+  fs.mkdirSync(uploadPath, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadPath);
+  },
+
+  filename: (req, file, cb) => {
+    cb(
+      null,
+      `voice-${Date.now()}${path.extname(file.originalname)}`
+    );
+  },
+});
+
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = [
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/wav",
+    "audio/webm",
+    "audio/ogg",
+  ];
+
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error("Only audio files are allowed"), false);
+  }
+};
+
+const uploadVoiceNote = multer({
+  storage,
+  fileFilter,
+});
+
+
 // 1. Create Task
-router.post("/create", createTask);
+router.post("/createtask",   uploadVoiceNote.single("voiceNote"),   createTask);
 
 // 2. Get All Tasks with Filters
-router.get("/", getAllTasks);
+router.get("/getalltasks", getAllTasks);
 
 // 3. Get Task by ID
-router.get("/:id", getTaskById);
+router.get("/singletask/:id", getTaskById);
 
 // 4. Update Task
-router.put("/:id", updateTask);
+router.put("/updatetask/:id",   uploadVoiceNote.single("voiceNote"),  updateTask);
 
 // 5. Delete Task
-router.delete("/:id", deleteTask);
+router.delete("/deletetask/:id", deleteTask);
 
 // 6. Bulk Update Status
 router.patch("/bulk-status", bulkUpdateStatus);
@@ -107,5 +161,20 @@ router.get("/overdue", getOverdueTasks);
 
 // 10. Export Task Report
 router.get("/export/report", exportTaskReport);
+
+
+router.post("/createproject", createProject);
+
+router.get("/getallprojects", getAllProjects);
+
+router.get("/getsingleproject/:id", getProjectById);
+
+router.put("/updateproject/:id", updateProject);
+
+router.delete("/delete/:id", deleteProject);
+
+router.get("/my-assigned-tasks/:employeeId", getMyAssignedTasks);
+router.put("/employee/update-task/:taskId/:employeeId", updateTaskByEmployee);
+
 
 module.exports = router;

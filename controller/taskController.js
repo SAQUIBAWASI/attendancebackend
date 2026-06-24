@@ -574,174 +574,333 @@ const Task = require("../models/Task");
 const Employee = require("../models/Employee");
 const Admin = require("../models/Admin");
 const Department = require("../models/Department");
+const Project = require("../models/Project");
 const mongoose = require("mongoose");
 
 // ============================================
-// 1. CREATE TASK (Admin)
+// CREATE TASK
 // ============================================
 exports.createTask = async (req, res) => {
   try {
-    const {
+    let {
       taskName,
       title,
       description,
+      projectId,
       createdBy,
       createdByType = "admin",
+
       assignType,
       assignedTo,
       department,
+
       priority,
+      frequency,
+
       deadlineType,
       deadlineValue,
+
+      remark,
+
+      attachments = [],
+      employeeUpdates = [],
+      expenses = []
     } = req.body;
 
-    // Validation
-    if (!taskName || !title || !description || !assignType) {
+    // ============================================
+    // VOICE NOTE (MULTER)
+    // ============================================
+
+    let voiceNote = null;
+
+    if (req.file) {
+      voiceNote = req.file.path.replace(/\\/g, "/");
+    }
+
+    // ============================================
+    // PARSE FORM-DATA ARRAYS
+    // ============================================
+
+    if (
+      assignType === "INDIVIDUAL" &&
+      typeof assignedTo === "string"
+    ) {
+      try {
+        assignedTo = JSON.parse(assignedTo);
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          message: "assignedTo must be a valid array",
+        });
+      }
+    }
+
+    if (typeof attachments === "string") {
+      try {
+        attachments = JSON.parse(attachments);
+      } catch (error) {
+        attachments = [];
+      }
+    }
+
+    if (typeof employeeUpdates === "string") {
+      try {
+        employeeUpdates = JSON.parse(employeeUpdates);
+      } catch (error) {
+        employeeUpdates = [];
+      }
+    }
+
+    if (typeof expenses === "string") {
+      try {
+        expenses = JSON.parse(expenses);
+      } catch (error) {
+        expenses = [];
+      }
+    }
+
+    // ============================================
+    // VALIDATION
+    // ============================================
+
+    if (
+      !taskName ||
+      !title ||
+      !description ||
+      !assignType
+    ) {
       return res.status(400).json({
         success: false,
-        message: "taskName, title, description, and assignType are required"
+        message:
+          "taskName, title, description and assignType are required",
       });
+    }
+
+    // ============================================
+    // PROJECT VALIDATION (OPTIONAL)
+    // ============================================
+
+    if (projectId) {
+      const project = await Project.findById(projectId);
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message: "Project not found",
+        });
+      }
     }
 
     let employeeIds = [];
 
-    // Handle different assignment types
+    // ============================================
+    // ASSIGNMENT LOGIC
+    // ============================================
+
     if (assignType === "ALL") {
-      const employees = await Employee.find({ 
-        status: "active" 
+      const employees = await Employee.find({
+        status: "active",
       }).select("_id");
-      
+
       if (employees.length === 0) {
         return res.status(400).json({
           success: false,
-          message: "No active employees found"
+          message: "No active employees found",
         });
       }
-      
+
       employeeIds = employees.map((emp) => emp._id);
-    } 
+    }
+
     else if (assignType === "DEPARTMENT") {
       if (!department) {
         return res.status(400).json({
           success: false,
-          message: "Department is required for DEPARTMENT assignment type"
+          message:
+            "department is required when assignType is DEPARTMENT",
         });
       }
 
       const employees = await Employee.find({
-        department: department,
-        status: "active"
+        department,
+        status: "active",
       }).select("_id");
 
       if (employees.length === 0) {
         return res.status(400).json({
           success: false,
-          message: `No active employees found in ${department} department`
+          message:
+            "No active employees found in selected department",
         });
       }
 
       employeeIds = employees.map((emp) => emp._id);
-    } 
+    }
+
     else if (assignType === "INDIVIDUAL") {
       if (!assignedTo || assignedTo.length === 0) {
         return res.status(400).json({
           success: false,
-          message: "assignedTo is required for INDIVIDUAL assignment type"
+          message:
+            "assignedTo is required when assignType is INDIVIDUAL",
         });
       }
 
-      // Validate all employee IDs exist
       const validEmployees = await Employee.find({
         _id: { $in: assignedTo },
-        status: "active"
+        status: "active",
       }).select("_id");
 
       if (validEmployees.length !== assignedTo.length) {
         return res.status(400).json({
           success: false,
-          message: "Some employees are invalid or inactive"
+          message:
+            "Some employee ids are invalid or inactive",
         });
       }
 
       employeeIds = assignedTo;
-    } 
+    }
+
     else if (assignType === "SELF") {
       if (!createdBy) {
         return res.status(400).json({
           success: false,
-          message: "createdBy is required for SELF assignment"
+          message:
+            "createdBy is required when assignType is SELF",
         });
       }
+
       employeeIds = [createdBy];
-    } 
+    }
+
     else {
       return res.status(400).json({
         success: false,
-        message: "Invalid assignType. Must be: ALL, DEPARTMENT, INDIVIDUAL, or SELF"
+        message:
+          "Invalid assignType. Use ALL, DEPARTMENT, INDIVIDUAL or SELF",
       });
     }
 
-    // Calculate due date based on deadline type
-    let dueDate = new Date();
-    
-    if (deadlineType === "Days") {
-      dueDate.setDate(dueDate.getDate() + Number(deadlineValue));
-    } else if (deadlineType === "Week") {
-      dueDate.setDate(dueDate.getDate() + Number(deadlineValue) * 7);
-    } else if (deadlineType === "Month") {
-      dueDate.setMonth(dueDate.getMonth() + Number(deadlineValue));
-    } else if (deadlineType === "Custom") {
-      if (!deadlineValue) {
-        return res.status(400).json({
-          success: false,
-          message: "Custom deadline requires deadlineValue"
-        });
+    // ============================================
+    // DUE DATE LOGIC
+    // ============================================
+
+    let dueDate = null;
+
+    if (deadlineType) {
+      dueDate = new Date();
+
+      if (deadlineType === "Days") {
+        dueDate.setDate(
+          dueDate.getDate() + Number(deadlineValue || 1)
+        );
       }
-      dueDate = new Date(deadlineValue);
-    } else {
-      // Default: 7 days if no deadline type specified
-      dueDate.setDate(dueDate.getDate() + 7);
+
+      else if (deadlineType === "Week") {
+        dueDate.setDate(
+          dueDate.getDate() +
+          Number(deadlineValue || 1) * 7
+        );
+      }
+
+      else if (deadlineType === "Month") {
+        dueDate.setMonth(
+          dueDate.getMonth() +
+          Number(deadlineValue || 1)
+        );
+      }
+
+      else if (deadlineType === "Custom") {
+        dueDate = new Date(deadlineValue);
+      }
     }
 
-    // Create task
+    // ============================================
+    // CREATE TASK
+    // ============================================
+
     const task = await Task.create({
       taskName,
       title,
       description,
+
+      projectId: projectId || null,
+
       createdBy,
       createdByType,
+
       assignType,
+
       assignedTo: employeeIds,
-      department: assignType === "DEPARTMENT" ? department : null,
+
+      department:
+        assignType === "DEPARTMENT"
+          ? department
+          : null,
+
       priority: priority || "Medium",
-      deadlineType: deadlineType || "Days",
-      deadlineValue: deadlineValue || 7,
+
+      frequency: frequency || "One Time",
+
+      deadlineType,
+      deadlineValue,
+
       dueDate,
+
+      voiceNote,
+
+      remark,
+
+      attachments,
+
+      employeeUpdates,
+
+      expenses,
+
+      progress: 0,
+
       status: "Pending",
-      progress: 0
     });
 
-    // Populate createdBy and assignedTo details
+    // ============================================
+    // POPULATE DATA
+    // ============================================
+
     const populatedTask = await Task.findById(task._id)
-      .populate("createdBy", "fullName email")
-      .populate("assignedTo", "fullName email department");
+      .populate(
+        "projectId",
+        "projectName status"
+      )
+      .populate(
+        "assignedTo",
+        "fullName email employeeId"
+      )
+      .populate(
+        "employeeUpdates.employeeId",
+        "fullName email"
+      )
+      .populate(
+        "expenses.addedBy",
+        "fullName email"
+      );
 
     return res.status(201).json({
       success: true,
-      message: `Task created and assigned to ${employeeIds.length} employee(s)`,
+      message: `Task assigned to ${employeeIds.length} employee(s) successfully`,
+      assignedCount: employeeIds.length,
       task: populatedTask,
-      assignedCount: employeeIds.length
     });
 
   } catch (error) {
     console.error("Create Task Error:", error);
+
     return res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
-
 // ============================================
 // 2. GET ALL TASKS WITH FILTERS (Admin)
 // ============================================
@@ -883,23 +1042,37 @@ exports.getTaskById = async (req, res) => {
 };
 
 // ============================================
-// 4. UPDATE TASK (Admin)
+// UPDATE TASK (Admin)
 // ============================================
 exports.updateTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const {
+
+    let {
       taskName,
       title,
       description,
+
+      projectId,
+
       assignType,
       assignedTo,
       department,
+
       priority,
+      frequency,
+
       deadlineType,
       deadlineValue,
+
       status,
-      progress
+      progress,
+
+      remark,
+
+      attachments,
+      employeeUpdates,
+      expenses
     } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -909,8 +1082,8 @@ exports.updateTask = async (req, res) => {
       });
     }
 
-    // Check if task exists
     const existingTask = await Task.findById(id);
+
     if (!existingTask) {
       return res.status(404).json({
         success: false,
@@ -918,88 +1091,276 @@ exports.updateTask = async (req, res) => {
       });
     }
 
-    // Build update object
+    // ============================================
+    // VOICE NOTE (MULTER)
+    // ============================================
+
+    let voiceNote;
+
+    if (req.file) {
+      voiceNote = req.file.path.replace(/\\/g, "/");
+    }
+
+    // ============================================
+    // PARSE ARRAYS
+    // ============================================
+
+    if (
+      assignType === "INDIVIDUAL" &&
+      typeof assignedTo === "string"
+    ) {
+      assignedTo = JSON.parse(assignedTo);
+    }
+
+    if (
+      attachments &&
+      typeof attachments === "string"
+    ) {
+      attachments = JSON.parse(attachments);
+    }
+
+    if (
+      employeeUpdates &&
+      typeof employeeUpdates === "string"
+    ) {
+      employeeUpdates = JSON.parse(employeeUpdates);
+    }
+
+    if (
+      expenses &&
+      typeof expenses === "string"
+    ) {
+      expenses = JSON.parse(expenses);
+    }
+
+    // ============================================
+    // UPDATE DATA
+    // ============================================
+
     let updateData = {};
 
     if (taskName) updateData.taskName = taskName;
     if (title) updateData.title = title;
     if (description) updateData.description = description;
-    if (priority) updateData.priority = priority;
-    if (status) updateData.status = status;
-    if (progress !== undefined) updateData.progress = progress;
 
-    // Handle assignment type change
+    if (projectId) updateData.projectId = projectId;
+
+    if (priority) updateData.priority = priority;
+    if (frequency) updateData.frequency = frequency;
+
+    if (status) updateData.status = status;
+
+    if (progress !== undefined) {
+      updateData.progress = progress;
+    }
+
+    if (remark !== undefined) {
+      updateData.remark = remark;
+    }
+
+    if (voiceNote) {
+      updateData.voiceNote = voiceNote;
+    }
+
+    if (attachments) {
+      updateData.attachments = attachments;
+    }
+
+    if (employeeUpdates) {
+      updateData.employeeUpdates = employeeUpdates;
+    }
+
+    if (expenses) {
+      updateData.expenses = expenses;
+    }
+
+    // ============================================
+    // PROJECT VALIDATION
+    // ============================================
+
+    if (projectId) {
+      const project = await Project.findById(projectId);
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message: "Project not found"
+        });
+      }
+    }
+
+    // ============================================
+    // ASSIGNMENT LOGIC
+    // ============================================
+
     if (assignType) {
       updateData.assignType = assignType;
-      
-      let newEmployeeIds = [];
+
+      let employeeIds = [];
 
       if (assignType === "ALL") {
-        const employees = await Employee.find({ status: "active" }).select("_id");
-        newEmployeeIds = employees.map((emp) => emp._id);
+        const employees = await Employee.find({
+          status: "active"
+        }).select("_id");
+
+        employeeIds = employees.map(
+          (emp) => emp._id
+        );
+
         updateData.department = null;
-      } 
+      }
+
       else if (assignType === "DEPARTMENT") {
         if (!department) {
           return res.status(400).json({
             success: false,
-            message: "Department is required for DEPARTMENT assignment type"
+            message:
+              "Department is required for DEPARTMENT assignment type"
           });
         }
-        const employees = await Employee.find({ 
-          department: department,
+
+        const employees = await Employee.find({
+          department,
           status: "active"
         }).select("_id");
-        newEmployeeIds = employees.map((emp) => emp._id);
+
+        employeeIds = employees.map(
+          (emp) => emp._id
+        );
+
         updateData.department = department;
-      } 
+      }
+
       else if (assignType === "INDIVIDUAL") {
-        if (!assignedTo || assignedTo.length === 0) {
+        if (
+          !assignedTo ||
+          assignedTo.length === 0
+        ) {
           return res.status(400).json({
             success: false,
-            message: "assignedTo is required for INDIVIDUAL assignment type"
+            message:
+              "assignedTo is required for INDIVIDUAL assignment type"
           });
         }
-        newEmployeeIds = assignedTo;
-        updateData.department = null;
-      } 
-      else if (assignType === "SELF") {
-        newEmployeeIds = [existingTask.createdBy];
+
+        const validEmployees =
+          await Employee.find({
+            _id: { $in: assignedTo }
+          }).select("_id");
+
+        if (
+          validEmployees.length !==
+          assignedTo.length
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Some employee ids are invalid"
+          });
+        }
+
+        employeeIds = assignedTo;
+
         updateData.department = null;
       }
 
-      updateData.assignedTo = newEmployeeIds;
+      else if (assignType === "SELF") {
+        employeeIds = [
+          existingTask.createdBy
+        ];
+
+        updateData.department = null;
+      }
+
+      updateData.assignedTo = employeeIds;
     }
 
-    // Handle deadline update
+    // ============================================
+    // DEADLINE LOGIC
+    // ============================================
+
     if (deadlineType || deadlineValue) {
-      const newDeadlineType = deadlineType || existingTask.deadlineType;
-      const newDeadlineValue = deadlineValue || existingTask.deadlineValue;
-      
+      const finalDeadlineType =
+        deadlineType ||
+        existingTask.deadlineType;
+
+      const finalDeadlineValue =
+        deadlineValue ||
+        existingTask.deadlineValue;
+
       let dueDate = new Date();
-      if (newDeadlineType === "Days") {
-        dueDate.setDate(dueDate.getDate() + Number(newDeadlineValue));
-      } else if (newDeadlineType === "Week") {
-        dueDate.setDate(dueDate.getDate() + Number(newDeadlineValue) * 7);
-      } else if (newDeadlineType === "Month") {
-        dueDate.setMonth(dueDate.getMonth() + Number(newDeadlineValue));
-      } else if (newDeadlineType === "Custom") {
-        dueDate = new Date(newDeadlineValue);
+
+      if (finalDeadlineType === "Days") {
+        dueDate.setDate(
+          dueDate.getDate() +
+            Number(finalDeadlineValue)
+        );
       }
 
-      updateData.deadlineType = newDeadlineType;
-      updateData.deadlineValue = newDeadlineValue;
+      else if (
+        finalDeadlineType === "Week"
+      ) {
+        dueDate.setDate(
+          dueDate.getDate() +
+            Number(finalDeadlineValue) * 7
+        );
+      }
+
+      else if (
+        finalDeadlineType === "Month"
+      ) {
+        dueDate.setMonth(
+          dueDate.getMonth() +
+            Number(finalDeadlineValue)
+        );
+      }
+
+      else if (
+        finalDeadlineType === "Custom"
+      ) {
+        dueDate = new Date(
+          finalDeadlineValue
+        );
+      }
+
+      updateData.deadlineType =
+        finalDeadlineType;
+
+      updateData.deadlineValue =
+        finalDeadlineValue;
+
       updateData.dueDate = dueDate;
     }
 
-    // Update task
-    const updatedTask = await Task.findByIdAndUpdate(
-      id,
-      updateData,
-      { new: true, runValidators: true }
-    )
-    .populate("createdBy", "fullName email")
-    .populate("assignedTo", "fullName email department");
+    // ============================================
+    // UPDATE TASK
+    // ============================================
+
+    const updatedTask =
+      await Task.findByIdAndUpdate(
+        id,
+        updateData,
+        {
+          new: true,
+          runValidators: true
+        }
+      )
+        .populate(
+          "projectId",
+          "projectName status"
+        )
+        .populate(
+          "assignedTo",
+          "fullName email employeeId"
+        )
+        .populate(
+          "employeeUpdates.employeeId",
+          "fullName email"
+        )
+        .populate(
+          "expenses.addedBy",
+          "fullName email"
+        );
 
     return res.status(200).json({
       success: true,
@@ -1008,14 +1369,17 @@ exports.updateTask = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Update Task Error:", error);
+    console.error(
+      "Update Task Error:",
+      error
+    );
+
     return res.status(500).json({
       success: false,
       message: error.message
     });
   }
 };
-
 // ============================================
 // 5. DELETE TASK (Admin)
 // ============================================
@@ -1452,6 +1816,319 @@ exports.exportTaskReport = async (req, res) => {
 
   } catch (error) {
     console.error("Export Task Report Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+
+
+// =========================
+// Create Project
+// =========================
+exports.createProject = async (req, res) => {
+    try {
+        const {
+            projectName,
+            description,
+            department,
+            startDate,
+            endDate,
+            projectManager,
+            teamMembers,
+            status,
+            createdBy,
+            createdByType
+        } = req.body;
+
+        const project = await Project.create({
+            projectName,
+            description,
+            department,
+            startDate,
+            endDate,
+            projectManager,
+            teamMembers,
+            status,
+            createdBy,
+            createdByType
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Project created successfully",
+            data: project
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+
+// =========================
+// Get All Projects
+// =========================
+exports.getAllProjects = async (req, res) => {
+    try {
+
+        const projects = await Project.find()
+            .populate("department")
+            .populate("projectManager")
+            .populate("teamMembers")
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            count: projects.length,
+            data: projects
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+
+// =========================
+// Get Single Project
+// =========================
+exports.getProjectById = async (req, res) => {
+    try {
+
+        const project = await Project.findById(req.params.id)
+            .populate("department")
+            .populate("projectManager")
+            .populate("teamMembers");
+
+        if (!project) {
+            return res.status(404).json({
+                success: false,
+                message: "Project not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: project
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+
+// =========================
+// Update Project
+// =========================
+exports.updateProject = async (req, res) => {
+    try {
+
+        const project = await Project.findByIdAndUpdate(
+            req.params.id,
+            req.body,
+            {
+                new: true,
+                runValidators: true
+            }
+        )
+            .populate("department")
+            .populate("projectManager")
+            .populate("teamMembers");
+
+        if (!project) {
+            return res.status(404).json({
+                success: false,
+                message: "Project not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Project updated successfully",
+            data: project
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+
+// =========================
+// Delete Project
+// =========================
+exports.deleteProject = async (req, res) => {
+    try {
+
+        const project = await Project.findByIdAndDelete(req.params.id);
+
+        if (!project) {
+            return res.status(404).json({
+                success: false,
+                message: "Project not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Project deleted successfully"
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+
+
+// ============================================
+// GET MY ASSIGNED TASKS (Employee)
+// ============================================
+exports.getMyAssignedTasks = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employee ID"
+      });
+    }
+
+    const tasks = await Task.find({
+      assignedTo: employeeId
+    })
+      .populate(
+        "createdBy",
+        "fullName email"
+      )
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: tasks.length,
+      tasks
+    });
+
+  } catch (error) {
+    console.error("Get Assigned Tasks Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+
+// ============================================
+// UPDATE TASK BY EMPLOYEE
+// ============================================
+exports.updateTaskByEmployee = async (req, res) => {
+  try {
+    const { taskId, employeeId } = req.params;
+
+    const {
+      updateText,
+      progress,
+      remark
+    } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(taskId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid taskId"
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employeeId"
+      });
+    }
+
+    const task = await Task.findById(taskId);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found"
+      });
+    }
+
+    // Check employee assigned
+    const isAssigned = task.assignedTo.some(
+      (id) => id.toString() === employeeId
+    );
+
+    if (!isAssigned) {
+      return res.status(403).json({
+        success: false,
+        message: "Employee is not assigned to this task"
+      });
+    }
+
+    task.employeeUpdates.push({
+      employeeId,
+      updateText,
+      progress: progress || 0,
+      remark: remark || "",
+      updatedAt: new Date()
+    });
+
+    // Update task progress
+    if (progress !== undefined) {
+      task.progress = progress;
+
+      if (Number(progress) >= 100) {
+        task.status = "Completed";
+      } else if (Number(progress) > 0) {
+        task.status = "In Progress";
+      }
+    }
+
+    await task.save();
+
+    const updatedTask = await Task.findById(taskId)
+      .populate(
+        "employeeUpdates.employeeId",
+        "fullName email employeeId"
+      );
+
+    return res.status(200).json({
+      success: true,
+      message: "Task updated successfully",
+      task: updatedTask
+    });
+
+  } catch (error) {
+    console.error(
+      "Update Task By Employee Error:",
+      error
+    );
+
     return res.status(500).json({
       success: false,
       message: error.message
