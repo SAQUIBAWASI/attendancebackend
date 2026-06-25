@@ -575,6 +575,7 @@ const Employee = require("../models/Employee");
 const Admin = require("../models/Admin");
 const Department = require("../models/Department");
 const Project = require("../models/Project");
+const TaskNotification = require("../models/TaskNotification");
 const mongoose = require("mongoose");
 
 // ============================================
@@ -863,6 +864,38 @@ exports.createTask = async (req, res) => {
       status: "Pending",
     });
 
+
+    
+    // ════════════════════════════════════════════
+    // 🔔 SEND NOTIFICATIONS TO ASSIGNED EMPLOYEES
+    // ════════════════════════════════════════════
+    
+    if (employeeIds.length > 0 && assignType !== "SELF") {
+      // Get sender (admin/employee who created the task)
+      const sender = await Employee.findById(createdBy).select("name");
+      const senderName = sender ? sender.name : 'Admin';
+      
+      // Format due date for message
+      const dueDateStr = dueDate ? ` by ${new Date(dueDate).toLocaleDateString()}` : '';
+      const priorityStr = priority ? ` (${priority} priority)` : '';
+      
+      // Create notification for each assigned employee
+      const notifications = employeeIds.map((empId) => ({
+        recipient: empId,
+        sender: createdBy,
+        type: 'task_assigned',
+        message: `📋 New task assigned: "${taskName}"${priorityStr}. Please complete it${dueDateStr}.`,
+        taskId: task._id,
+        isRead: false,
+        createdAt: new Date()
+      }));
+
+      // Insert all notifications in bulk
+      await TaskNotification.insertMany(notifications);
+      
+      console.log(`✅ ${notifications.length} notifications sent for task: ${taskName}`);
+    }
+
     // ============================================
     // POPULATE DATA
     // ============================================
@@ -966,7 +999,7 @@ exports.getAllTasks = async (req, res) => {
     // Get tasks with pagination and population
     const tasks = await Task.find(filter)
       .populate("createdBy", "fullName email profileImage")
-      .populate("assignedTo", "fullName email department profileImage")
+      .populate("assignedTo", "name email department profileImage")
       .sort(sortOptions)
       .skip(skip)
       .limit(limitNumber);
@@ -2471,6 +2504,628 @@ exports.getMyReportedIssues = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message,
+    });
+  }
+};
+
+
+
+// ============================================
+// UPDATE REPORTED ISSUE
+// ============================================
+exports.updateReportedIssue = async (req, res) => {
+  try {
+    const { taskId, issueId } = req.params;
+    const { status, priority } = req.body;
+
+    // Find the task
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found',
+      });
+    }
+
+    // Find the issue in the task's reportedIssues array
+    const issueIndex = task.reportedIssues.findIndex(
+      (issue) => issue._id.toString() === issueId
+    );
+
+    if (issueIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: 'Issue not found in this task',
+      });
+    }
+
+    // Update the issue
+    if (status) {
+      task.reportedIssues[issueIndex].status = status;
+    }
+    if (priority) {
+      task.reportedIssues[issueIndex].priority = priority;
+    }
+
+    // IMPORTANT: Set validateModifiedOnly to true to skip validation for unchanged fields
+    // This prevents the department field validation error
+    await task.save({ validateModifiedOnly: true });
+
+    // Return the updated issue
+    const updatedIssue = task.reportedIssues[issueIndex];
+
+    return res.status(200).json({
+      success: true,
+      message: 'Issue updated successfully',
+      issue: {
+        issueId: updatedIssue._id,
+        issueTitle: updatedIssue.issueTitle,
+        issueDescription: updatedIssue.issueDescription,
+        priority: updatedIssue.priority,
+        status: updatedIssue.status,
+        reportedAt: updatedIssue.reportedAt,
+      },
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// ============================================
+// DELETE REPORTED ISSUE
+// ============================================
+exports.deleteReportedIssue = async (req, res) => {
+  try {
+    const { taskId, issueId } = req.params;
+
+    // Find the task
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found',
+      });
+    }
+
+    // Find the issue in the task's reportedIssues array
+    const issueIndex = task.reportedIssues.findIndex(
+      (issue) => issue._id.toString() === issueId
+    );
+
+    if (issueIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: 'Issue not found in this task',
+      });
+    }
+
+    // Remove the issue from the array
+    task.reportedIssues.splice(issueIndex, 1);
+
+    // Save the task with validateModifiedOnly to skip validation for unchanged fields
+    await task.save({ validateModifiedOnly: true });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Issue deleted successfully',
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+
+// ============================================
+// ADMIN DASHBOARD
+// ============================================
+exports.getAdminDashboard = async (req, res) => {
+  try {
+    // Get total employees
+    const totalEmployees = await Employee.countDocuments({ status: 'active' });
+
+    // Get total tasks
+    const totalTasks = await Task.countDocuments();
+
+    // Get pending tasks
+    const pendingTasks = await Task.countDocuments({
+      status: "Pending",
+    });
+
+    // Get in progress tasks
+    const inProgressTasks = await Task.countDocuments({
+      status: "In Progress",
+    });
+
+    // Get completed tasks
+    const completedTasks = await Task.countDocuments({
+      status: "Completed",
+    });
+
+    // Get overdue tasks
+    const overdueTasks = await Task.countDocuments({
+      status: "Overdue",
+    });
+
+    // Calculate completion rate
+    const completionRate = totalTasks > 0 
+      ? Math.round((completedTasks / totalTasks) * 100) 
+      : 0;
+
+    // Get total reported issues
+    const totalIssues = await Task.aggregate([
+      {
+        $project: {
+          issueCount: {
+            $size: {
+              $ifNull: ["$reportedIssues", []]
+            }
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$issueCount" }
+        }
+      }
+    ]);
+
+    // Get total expenses
+    const totalExpenses = await Task.aggregate([
+      { $unwind: "$expenses" },
+      {
+        $group: {
+          _id: null,
+          totalAmount: {
+            $sum: "$expenses.expenseAmount"
+          }
+        }
+      }
+    ]);
+
+    // Get recent activities (last 5 task updates)
+    const recentActivities = await Task.find()
+      .sort({ updatedAt: -1 })
+      .limit(5)
+      .select('taskName title status updatedAt assignedTo');
+
+    // Format recent activities
+    const formattedActivities = recentActivities.map(task => {
+      const user = task.assignedTo && task.assignedTo.length > 0 
+        ? task.assignedTo[0]?.name || 'Unknown' 
+        : 'Unknown';
+      
+      let action = 'updated task';
+      if (task.status === 'Completed') action = 'completed task';
+      else if (task.status === 'Pending') action = 'created task';
+      else if (task.status === 'In Progress') action = 'started task';
+      
+      return {
+        user: user,
+        action: action,
+        task: task.taskName || task.title || 'Task',
+        time: formatTimeAgo(task.updatedAt),
+        avatar: user.charAt(0).toUpperCase()
+      };
+    });
+
+    // Get task distribution for chart
+    const taskDistribution = [
+      { label: 'Completed', value: completedTasks, bg: 'bg-emerald-500' },
+      { label: 'In Progress', value: inProgressTasks, bg: 'bg-blue-500' },
+      { label: 'Pending', value: pendingTasks, bg: 'bg-amber-500' },
+      { label: 'Overdue', value: overdueTasks, bg: 'bg-rose-500' },
+    ];
+
+    // Get weekly trend (last 7 days)
+    const weeklyTrend = await getWeeklyTaskTrend();
+
+    return res.status(200).json({
+      success: true,
+      dashboard: {
+        totalEmployees,
+        totalTasks,
+        pendingTasks,
+        inProgressTasks,
+        completedTasks,
+        overdueTasks,
+        completionRate,
+        totalReportedIssues: totalIssues[0]?.total || 0,
+        totalExpenses: totalExpenses[0]?.totalAmount || 0,
+        recentActivities: formattedActivities,
+        taskDistribution,
+        weeklyTrend
+      },
+    });
+
+  } catch (error) {
+    console.error('Dashboard Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Helper function to format time ago
+function formatTimeAgo(date) {
+  const now = new Date();
+  const diff = Math.floor((now - new Date(date)) / 1000); // seconds
+
+  if (diff < 60) return 'Just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} hour${Math.floor(diff / 3600) > 1 ? 's' : ''} ago`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)} day${Math.floor(diff / 86400) > 1 ? 's' : ''} ago`;
+  return `${Math.floor(diff / 604800)} week${Math.floor(diff / 604800) > 1 ? 's' : ''} ago`;
+}
+
+// Helper function to get weekly task trend
+async function getWeeklyTaskTrend() {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const today = new Date();
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - 6);
+  weekStart.setHours(0, 0, 0, 0);
+
+  const weeklyData = await Task.aggregate([
+    {
+      $match: {
+        createdAt: { $gte: weekStart }
+      }
+    },
+    {
+      $group: {
+        _id: {
+          $dayOfWeek: '$createdAt'
+        },
+        count: { $sum: 1 }
+      }
+    },
+    {
+      $sort: { '_id': 1 }
+    }
+  ]);
+
+  // Map day numbers to names (MongoDB dayOfWeek: 1=Sunday, 2=Monday, ..., 7=Saturday)
+  const dayMap = {
+    1: 'Sun',
+    2: 'Mon',
+    3: 'Tue',
+    4: 'Wed',
+    5: 'Thu',
+    6: 'Fri',
+    7: 'Sat'
+  };
+
+  const trend = days.map(day => {
+    // Find matching day in weeklyData
+    const dayIndex = Object.keys(dayMap).find(key => dayMap[key] === day);
+    const data = weeklyData.find(d => d._id === parseInt(dayIndex));
+    return { day, tasks: data ? data.count : 0 };
+  });
+
+  return trend;
+}
+
+
+
+// ============================================
+// EMPLOYEE DASHBOARD
+// ============================================
+exports.getEmployeeDashboard = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employeeId",
+      });
+    }
+
+    // ── Get all tasks assigned to this employee ──
+    const allTasks = await Task.find({
+      assignedTo: employeeId,
+    })
+    .populate('projectId', 'projectName')
+    .sort({ dueDate: 1 });
+
+    // ── Stats ──
+    const totalAssignedTasks = allTasks.length;
+    
+    const pendingTasks = allTasks.filter(t => t.status === 'Pending').length;
+    const inProgressTasks = allTasks.filter(t => t.status === 'In Progress').length;
+    const completedTasks = allTasks.filter(t => t.status === 'Completed').length;
+    const overdueTasks = allTasks.filter(t => t.status === 'Overdue').length;
+    const rejectedTasks = allTasks.filter(t => t.status === 'Rejected').length;
+
+    // ── Completion Rate ──
+    const completionRate = totalAssignedTasks > 0 
+      ? Math.round((completedTasks / totalAssignedTasks) * 100) 
+      : 0;
+
+    // ── Upcoming Deadlines (not completed, sorted by due date) ──
+    const upcomingTasks = allTasks
+      .filter(t => t.dueDate && t.status !== 'Completed' && t.status !== 'Rejected')
+      .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+      .slice(0, 5)
+      .map(t => ({
+        _id: t._id,
+        title: t.title || t.taskName,
+        taskName: t.taskName,
+        description: t.description,
+        dueDate: t.dueDate,
+        status: t.status,
+        priority: t.priority,
+        progress: t.progress,
+        projectId: t.projectId,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt
+      }));
+
+    // ── Recently Completed (last 5) ──
+    const recentlyCompleted = allTasks
+      .filter(t => t.status === 'Completed')
+      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+      .slice(0, 5)
+      .map(t => ({
+        _id: t._id,
+        title: t.title || t.taskName,
+        taskName: t.taskName,
+        description: t.description,
+        dueDate: t.dueDate,
+        status: t.status,
+        priority: t.priority,
+        progress: t.progress,
+        projectId: t.projectId,
+        completedAt: t.updatedAt,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt
+      }));
+
+    // ── Priority Breakdown ──
+    const priorityBreakdown = {
+      Critical: allTasks.filter(t => t.priority === 'Critical').length,
+      High: allTasks.filter(t => t.priority === 'High').length,
+      Medium: allTasks.filter(t => t.priority === 'Medium').length,
+      Low: allTasks.filter(t => t.priority === 'Low').length,
+    };
+
+    // ── Quick Stats ──
+    const activeTasks = inProgressTasks + pendingTasks;
+
+    // ── My Created Tasks ──
+    const myCreatedTasks = await Task.countDocuments({
+      createdBy: employeeId,
+      createdByType: 'employee'
+    });
+
+    // ── My Reported Issues ──
+    const reportedIssues = await Task.aggregate([
+      {
+        $project: {
+          issueCount: {
+            $size: {
+              $filter: {
+                input: "$reportedIssues",
+                as: "issue",
+                cond: {
+                  $eq: [
+                    "$$issue.employeeId",
+                    new mongoose.Types.ObjectId(employeeId)
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$issueCount" }
+        }
+      }
+    ]);
+
+    // ── My Expenses ──
+    const myExpenses = await Task.aggregate([
+      {
+        $unwind: "$expenses"
+      },
+      {
+        $match: {
+          "expenses.addedBy": new mongoose.Types.ObjectId(employeeId)
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalAmount: {
+            $sum: "$expenses.expenseAmount"
+          }
+        }
+      }
+    ]);
+
+    // ── Return response ──
+    return res.status(200).json({
+      success: true,
+      dashboard: {
+        // Stats
+        totalAssignedTasks,
+        pendingTasks,
+        inProgressTasks,
+        completedTasks,
+        overdueTasks,
+        rejectedTasks,
+        completionRate,
+        activeTasks,
+        
+        // Priority Breakdown
+        priorityBreakdown,
+        
+        // Lists
+        upcomingTasks,
+        recentlyCompleted,
+        
+        // Additional
+        myCreatedTasks,
+        myReportedIssues: reportedIssues[0]?.total || 0,
+        myExpenses: myExpenses[0]?.totalAmount || 0,
+      }
+    });
+
+  } catch (error) {
+    console.error('Employee Dashboard Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch dashboard data'
+    });
+  }
+};
+
+
+
+// ──────────────────────────────────────────────
+// 1. GET ALL NOTIFICATIONS (Admin)
+// ──────────────────────────────────────────────
+exports.getAllNotifications = async (req, res) => {
+  try {
+    const { limit = 50, skip = 0 } = req.query;
+
+    const notifications = await TaskNotification.find()
+      .sort({ createdAt: -1 })
+      .skip(parseInt(skip))
+      .limit(parseInt(limit))
+      .populate('recipient', 'name email employeeId')
+      .populate('sender', 'name email')
+      .populate('taskId', 'taskName title status');
+
+    const total = await TaskNotification.countDocuments();
+
+    return res.status(200).json({
+      success: true,
+      notifications,
+      total,
+      limit: parseInt(limit),
+      skip: parseInt(skip)
+    });
+
+  } catch (error) {
+    console.error("Get All Notifications Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// ──────────────────────────────────────────────
+// 2. GET NOTIFICATIONS BY EMPLOYEE ID
+// ──────────────────────────────────────────────
+exports.getNotificationsByEmployeeId = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { limit = 50, skip = 0 } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employeeId",
+      });
+    }
+
+    // Check if employee exists
+    const employee = await Employee.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    const notifications = await TaskNotification.find({ recipient: employeeId })
+      .sort({ createdAt: -1 })
+      .skip(parseInt(skip))
+      .limit(parseInt(limit))
+      .populate('sender', 'name email')
+      .populate('taskId', 'taskName title status priority');
+
+    const total = await TaskNotification.countDocuments({ recipient: employeeId });
+
+    return res.status(200).json({
+      success: true,
+      employee: {
+        id: employee._id,
+        name: employee.name,
+        email: employee.email,
+        employeeId: employee.employeeId
+      },
+      notifications,
+      total,
+      limit: parseInt(limit),
+      skip: parseInt(skip)
+    });
+
+  } catch (error) {
+    console.error("Get Notifications By Employee Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// ──────────────────────────────────────────────
+// 3. DELETE NOTIFICATION
+// ──────────────────────────────────────────────
+exports.deleteNotification = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const { employeeId } = req.query; // Optional: check if employee owns this notification
+
+    if (!mongoose.Types.ObjectId.isValid(notificationId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid notificationId",
+      });
+    }
+
+    // Build query
+    const query = { _id: notificationId };
+    if (employeeId) {
+      query.recipient = employeeId;
+    }
+
+    const notification = await TaskNotification.findOneAndDelete(query);
+
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: "Notification not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Notification deleted successfully",
+      notification
+    });
+
+  } catch (error) {
+    console.error("Delete Notification Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message
     });
   }
 };

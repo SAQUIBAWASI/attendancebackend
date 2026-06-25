@@ -84,7 +84,14 @@ const {
   getMyCreatedTasks,
   reportTaskIssue,
   getAllReportedIssues,
-  getMyReportedIssues
+  getMyReportedIssues,
+  updateReportedIssue,
+  deleteReportedIssue,
+  getAdminDashboard,
+  getEmployeeDashboard,
+  getAllNotifications,
+  getNotificationsByEmployeeId,
+  deleteNotification
 } = require("../controller/taskController");
 
 // ✅ Admin APIs
@@ -254,5 +261,24 @@ router.get("/reported-issues", getAllReportedIssues);
 
 router.get("/reported-issues/:employeeId", getMyReportedIssues);
 
+// Update reported issue
+router.put('/reported-issue/:taskId/:issueId', updateReportedIssue);
+
+// Delete reported issue
+router.delete('/reported-issue/:taskId/:issueId', deleteReportedIssue);
+
+router.get("/admin-dashboard", getAdminDashboard);
+router.get("/employee-dashboard/:employeeId", getEmployeeDashboard);
+
+
+// Get all notifications (Admin)
+router.get('/notifications', getAllNotifications);
+
+// Get notifications by employee ID
+router.get('/employeenotifications/:employeeId', getNotificationsByEmployeeId);
+
+// ─── DELETE ───
+// Delete a single notification
+router.delete('/notifications/:notificationId', deleteNotification);
 
 module.exports = router;
