@@ -210,6 +210,32 @@ const upload = multer({
   }
 });
 
+
+
+// ─── Ensure upload directory exists for faces ───
+const faceUploadDir = path.join(__dirname, "../uploads/faces");
+if (!fs.existsSync(faceUploadDir)) {
+  fs.mkdirSync(faceUploadDir, { recursive: true });
+}
+
+// ─── Multer config for face uploads ───
+const faceStorage = multer.diskStorage({
+  destination: (req, file, cb) => { cb(null, faceUploadDir); },
+  filename: (req, file, cb) => { 
+    const ext = path.extname(file.originalname);
+    cb(null, Date.now() + "-" + Math.round(Math.random() * 1E9) + ext);
+  }
+});
+
+const faceUpload = multer({
+  storage: faceStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/jpg', 'image/png'];
+    allowed.includes(file.mimetype) ? cb(null, true) : cb(new Error('Only JPEG, JPG, PNG allowed'));
+  }
+});
+
 const {
   addEmployee, getEmployees, getEmployeeByEmail, getEmployeeByPhone,
   loginEmployee, getEmployeeAttendanceSummary, assignLocation,
@@ -226,7 +252,9 @@ const {
   getAllIssues,
   getEmployeeIssues,
   updateIssue,
-  deleteIssue
+  deleteIssue,
+  uploadEmployeeFace,
+  verifyFace
 } = require("../controller/employee.controller");
 
 const router = express.Router();
@@ -290,5 +318,12 @@ router.put("/update-issue/:issueId", updateIssue);
 
 // Delete Issue
 router.delete("/delete-issue/:issueId", deleteIssue);
+
+
+// 1. Upload Face
+router.post("/upload-face", faceUpload.single('image'), uploadEmployeeFace);
+
+// 2. Verify Face
+router.post("/verify-face", faceUpload.single('image'), verifyFace);
 
 module.exports = router;

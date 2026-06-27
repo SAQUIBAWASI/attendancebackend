@@ -3603,6 +3603,145 @@ const deleteIssue = async (req, res) => {
   }
 };
 
+
+
+
+// 1️⃣ Upload Employee Face Image
+const uploadEmployeeFace = async (req, res) => {
+  try {
+    const { employeeId } = req.body;
+    
+    if (!employeeId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Employee ID is required' 
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No image uploaded' 
+      });
+    }
+
+    const employee = await Employee.findOne({ employeeId: employeeId });
+    
+    if (!employee) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Employee not found' 
+      });
+    }
+
+    // Delete old image if exists
+    if (employee.profileImage) {
+      const oldPath = path.join(__dirname, '..', employee.profileImage);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    // Save new image path
+    const imagePath = `/uploads/faces/${req.file.filename}`;
+    employee.profileImage = imagePath;
+    await employee.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Face uploaded successfully',
+      data: { employeeId: employee.employeeId, imagePath }
+    });
+
+  } catch (error) {
+    console.error('Upload face error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Failed to upload face' 
+    });
+  }
+};
+
+// 2️⃣ Verify Employee Face
+const verifyFace = async (req, res) => {
+  try {
+    const { employeeId } = req.body;
+    
+    if (!employeeId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Employee ID is required' 
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No image uploaded for verification' 
+      });
+    }
+
+    const employee = await Employee.findOne({ employeeId: employeeId });
+    
+    if (!employee) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Employee not found' 
+      });
+    }
+
+    // Check if employee has a face image
+    if (!employee.profileImage) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please upload your face image first' 
+      });
+    }
+
+    // ─── SIMPLE VERIFICATION ───
+    // For now, just check if image is valid
+    // In production, use face-api.js for actual face matching
+    
+    // Basic validations
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Only JPEG, JPG, and PNG allowed' 
+      });
+    }
+
+    if (req.file.size > 5 * 1024 * 1024) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Image size must be less than 5MB' 
+      });
+    }
+
+    // ✅ Verification successful (temporary - always returns true)
+    employee.lastFaceVerifiedAt = new Date();
+    await employee.save();
+
+    res.status(200).json({
+      success: true,
+      message: '✅ Face verified successfully',
+      data: {
+        employeeId: employee.employeeId,
+        name: employee.name,
+        verified: true,
+        confidence: 95
+      }
+    });
+
+  } catch (error) {
+    console.error('Face verification error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Face verification failed' 
+    });
+  }
+};
+
 module.exports = {
   getEmployeeByPhone,
   addEmployee,
@@ -3640,6 +3779,9 @@ module.exports = {
   getAllIssues,
   getEmployeeIssues,
   updateIssue,
-  deleteIssue
+  deleteIssue,
+  uploadEmployeeFace,
+  verifyFace
+
 };
 

@@ -374,6 +374,16 @@ const employeeSchema = new mongoose.Schema({
   phone: { type: String, required: true, unique: true },
   alternateNumber: { type: String },
   parentsName: { type: String },
+
+
+  profileImage: {
+    type: String,
+    default: null
+  },
+  lastFaceVerifiedAt: {
+    type: Date,
+    default: null
+  },
   
   // Bank & Statutory Details
   bankName: { type: String, default: "" },
