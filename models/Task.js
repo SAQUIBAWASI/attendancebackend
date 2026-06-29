@@ -20,20 +20,24 @@ const taskSchema = new mongoose.Schema(
     projectId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Project",
+      default: null,
     },
 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
     },
 
     createdByType: {
       type: String,
       enum: ["admin", "employee"],
+      default: "admin",
     },
 
     assignType: {
       type: String,
       enum: ["ALL", "DEPARTMENT", "INDIVIDUAL", "SELF"],
+      default: "DEPARTMENT",
     },
 
     assignedTo: [
@@ -43,9 +47,9 @@ const taskSchema = new mongoose.Schema(
       },
     ],
 
+    // ─── CHANGED: department as ObjectId ───
     department: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Department",
+      type: String,
       default: null,
     },
 
@@ -57,13 +61,7 @@ const taskSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: [
-        "Pending",
-        "In Progress",
-        "Completed",
-        "Rejected",
-        "Overdue",
-      ],
+      enum: ["Pending", "In Progress", "Completed", "Rejected", "Overdue"],
       default: "Pending",
     },
 
@@ -74,24 +72,54 @@ const taskSchema = new mongoose.Schema(
       max: 100,
     },
 
+    // ─── Frequency as Array ───
     frequency: {
-      type: String,
+      type: [String],
       enum: ["One Time", "Daily", "Weekly", "Monthly"],
-      default: "One Time",
+      default: ["One Time"],
     },
 
-    deadlineType: {
-      type: String,
-      enum: ["Days", "Week", "Month", "Custom"],
-    },
-
-    deadlineValue: {
-      type: Number,
-    },
-
-    dueDate: {
+    // ─── Submit Date ───
+    submitDate: {
       type: Date,
+      default: null,
     },
+
+    // ─── Subtasks ───
+    subtasks: [
+      {
+        name: {
+          type: String,
+          trim: true,
+        },
+        description: {
+          type: String,
+          trim: true,
+        },
+        status: {
+          type: String,
+          enum: ["Pending", "In Progress", "Completed"],
+          default: "Pending",
+        },
+        priority: {
+          type: String,
+          enum: ["Low", "Medium", "High", "Critical"],
+          default: "Medium",
+        },
+        submitDate: {
+          type: Date,
+          default: null,
+        },
+        submittedDate: {
+          type: Date,
+          default: null,
+        },
+        _id: {
+          type: String,
+          default: () => new mongoose.Types.ObjectId().toString(),
+        },
+      },
+    ],
 
     voiceNote: {
       type: String,
@@ -217,45 +245,39 @@ const taskSchema = new mongoose.Schema(
       },
     ],
 
-
     reportedIssues: [
-  {
-    employeeId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee",
-    },
+      {
+        employeeId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Employee",
+        },
 
-    issueTitle: {
-      type: String,
-    },
+        issueTitle: {
+          type: String,
+        },
 
-    issueDescription: {
-      type: String,
-    },
+        issueDescription: {
+          type: String,
+        },
 
-    priority: {
-      type: String,
-      enum: ["Low", "Medium", "High", "Critical"],
-      default: "Medium",
-    },
+        priority: {
+          type: String,
+          enum: ["Low", "Medium", "High", "Critical"],
+          default: "Medium",
+        },
 
-    status: {
-      type: String,
-      enum: [
-        "Open",
-        "In Progress",
-        "Resolved",
-        "Closed",
-      ],
-      default: "Open",
-    },
+        status: {
+          type: String,
+          enum: ["Open", "In Progress", "Resolved", "Closed"],
+          default: "Open",
+        },
 
-    reportedAt: {
-      type: Date,
-      default: Date.now,
-    },
-  },
-],
+        reportedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   {
     timestamps: true,

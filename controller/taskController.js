@@ -591,18 +591,15 @@ exports.createTask = async (req, res) => {
       createdBy,
       createdByType = "admin",
 
-      assignType,
-      assignedTo,
+      // Frontend se department name aayega (String)
       department,
+      assignedTo,
 
       priority,
       frequency,
-
-      deadlineType,
-      deadlineValue,
-
+      submitDate,
       remark,
-
+      subtasks = [],
       attachments = [],
       employeeUpdates = [],
       expenses = []
@@ -622,10 +619,8 @@ exports.createTask = async (req, res) => {
     // PARSE FORM-DATA ARRAYS
     // ============================================
 
-    if (
-      assignType === "INDIVIDUAL" &&
-      typeof assignedTo === "string"
-    ) {
+    // Parse assignedTo
+    if (typeof assignedTo === "string") {
       try {
         assignedTo = JSON.parse(assignedTo);
       } catch (error) {
@@ -636,6 +631,28 @@ exports.createTask = async (req, res) => {
       }
     }
 
+    // Parse frequency (array)
+    if (typeof frequency === "string") {
+      try {
+        frequency = JSON.parse(frequency);
+      } catch (error) {
+        frequency = ['One Time'];
+      }
+    }
+    if (!frequency || !Array.isArray(frequency) || frequency.length === 0) {
+      frequency = ['One Time'];
+    }
+
+    // Parse subtasks
+    if (typeof subtasks === "string") {
+      try {
+        subtasks = JSON.parse(subtasks);
+      } catch (error) {
+        subtasks = [];
+      }
+    }
+
+    // Parse attachments
     if (typeof attachments === "string") {
       try {
         attachments = JSON.parse(attachments);
@@ -644,6 +661,7 @@ exports.createTask = async (req, res) => {
       }
     }
 
+    // Parse employeeUpdates
     if (typeof employeeUpdates === "string") {
       try {
         employeeUpdates = JSON.parse(employeeUpdates);
@@ -652,6 +670,7 @@ exports.createTask = async (req, res) => {
       }
     }
 
+    // Parse expenses
     if (typeof expenses === "string") {
       try {
         expenses = JSON.parse(expenses);
@@ -664,16 +683,17 @@ exports.createTask = async (req, res) => {
     // VALIDATION
     // ============================================
 
-    if (
-      !taskName ||
-      !title ||
-      !description ||
-      !assignType
-    ) {
+    if (!taskName || !title || !description) {
       return res.status(400).json({
         success: false,
-        message:
-          "taskName, title, description and assignType are required",
+        message: "taskName, title and description are required",
+      });
+    }
+
+    if (!department) {
+      return res.status(400).json({
+        success: false,
+        message: "department is required",
       });
     }
 
@@ -683,7 +703,6 @@ exports.createTask = async (req, res) => {
 
     if (projectId) {
       const project = await Project.findById(projectId);
-
       if (!project) {
         return res.status(404).json({
           success: false,
@@ -698,202 +717,113 @@ exports.createTask = async (req, res) => {
     // ASSIGNMENT LOGIC
     // ============================================
 
-    if (assignType === "ALL") {
-      const employees = await Employee.find({
-        status: "active",
-      }).select("_id");
-
-      if (employees.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "No active employees found",
-        });
-      }
-
-      employeeIds = employees.map((emp) => emp._id);
-    }
-
-    else if (assignType === "DEPARTMENT") {
-      if (!department) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "department is required when assignType is DEPARTMENT",
-        });
-      }
-
-      const employees = await Employee.find({
-        department,
-        status: "active",
-      }).select("_id");
-
-      if (employees.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "No active employees found in selected department",
-        });
-      }
-
-      employeeIds = employees.map((emp) => emp._id);
-    }
-
-    else if (assignType === "INDIVIDUAL") {
-      if (!assignedTo || assignedTo.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "assignedTo is required when assignType is INDIVIDUAL",
-        });
-      }
-
+    // If assignedTo is provided, use those employees
+    if (assignedTo && assignedTo.length > 0) {
+      // Validate employees exist and are active
       const validEmployees = await Employee.find({
         _id: { $in: assignedTo },
         status: "active",
+        department: department, // String se compare
       }).select("_id");
 
       if (validEmployees.length !== assignedTo.length) {
         return res.status(400).json({
           success: false,
-          message:
-            "Some employee ids are invalid or inactive",
+          message: "Some employee ids are invalid, inactive, or not in the selected department",
         });
       }
-
       employeeIds = assignedTo;
-    }
+    } else {
+      // If no employees selected, get all active from department
+      const employees = await Employee.find({
+        department: department, // String se compare
+        status: "active",
+      }).select("_id");
 
-    else if (assignType === "SELF") {
-      if (!createdBy) {
+      if (employees.length === 0) {
         return res.status(400).json({
           success: false,
-          message:
-            "createdBy is required when assignType is SELF",
+          message: "No active employees found in selected department",
         });
       }
-
-      employeeIds = [createdBy];
-    }
-
-    else {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Invalid assignType. Use ALL, DEPARTMENT, INDIVIDUAL or SELF",
-      });
+      employeeIds = employees.map((emp) => emp._id);
     }
 
     // ============================================
-    // DUE DATE LOGIC
+    // PROCESS SUBTASKS
     // ============================================
 
-    let dueDate = null;
-
-    if (deadlineType) {
-      dueDate = new Date();
-
-      if (deadlineType === "Days") {
-        dueDate.setDate(
-          dueDate.getDate() + Number(deadlineValue || 1)
-        );
-      }
-
-      else if (deadlineType === "Week") {
-        dueDate.setDate(
-          dueDate.getDate() +
-          Number(deadlineValue || 1) * 7
-        );
-      }
-
-      else if (deadlineType === "Month") {
-        dueDate.setMonth(
-          dueDate.getMonth() +
-          Number(deadlineValue || 1)
-        );
-      }
-
-      else if (deadlineType === "Custom") {
-        dueDate = new Date(deadlineValue);
-      }
-    }
+    const processedSubtasks = subtasks.map(subtask => ({
+      name: subtask.name || '',
+      description: subtask.description || '',
+      status: subtask.status || 'Pending',
+      priority: subtask.priority || 'Medium',
+      submitDate: subtask.submitDate ? new Date(subtask.submitDate) : null,
+      submittedDate: subtask.status === 'Completed' ? new Date() : null,
+      _id: subtask._id || new mongoose.Types.ObjectId().toString()
+    }));
 
     // ============================================
     // CREATE TASK
     // ============================================
 
-    const task = await Task.create({
+    const taskData = {
       taskName,
       title,
       description,
-
       projectId: projectId || null,
-
       createdBy,
       createdByType,
-
-      assignType,
-
+      assignType: "DEPARTMENT",
       assignedTo: employeeIds,
-
-      department:
-        assignType === "DEPARTMENT"
-          ? department
-          : null,
-
+      department: department, // String
       priority: priority || "Medium",
-
-      frequency: frequency || "One Time",
-
-      deadlineType,
-      deadlineValue,
-
-      dueDate,
-
+      frequency: frequency,
+      submitDate: submitDate ? new Date(submitDate) : null,
       voiceNote,
-
       remark,
-
+      subtasks: processedSubtasks,
       attachments,
-
       employeeUpdates,
-
       expenses,
-
       progress: 0,
+      status: "Pending"
+    };
 
-      status: "Pending",
-    });
+    // Calculate initial progress from subtasks
+    if (processedSubtasks.length > 0) {
+      const completed = processedSubtasks.filter(s => s.status === 'Completed').length;
+      taskData.progress = Math.round((completed / processedSubtasks.length) * 100);
+    }
 
+    const task = await Task.create(taskData);
 
+    // ============================================
+    // SEND NOTIFICATIONS TO ASSIGNED EMPLOYEES
+    // ============================================
     
-    // ════════════════════════════════════════════
-    // 🔔 SEND NOTIFICATIONS TO ASSIGNED EMPLOYEES
-    // ════════════════════════════════════════════
-    
-    if (employeeIds.length > 0 && assignType !== "SELF") {
-      // Get sender (admin/employee who created the task)
+    if (employeeIds.length > 0) {
       const sender = await Employee.findById(createdBy).select("name");
       const senderName = sender ? sender.name : 'Admin';
       
-      // Format due date for message
-      const dueDateStr = dueDate ? ` by ${new Date(dueDate).toLocaleDateString()}` : '';
+      const submitDateStr = submitDate ? ` by ${new Date(submitDate).toLocaleDateString()}` : '';
       const priorityStr = priority ? ` (${priority} priority)` : '';
+      const freqStr = frequency && frequency.length > 0 ? ` (${frequency.join(', ')})` : '';
       
-      // Create notification for each assigned employee
       const notifications = employeeIds.map((empId) => ({
         recipient: empId,
         sender: createdBy,
         type: 'task_assigned',
-        message: `📋 New task assigned: "${taskName}"${priorityStr}. Please complete it${dueDateStr}.`,
+        message: `📋 New task assigned: "${taskName}"${priorityStr}${freqStr}. Please complete it${submitDateStr}.`,
         taskId: task._id,
         isRead: false,
         createdAt: new Date()
       }));
 
-      // Insert all notifications in bulk
-      await TaskNotification.insertMany(notifications);
-      
-      console.log(`✅ ${notifications.length} notifications sent for task: ${taskName}`);
+      if (notifications.length > 0) {
+        await TaskNotification.insertMany(notifications);
+        console.log(`✅ ${notifications.length} notifications sent for task: ${taskName}`);
+      }
     }
 
     // ============================================
@@ -901,22 +831,10 @@ exports.createTask = async (req, res) => {
     // ============================================
 
     const populatedTask = await Task.findById(task._id)
-      .populate(
-        "projectId",
-        "projectName status"
-      )
-      .populate(
-        "assignedTo",
-        "fullName email employeeId"
-      )
-      .populate(
-        "employeeUpdates.employeeId",
-        "fullName email"
-      )
-      .populate(
-        "expenses.addedBy",
-        "fullName email"
-      );
+      .populate("projectId", "projectName status")
+      .populate("assignedTo", "fullName email employeeId")
+      .populate("employeeUpdates.employeeId", "fullName email")
+      .populate("expenses.addedBy", "fullName email");
 
     return res.status(201).json({
       success: true,
@@ -927,7 +845,6 @@ exports.createTask = async (req, res) => {
 
   } catch (error) {
     console.error("Create Task Error:", error);
-
     return res.status(500).json({
       success: false,
       message: error.message,
@@ -1075,344 +992,172 @@ exports.getTaskById = async (req, res) => {
 };
 
 // ============================================
-// UPDATE TASK (Admin)
+// UPDATE TASK
 // ============================================
 exports.updateTask = async (req, res) => {
   try {
     const { id } = req.params;
-
+    
     let {
       taskName,
       title,
       description,
-
       projectId,
-
       assignType,
       assignedTo,
       department,
-
       priority,
       frequency,
-
-      deadlineType,
-      deadlineValue,
-
-      status,
-      progress,
-
+      submitDate,
       remark,
-
+      subtasks,
       attachments,
       employeeUpdates,
-      expenses
+      expenses,
+      status,
+      progress
     } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid task ID"
-      });
-    }
-
-    const existingTask = await Task.findById(id);
-
-    if (!existingTask) {
+    // Check if task exists
+    const task = await Task.findById(id);
+    if (!task) {
       return res.status(404).json({
         success: false,
-        message: "Task not found"
+        message: "Task not found",
       });
     }
 
-    // ============================================
-    // VOICE NOTE (MULTER)
-    // ============================================
-
-    let voiceNote;
-
-    if (req.file) {
-      voiceNote = req.file.path.replace(/\\/g, "/");
+    // Parse frequency
+    if (typeof frequency === "string") {
+      try {
+        frequency = JSON.parse(frequency);
+      } catch (error) {
+        frequency = ['One Time'];
+      }
     }
 
-    // ============================================
-    // PARSE ARRAYS
-    // ============================================
-
-    if (
-      assignType === "INDIVIDUAL" &&
-      typeof assignedTo === "string"
-    ) {
-      assignedTo = JSON.parse(assignedTo);
+    // Parse subtasks
+    if (typeof subtasks === "string") {
+      try {
+        subtasks = JSON.parse(subtasks);
+      } catch (error) {
+        subtasks = [];
+      }
     }
 
-    if (
-      attachments &&
-      typeof attachments === "string"
-    ) {
-      attachments = JSON.parse(attachments);
+    // Parse assignedTo
+    if (assignType === "INDIVIDUAL" && typeof assignedTo === "string") {
+      try {
+        assignedTo = JSON.parse(assignedTo);
+      } catch (error) {
+        assignedTo = [];
+      }
     }
 
-    if (
-      employeeUpdates &&
-      typeof employeeUpdates === "string"
-    ) {
-      employeeUpdates = JSON.parse(employeeUpdates);
+    // Parse attachments
+    if (typeof attachments === "string") {
+      try {
+        attachments = JSON.parse(attachments);
+      } catch (error) {
+        attachments = [];
+      }
     }
 
-    if (
-      expenses &&
-      typeof expenses === "string"
-    ) {
-      expenses = JSON.parse(expenses);
+    // Parse employeeUpdates
+    if (typeof employeeUpdates === "string") {
+      try {
+        employeeUpdates = JSON.parse(employeeUpdates);
+      } catch (error) {
+        employeeUpdates = [];
+      }
     }
 
-    // ============================================
-    // UPDATE DATA
-    // ============================================
+    // Parse expenses
+    if (typeof expenses === "string") {
+      try {
+        expenses = JSON.parse(expenses);
+      } catch (error) {
+        expenses = [];
+      }
+    }
 
-    let updateData = {};
+    // Process subtasks - auto-set submittedDate when status changes to Completed
+    const processedSubtasks = subtasks.map(subtask => {
+      const processed = { ...subtask };
+      
+      // If status is Completed and no submittedDate, set it
+      if (processed.status === 'Completed' && !processed.submittedDate) {
+        processed.submittedDate = new Date();
+      }
+      
+      // If status changes from Completed to something else, keep submittedDate
+      return processed;
+    });
 
-    if (taskName) updateData.taskName = taskName;
-    if (title) updateData.title = title;
-    if (description) updateData.description = description;
+    // Prepare update data
+    const updateData = {
+      taskName: taskName || task.taskName,
+      title: title || task.title,
+      description: description || task.description,
+      projectId: projectId || task.projectId,
+      assignType: assignType || task.assignType,
+      assignedTo: assignedTo || task.assignedTo,
+      department: department || task.department,
+      priority: priority || task.priority,
+      frequency: frequency || task.frequency,
+      submitDate: submitDate ? new Date(submitDate) : task.submitDate,
+      remark: remark !== undefined ? remark : task.remark,
+      subtasks: processedSubtasks || task.subtasks,
+      attachments: attachments || task.attachments,
+      employeeUpdates: employeeUpdates || task.employeeUpdates,
+      expenses: expenses || task.expenses,
+      status: status || task.status,
+      updatedAt: new Date()
+    };
 
-    if (projectId) updateData.projectId = projectId;
-
-    if (priority) updateData.priority = priority;
-    if (frequency) updateData.frequency = frequency;
-
-    if (status) updateData.status = status;
-
-    if (progress !== undefined) {
+    // Calculate progress from subtasks
+    if (processedSubtasks && processedSubtasks.length > 0) {
+      const completed = processedSubtasks.filter(s => s.status === 'Completed').length;
+      updateData.progress = Math.round((completed / processedSubtasks.length) * 100);
+    } else if (progress !== undefined) {
       updateData.progress = progress;
     }
 
-    if (remark !== undefined) {
-      updateData.remark = remark;
-    }
-
-    if (voiceNote) {
-      updateData.voiceNote = voiceNote;
-    }
-
-    if (attachments) {
-      updateData.attachments = attachments;
-    }
-
-    if (employeeUpdates) {
-      updateData.employeeUpdates = employeeUpdates;
-    }
-
-    if (expenses) {
-      updateData.expenses = expenses;
-    }
-
-    // ============================================
-    // PROJECT VALIDATION
-    // ============================================
-
-    if (projectId) {
-      const project = await Project.findById(projectId);
-
-      if (!project) {
-        return res.status(404).json({
-          success: false,
-          message: "Project not found"
-        });
+    // Check if overdue
+    if (updateData.status !== 'Completed' && updateData.status !== 'Rejected' && updateData.submitDate) {
+      const now = new Date();
+      const submitDateObj = new Date(updateData.submitDate);
+      if (now > submitDateObj) {
+        updateData.status = 'Overdue';
       }
     }
 
-    // ============================================
-    // ASSIGNMENT LOGIC
-    // ============================================
-
-    if (assignType) {
-      updateData.assignType = assignType;
-
-      let employeeIds = [];
-
-      if (assignType === "ALL") {
-        const employees = await Employee.find({
-          status: "active"
-        }).select("_id");
-
-        employeeIds = employees.map(
-          (emp) => emp._id
-        );
-
-        updateData.department = null;
-      }
-
-      else if (assignType === "DEPARTMENT") {
-        if (!department) {
-          return res.status(400).json({
-            success: false,
-            message:
-              "Department is required for DEPARTMENT assignment type"
-          });
-        }
-
-        const employees = await Employee.find({
-          department,
-          status: "active"
-        }).select("_id");
-
-        employeeIds = employees.map(
-          (emp) => emp._id
-        );
-
-        updateData.department = department;
-      }
-
-      else if (assignType === "INDIVIDUAL") {
-        if (
-          !assignedTo ||
-          assignedTo.length === 0
-        ) {
-          return res.status(400).json({
-            success: false,
-            message:
-              "assignedTo is required for INDIVIDUAL assignment type"
-          });
-        }
-
-        const validEmployees =
-          await Employee.find({
-            _id: { $in: assignedTo }
-          }).select("_id");
-
-        if (
-          validEmployees.length !==
-          assignedTo.length
-        ) {
-          return res.status(400).json({
-            success: false,
-            message:
-              "Some employee ids are invalid"
-          });
-        }
-
-        employeeIds = assignedTo;
-
-        updateData.department = null;
-      }
-
-      else if (assignType === "SELF") {
-        employeeIds = [
-          existingTask.createdBy
-        ];
-
-        updateData.department = null;
-      }
-
-      updateData.assignedTo = employeeIds;
-    }
-
-    // ============================================
-    // DEADLINE LOGIC
-    // ============================================
-
-    if (deadlineType || deadlineValue) {
-      const finalDeadlineType =
-        deadlineType ||
-        existingTask.deadlineType;
-
-      const finalDeadlineValue =
-        deadlineValue ||
-        existingTask.deadlineValue;
-
-      let dueDate = new Date();
-
-      if (finalDeadlineType === "Days") {
-        dueDate.setDate(
-          dueDate.getDate() +
-            Number(finalDeadlineValue)
-        );
-      }
-
-      else if (
-        finalDeadlineType === "Week"
-      ) {
-        dueDate.setDate(
-          dueDate.getDate() +
-            Number(finalDeadlineValue) * 7
-        );
-      }
-
-      else if (
-        finalDeadlineType === "Month"
-      ) {
-        dueDate.setMonth(
-          dueDate.getMonth() +
-            Number(finalDeadlineValue)
-        );
-      }
-
-      else if (
-        finalDeadlineType === "Custom"
-      ) {
-        dueDate = new Date(
-          finalDeadlineValue
-        );
-      }
-
-      updateData.deadlineType =
-        finalDeadlineType;
-
-      updateData.deadlineValue =
-        finalDeadlineValue;
-
-      updateData.dueDate = dueDate;
-    }
-
-    // ============================================
-    // UPDATE TASK
-    // ============================================
-
-    const updatedTask =
-      await Task.findByIdAndUpdate(
-        id,
-        updateData,
-        {
-          new: true,
-          runValidators: true
-        }
-      )
-        .populate(
-          "projectId",
-          "projectName status"
-        )
-        .populate(
-          "assignedTo",
-          "fullName email employeeId"
-        )
-        .populate(
-          "employeeUpdates.employeeId",
-          "fullName email"
-        )
-        .populate(
-          "expenses.addedBy",
-          "fullName email"
-        );
+    // Update task
+    const updatedTask = await Task.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: true }
+    )
+    .populate("projectId", "projectName status")
+    .populate("assignedTo", "fullName email employeeId")
+    .populate("employeeUpdates.employeeId", "fullName email")
+    .populate("expenses.addedBy", "fullName email");
 
     return res.status(200).json({
       success: true,
       message: "Task updated successfully",
-      task: updatedTask
+      task: updatedTask,
     });
 
   } catch (error) {
-    console.error(
-      "Update Task Error:",
-      error
-    );
-
+    console.error("Update Task Error:", error);
     return res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
+
 // ============================================
 // 5. DELETE TASK (Admin)
 // ============================================
@@ -2086,7 +1831,8 @@ exports.updateTaskByEmployee = async (req, res) => {
       updateText,
       progress,
       remark,
-      expenses = []
+      expenses = [],
+      subtasks = []  // ─── NEW: Subtasks array from frontend
     } = req.body;
 
     // ============================================
@@ -2144,6 +1890,78 @@ exports.updateTaskByEmployee = async (req, res) => {
     }
 
     // ============================================
+    // PARSE SUBTASKS (NEW)
+    // ============================================
+
+    if (typeof subtasks === "string") {
+      try {
+        subtasks = JSON.parse(subtasks);
+      } catch (error) {
+        subtasks = [];
+      }
+    }
+
+    // ============================================
+    // PROCESS SUBTASKS (NEW)
+    // ============================================
+
+    if (Array.isArray(subtasks) && subtasks.length > 0) {
+      // Map through each subtask from frontend
+      const updatedSubtasks = subtasks.map((updatedSubtask) => {
+        // Find the existing subtask in the task
+        const existingSubtask = task.subtasks.find(
+          (s) => s._id.toString() === updatedSubtask._id
+        );
+
+        if (!existingSubtask) {
+          // If subtask doesn't exist, return as is (should not happen)
+          return updatedSubtask;
+        }
+
+        // Check if status is changing to "Completed"
+        const isNowCompleted = updatedSubtask.status === 'Completed';
+        const wasCompleted = existingSubtask.status === 'Completed';
+
+        // ─── VALIDATION: Check if subtask can be completed early ───
+        if (isNowCompleted && !wasCompleted && existingSubtask.submitDate) {
+          const now = new Date();
+          const submitDate = new Date(existingSubtask.submitDate);
+          
+          // If current time is BEFORE submitDate, block completion
+          if (now < submitDate) {
+            throw new Error(`Cannot complete "${existingSubtask.name}" before ${formatDateTime(submitDate)}. Please wait until the scheduled time.`);
+          }
+        }
+
+        // If status is "Completed" and it wasn't completed before
+        if (isNowCompleted && !wasCompleted) {
+          // Set submittedDate to current time
+          return {
+            ...updatedSubtask,
+            submittedDate: new Date().toISOString()
+          };
+        }
+
+        // If status changed from "Completed" to something else, keep submittedDate
+        if (!isNowCompleted && wasCompleted) {
+          return {
+            ...updatedSubtask,
+            submittedDate: existingSubtask.submittedDate // Keep the old submittedDate
+          };
+        }
+
+        // For other updates, preserve existing submittedDate
+        return {
+          ...updatedSubtask,
+          submittedDate: existingSubtask.submittedDate || null
+        };
+      });
+
+      // Update task subtasks
+      task.subtasks = updatedSubtasks;
+    }
+
+    // ============================================
     // ATTACHMENTS UPLOAD
     // ============================================
 
@@ -2173,60 +1991,67 @@ exports.updateTaskByEmployee = async (req, res) => {
     // ADD EXPENSES
     // ============================================
 
-    if (
-      Array.isArray(expenses) &&
-      expenses.length > 0
-    ) {
+    if (Array.isArray(expenses) && expenses.length > 0) {
       expenses.forEach((expense) => {
         task.expenses.push({
           location: {
-            address:
-              expense.location?.address || "",
-
-            latitude:
-              expense.location?.latitude || 0,
-
-            longitude:
-              expense.location?.longitude || 0,
+            address: expense.location?.address || "",
+            latitude: expense.location?.latitude || 0,
+            longitude: expense.location?.longitude || 0,
           },
-
-          distance:
-            Number(expense.distance) || 0,
-
-          expenseAmount:
-            Number(expense.expenseAmount) || 0,
-
-          description:
-            expense.description || "",
-
-          receiptImage:
-            expense.receiptImage || null,
-
-          expenseDate:
-            expense.expenseDate || new Date(),
-
+          distance: Number(expense.distance) || 0,
+          expenseAmount: Number(expense.expenseAmount) || 0,
+          description: expense.description || "",
+          receiptImage: expense.receiptImage || null,
+          expenseDate: expense.expenseDate || new Date(),
           addedBy: employeeId,
-
           approvalStatus: "Pending",
         });
       });
     }
 
     // ============================================
-    // UPDATE TASK PROGRESS
+    // UPDATE TASK PROGRESS (Auto-calculate from subtasks)
     // ============================================
 
-    if (progress !== undefined) {
-      task.progress = Number(progress);
+    // Calculate progress from subtasks
+    if (task.subtasks && task.subtasks.length > 0) {
+      const completed = task.subtasks.filter(s => s.status === 'Completed').length;
+      const calculatedProgress = Math.round((completed / task.subtasks.length) * 100);
+      task.progress = calculatedProgress;
 
-      if (Number(progress) >= 100) {
+      // Update task status based on progress
+      if (calculatedProgress >= 100) {
         task.status = "Completed";
-      }
-      else if (Number(progress) > 0) {
+      } else if (calculatedProgress > 0) {
         task.status = "In Progress";
-      }
-      else {
+      } else {
         task.status = "Pending";
+      }
+    } else {
+      // If no subtasks, use the provided progress
+      if (progress !== undefined) {
+        task.progress = Number(progress);
+
+        if (Number(progress) >= 100) {
+          task.status = "Completed";
+        } else if (Number(progress) > 0) {
+          task.status = "In Progress";
+        } else {
+          task.status = "Pending";
+        }
+      }
+    }
+
+    // ============================================
+    // CHECK FOR OVERDUE
+    // ============================================
+
+    if (task.submitDate && task.status !== 'Completed' && task.status !== 'Rejected') {
+      const now = new Date();
+      const submitDate = new Date(task.submitDate);
+      if (now > submitDate) {
+        task.status = 'Overdue';
       }
     }
 
@@ -2236,34 +2061,28 @@ exports.updateTaskByEmployee = async (req, res) => {
     // POPULATE UPDATED TASK
     // ============================================
 
-    const updatedTask = await Task.findById(
-      taskId
-    )
-      .populate(
-        "assignedTo",
-        "fullName email employeeId"
-      )
-      .populate(
-        "employeeUpdates.employeeId",
-        "fullName email employeeId"
-      )
-      .populate(
-        "expenses.addedBy",
-        "fullName email employeeId"
-      );
+    const updatedTask = await Task.findById(taskId)
+      .populate("assignedTo", "fullName email employeeId")
+      .populate("employeeUpdates.employeeId", "fullName email employeeId")
+      .populate("expenses.addedBy", "fullName email employeeId");
 
     return res.status(200).json({
       success: true,
-      message:
-        "Task updated successfully",
+      message: "Task updated successfully",
       task: updatedTask,
     });
 
   } catch (error) {
-    console.error(
-      "Update Task By Employee Error:",
-      error
-    );
+    console.error("Update Task By Employee Error:", error);
+
+    // ─── Send specific error message for early completion ───
+    if (error.message.includes("Cannot complete")) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+        type: "EARLY_COMPLETION_ERROR"
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -2271,6 +2090,17 @@ exports.updateTaskByEmployee = async (req, res) => {
     });
   }
 };
+
+// ─── Helper function to format date time ───
+function formatDateTime(date) {
+  return new Date(date).toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
 
 
 
