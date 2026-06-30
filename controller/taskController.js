@@ -915,7 +915,7 @@ exports.getAllTasks = async (req, res) => {
 
     // Get tasks with pagination and population
     const tasks = await Task.find(filter)
-      .populate("createdBy", "fullName email profileImage")
+      .populate("createdBy", "name email phone")
       .populate("assignedTo", "name email department profileImage")
       .sort(sortOptions)
       .skip(skip)
