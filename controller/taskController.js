@@ -722,7 +722,7 @@ exports.createTask = async (req, res) => {
       }
 
       const employees = await Employee.find({
-        department,
+        department: department,
         status: "active",
       }).select("_id");
 
@@ -1219,8 +1219,23 @@ exports.updateTask = async (req, res) => {
           });
         }
 
+        // Resolve to ObjectId — frontend may send a name string instead of an _id
+        let departmentId = department;
+        if (!mongoose.Types.ObjectId.isValid(department)) {
+          const deptDoc = await Department.findOne({
+            name: { $regex: new RegExp(`^${department}$`, "i") },
+          });
+          if (!deptDoc) {
+            return res.status(400).json({
+              success: false,
+              message: `Department "${department}" not found. Please select a valid department.`,
+            });
+          }
+          departmentId = deptDoc._id;
+        }
+
         const employees = await Employee.find({
-          department,
+          department: departmentId,
           status: "active"
         }).select("_id");
 
@@ -1228,7 +1243,7 @@ exports.updateTask = async (req, res) => {
           (emp) => emp._id
         );
 
-        updateData.department = department;
+        updateData.department = departmentId;
       }
 
       else if (assignType === "INDIVIDUAL") {

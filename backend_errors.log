@@ -586,3 +586,183 @@ Error Stack: Error: Not allowed by CORS
 URL: /api/admin/login
 Method: OPTIONS
 ===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-06-24T05:04:48.456Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Timely-health-projects\Project\attendancebackend\server.js:246:25)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at router.process_params (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/user-activity/log
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-06-24T05:05:24.968Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Timely-health-projects\Project\attendancebackend\server.js:246:25)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at router.process_params (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/admin/login
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-06-24T05:05:57.751Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Timely-health-projects\Project\attendancebackend\server.js:246:25)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at router.process_params (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/admin/login
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-06-24T05:05:59.196Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Timely-health-projects\Project\attendancebackend\server.js:246:25)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at router.process_params (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/admin/login
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-06-24T05:06:00.145Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Timely-health-projects\Project\attendancebackend\server.js:246:25)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at router.process_params (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/admin/login
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-06-24T05:06:01.280Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Timely-health-projects\Project\attendancebackend\server.js:246:25)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at router.process_params (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/admin/login
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-06-24T05:06:03.415Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Timely-health-projects\Project\attendancebackend\server.js:246:25)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at router.process_params (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/admin/login
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-06-24T05:08:01.919Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Timely-health-projects\Project\attendancebackend\server.js:246:25)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at router.process_params (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/user-activity/log
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-06-24T05:08:29.434Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Timely-health-projects\Project\attendancebackend\server.js:246:25)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at router.process_params (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/user-activity/log
+Method: OPTIONS
+===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-06-24T05:08:43.310Z
+Error Message: Not allowed by CORS
+Error Stack: Error: Not allowed by CORS
+    at origin (C:\Timely-health-projects\Project\attendancebackend\server.js:246:25)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:219:13
+    at optionsCallback (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:199:9)
+    at corsMiddleware (C:\Timely-health-projects\Project\attendancebackend\node_modules\cors\lib\index.js:204:7)
+    at Layer.handle [as handle_request] (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:286:9
+    at router.process_params (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\router\index.js:280:10)
+    at expressInit (C:\Timely-health-projects\Project\attendancebackend\node_modules\express\lib\middleware\init.js:40:5)
+URL: /api/admin/login
+Method: OPTIONS
+===========================
