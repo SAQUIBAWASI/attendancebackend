@@ -91,7 +91,9 @@ const {
   getEmployeeDashboard,
   getAllNotifications,
   getNotificationsByEmployeeId,
-  deleteNotification
+  deleteNotification,
+  forwardTask,
+  getTaskIssues
 } = require("../controller/taskController");
 
 // ✅ Admin APIs
@@ -280,5 +282,11 @@ router.get('/employeenotifications/:employeeId', getNotificationsByEmployeeId);
 // ─── DELETE ───
 // Delete a single notification
 router.delete('/notifications/:notificationId', deleteNotification);
+
+// ─── Get Task Issues by Task ID ───
+router.get('/:taskId/issues', getTaskIssues);
+
+// ─── Forward Task ───
+router.post('/forward-task/:id', forwardTask);
 
 module.exports = router;

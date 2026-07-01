@@ -17,7 +17,7 @@ const notificationSchema = new mongoose.Schema({
   // Notification ka type
   type: {
     type: String,
-    enum: ['task_assigned', 'task_updated', 'task_completed', 'task_overdue'],
+    enum: ['task_assigned', 'task_updated', 'task_completed', 'task_overdue', 'task_forwarded'],
     default: 'task_assigned'
   },
   
@@ -30,6 +30,12 @@ const notificationSchema = new mongoose.Schema({
   taskId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Task'
+  },
+  
+  // Read status
+  isRead: {
+    type: Boolean,
+    default: false
   },
   
   // Created at

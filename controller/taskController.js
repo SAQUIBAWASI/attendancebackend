@@ -2155,6 +2155,46 @@ exports.getMyCreatedTasks = async (req, res) => {
 
 
 // ============================================
+// GET TASK ISSUES BY TASK ID
+// ============================================
+exports.getTaskIssues = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(taskId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task ID",
+      });
+    }
+
+    const task = await Task.findById(taskId)
+      .populate("reportedIssues.employeeId", "fullName name email employeeId");
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      issues: task.reportedIssues || [],
+      taskId: task._id,
+      taskName: task.taskName,
+    });
+
+  } catch (error) {
+    console.error("Get Task Issues Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// ============================================
 // REPORT TASK ISSUE
 // ============================================
 exports.reportTaskIssue = async (req, res) => {
@@ -2953,6 +2993,144 @@ exports.deleteNotification = async (req, res) => {
 
   } catch (error) {
     console.error("Delete Notification Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// ──────────────────────────────────────────────
+// FORWARD TASK
+// ──────────────────────────────────────────────
+exports.forwardTask = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { toEmployeeId, reason, fromEmployeeId } = req.body;
+
+    // Validate task ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task ID"
+      });
+    }
+
+    // Validate required fields
+    if (!toEmployeeId || !reason || !fromEmployeeId) {
+      return res.status(400).json({
+        success: false,
+        message: "toEmployeeId, reason, and fromEmployeeId are required"
+      });
+    }
+
+    // Validate employee IDs
+    if (!mongoose.Types.ObjectId.isValid(toEmployeeId) || !mongoose.Types.ObjectId.isValid(fromEmployeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employee ID"
+      });
+    }
+
+    // Find the task
+    const task = await Task.findById(id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found"
+      });
+    }
+
+    // ✅ FIX: Use .some() with .toString() to correctly compare Mongoose ObjectIds with strings
+    // Also allow the task creator (createdBy) to forward — covers SELF-assigned tasks
+    const isAssigned = task.assignedTo.some(
+      (empId) => empId.toString() === fromEmployeeId.toString()
+    );
+    const isCreator = task.createdBy && task.createdBy.toString() === fromEmployeeId.toString();
+
+    if (!isAssigned && !isCreator) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not assigned to this task"
+      });
+    }
+
+    // ✅ FIX: Use .some() with .toString() for already-assigned check too
+    const alreadyAssigned = task.assignedTo.some(
+      (empId) => empId.toString() === toEmployeeId.toString()
+    );
+    if (alreadyAssigned) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee is already assigned to this task"
+      });
+    }
+
+    // Validate target employee exists and is active
+    const targetEmployee = await Employee.findOne({
+      _id: toEmployeeId,
+      status: "active"
+    });
+
+    if (!targetEmployee) {
+      return res.status(404).json({
+        success: false,
+        message: "Target employee not found or inactive"
+      });
+    }
+
+    // Add the new employee to assignedTo
+    task.assignedTo.push(toEmployeeId);
+
+    // Add employee update entry for the forward
+    if (!task.employeeUpdates) {
+      task.employeeUpdates = [];
+    }
+    task.employeeUpdates.push({
+      updateText: `Task forwarded to ${targetEmployee.fullName || targetEmployee.name}. Reason: ${reason}`,
+      progress: task.progress || 0,
+      updatedAt: new Date(),
+      employeeId: fromEmployeeId
+    });
+
+    // Save the updated task
+    await task.save();
+
+    // Send notification to the target employee
+    const fromEmployee = await Employee.findById(fromEmployeeId).select("fullName name");
+    const fromName = fromEmployee ? (fromEmployee.fullName || fromEmployee.name) : 'A team member';
+    
+    try {
+      const notification = {
+        recipient: toEmployeeId,
+        sender: fromEmployeeId,
+        type: 'task_forwarded',
+        message: `🔄 Task forwarded: "${task.taskName}" has been forwarded to you by ${fromName}. Reason: ${reason}`,
+        taskId: task._id,
+        isRead: false,
+        createdAt: new Date()
+      };
+      await TaskNotification.create(notification);
+    } catch (notifErr) {
+      // Non-critical — don't fail the whole request if notification creation fails
+      console.warn("Forward Task: notification creation failed:", notifErr.message);
+    }
+
+    // Populate and return the updated task
+    const updatedTask = await Task.findById(id)
+      .populate("projectId", "projectName status")
+      .populate("assignedTo", "fullName email employeeId")
+      .populate("employeeUpdates.employeeId", "fullName email")
+      .populate("expenses.addedBy", "fullName email");
+
+    return res.status(200).json({
+      success: true,
+      message: "Task forwarded successfully",
+      task: updatedTask
+    });
+
+  } catch (error) {
+    console.error("Forward Task Error:", error);
     return res.status(500).json({
       success: false,
       message: error.message
