@@ -375,6 +375,20 @@ const employeeSchema = new mongoose.Schema({
   alternateNumber: { type: String },
   parentsName: { type: String },
 
+  // ─── LATITUDE & LONGITUDE (Alag se) ───
+  latitude: {
+    type: Number,
+    default: null
+  },
+  longitude: {
+    type: Number,
+    default: null
+  },
+  lastLocationUpdate: {
+    type: Date,
+    default: null
+  },
+
 
   profileImage: {
     type: String,

@@ -88,4 +88,7 @@ router.get("/monthly-absence", attendanceController.getMonthlyAbsenceSummary);
 router.get("/extra-days/:employeeId", attendanceController.getMyExtraDays);
 
 
+router.post("/checkinwithqr", attendanceController.checkInForQR);
+
+
 module.exports = router;

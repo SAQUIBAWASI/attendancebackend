@@ -1193,6 +1193,7 @@ const Employee = require("../models/Employee");
 const Location = require("../models/Location");
 const { logActivity } = require("./userActivity.controller");
 const AttendanceSummary = require("../models/AttendanceSummary");
+const CompanyIP = require("../models/CompanyIP");
 
 
 
@@ -2005,6 +2006,142 @@ exports.checkOut = async (req, res) => {
       message: "Check-Out failed",
       error: err.message,
     });
+  }
+};
+
+
+
+exports.checkInForQR = async (req, res) => {
+  try {
+    const { employeeId, employeeEmail, latitude, longitude, reason, publicIp } = req.body;
+
+    if (!employeeId || !employeeEmail || !latitude || !longitude) {
+      return res.status(400).json({ message: "Employee ID, email, and location are required" });
+    }
+
+    const employee = await Employee.findOne({ employeeId }).populate("location");
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    // ============ IP VALIDATION ============
+    // Get the company ID from employee or use default
+    const companyId = employee.companyId || 'COMP001';
+    
+    // Fetch company IP from database
+    const companyIPRecord = await CompanyIP.findOne({ companyId });
+    
+    // Get the actual IP from request (either from body or from request IP)
+    const clientIP = publicIp || req.ip || req.connection.remoteAddress;
+    
+    let ipValid = false;
+    let ipMessage = '';
+    
+    if (companyIPRecord && companyIPRecord.publicIp) {
+      // Check if client IP matches stored company IP
+      // Handle IPv6 localhost and IPv4 comparison
+      const storedIP = companyIPRecord.publicIp;
+      const normalizedClientIP = clientIP.replace(/^::ffff:/, ''); // Remove IPv6 prefix if present
+      const normalizedStoredIP = storedIP.replace(/^::ffff:/, '');
+      
+      ipValid = normalizedClientIP === normalizedStoredIP;
+      
+      if (ipValid) {
+        ipMessage = `✅ IP validated successfully (${storedIP})`;
+      } else {
+        ipMessage = `⚠️ IP mismatch: Client IP (${normalizedClientIP}) does not match company IP (${storedIP})`;
+      }
+    } else {
+      ipMessage = '⚠️ No company IP configured for validation';
+    }
+    // ========================================
+
+    const assignedLocation = employee.location;
+    if (!assignedLocation) {
+      return res.status(404).json({ message: "No location assigned to employee" });
+    }
+
+    const distance = haversineDistance(
+      assignedLocation.latitude,
+      assignedLocation.longitude,
+      latitude,
+      longitude
+    );
+
+    const onsite = distance <= ONSITE_RADIUS_M;
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const existingCheckIn = await Attendance.findOne({
+      employeeId,
+      checkInTime: { $gte: startOfToday },
+      status: "checked-in",
+    });
+
+    if (existingCheckIn) {
+      const checkInH = new Date(existingCheckIn.checkInTime).getHours();
+      const nowH = new Date().getHours();
+
+      if (checkInH < 13 && nowH >= 14) {
+        const autoCheckOutTime = new Date(existingCheckIn.checkInTime.getTime() + 6 * 60 * 60 * 1000);
+        existingCheckIn.checkOutTime = autoCheckOutTime;
+        existingCheckIn.totalHours = 6;
+        existingCheckIn.status = "checked-out";
+        existingCheckIn.reason = "Auto-checkout (missing first half checkout)";
+        await existingCheckIn.save();
+      } else {
+        return res.status(400).json({ message: "Already checked-in for today" });
+      }
+    }
+
+    const attendanceData = {
+      employeeId,
+      employeeEmail,
+      checkInTime: new Date(),
+      latitude,
+      longitude,
+      distance,
+      onsite,
+      officeName: assignedLocation.name,
+      status: "checked-in",
+      ipAddress: clientIP, // Store the IP address
+      ipValid: ipValid, // Store validation status
+    };
+
+    if (reason) {
+      attendanceData.reason = reason.trim();
+    }
+
+    const attendance = await Attendance.create(attendanceData);
+    const employeeName = employee.name || employeeEmail.split('@')[0];
+
+    // Build response message
+    let responseMessage = '';
+    if (onsite && ipValid) {
+      responseMessage = `✅ Welcome to the office, ${employeeName}! Check-in successful (Inside location: ${distance}m away)`;
+    } else if (onsite && !ipValid) {
+      responseMessage = `⚠️ Check-in successful but IP not validated. ${ipMessage}`;
+    } else if (!onsite && ipValid) {
+      responseMessage = `✅ Check-in successful (Outside location: ${distance}m away, IP validated)`;
+    } else {
+      responseMessage = `⚠️ Check-in successful (Outside location: ${distance}m away, IP validation failed)`;
+    }
+
+    res.status(200).json({
+      message: responseMessage,
+      attendance,
+      employeeName: employeeName,
+      ipValidation: {
+        valid: ipValid,
+        clientIP: clientIP,
+        companyIP: companyIPRecord?.publicIp || 'Not configured',
+        message: ipMessage
+      }
+    });
+  } catch (err) {
+    console.error("Check-in error:", err);
+    res.status(500).json({ message: "Check-In failed", error: err.message });
   }
 };
 
