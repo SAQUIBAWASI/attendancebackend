@@ -915,8 +915,11 @@ exports.getAllTasks = async (req, res) => {
 
     // Get tasks with pagination and population
     const tasks = await Task.find(filter)
-      .populate("createdBy", "name email phone")
-      .populate("assignedTo", "name email department profileImage")
+      .populate("createdBy", "name email phone employeeId")
+      .populate("assignedTo", "name email department profileImage employeeId")
+      .populate("employeeUpdates.employeeId", "name email employeeId phone")  // ✅ FIX: employeeUpdates populate
+      .populate("expenses.addedBy", "name email employeeId")  // ✅ FIX: expenses.addedBy populate
+      .populate("reportedIssues.employeeId", "name email employeeId")  // ✅ FIX: reportedIssues populate
       .sort(sortOptions)
       .skip(skip)
       .limit(limitNumber);
@@ -1786,7 +1789,13 @@ exports.getMyAssignedTasks = async (req, res) => {
   try {
     const { employeeId } = req.params;
 
+    console.log("========================================");
+    console.log("📌 GET MY ASSIGNED TASKS STARTED");
+    console.log(`📌 Employee ID: ${employeeId}`);
+    console.log("========================================");
+
     if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+      console.log("❌ Invalid employee ID");
       return res.status(400).json({
         success: false,
         message: "Invalid employee ID"
@@ -1796,11 +1805,14 @@ exports.getMyAssignedTasks = async (req, res) => {
     const tasks = await Task.find({
       assignedTo: employeeId
     })
-      .populate(
-        "createdBy",
-        "fullName email"
-      )
+      .populate("createdBy", "name email employeeId phone")
+      .populate("assignedTo", "name email employeeId phone")
+      .populate("employeeUpdates.employeeId", "name email employeeId phone")
+      .populate("expenses.addedBy", "name email employeeId phone")
       .sort({ createdAt: -1 });
+
+    console.log(`✅ Found ${tasks.length} tasks for employee`);
+    console.log("========================================");
 
     return res.status(200).json({
       success: true,
@@ -1809,7 +1821,8 @@ exports.getMyAssignedTasks = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Get Assigned Tasks Error:", error);
+    console.error("❌ Get Assigned Tasks Error:", error);
+    console.error(error.stack);
 
     return res.status(500).json({
       success: false,
@@ -1821,25 +1834,41 @@ exports.getMyAssignedTasks = async (req, res) => {
 
 
 // ============================================
-// UPDATE TASK BY EMPLOYEE
+// UPDATE TASK BY EMPLOYEE (FIXED - FINAL)
 // ============================================
 exports.updateTaskByEmployee = async (req, res) => {
   try {
+    console.log("========================================");
+    console.log("📌 UPDATE TASK BY EMPLOYEE STARTED");
+    console.log("========================================");
+    
     const { taskId, employeeId } = req.params;
+    console.log(`📌 Task ID: ${taskId}`);
+    console.log(`📌 Employee ID: ${employeeId}`);
 
     let {
       updateText,
       progress,
       remark,
       expenses = [],
-      subtasks = []  // ─── NEW: Subtasks array from frontend
+      subtasks = [],
+      status
     } = req.body;
+
+    console.log("📌 Request Body:");
+    console.log(`   - updateText: ${updateText}`);
+    console.log(`   - progress: ${progress}`);
+    console.log(`   - remark: ${remark}`);
+    console.log(`   - status: ${status}`);
+    console.log(`   - expenses: ${JSON.stringify(expenses)}`);
+    console.log(`   - subtasks: ${JSON.stringify(subtasks)}`);
 
     // ============================================
     // VALIDATION
     // ============================================
 
     if (!mongoose.Types.ObjectId.isValid(taskId)) {
+      console.log("❌ Invalid taskId");
       return res.status(400).json({
         success: false,
         message: "Invalid taskId"
@@ -1847,6 +1876,7 @@ exports.updateTaskByEmployee = async (req, res) => {
     }
 
     if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+      console.log("❌ Invalid employeeId");
       return res.status(400).json({
         success: false,
         message: "Invalid employeeId"
@@ -1856,11 +1886,17 @@ exports.updateTaskByEmployee = async (req, res) => {
     const task = await Task.findById(taskId);
 
     if (!task) {
+      console.log("❌ Task not found");
       return res.status(404).json({
         success: false,
         message: "Task not found"
       });
     }
+
+    console.log("✅ Task found:", task.taskName);
+    console.log(`   - Current Status: ${task.status}`);
+    console.log(`   - Current Progress: ${task.progress}`);
+    console.log(`   - Assigned To: ${task.assignedTo.length} employees`);
 
     // ============================================
     // CHECK ASSIGNED EMPLOYEE
@@ -1871,11 +1907,14 @@ exports.updateTaskByEmployee = async (req, res) => {
     );
 
     if (!isAssigned) {
+      console.log("❌ Employee not assigned to this task");
       return res.status(403).json({
         success: false,
         message: "Employee is not assigned to this task"
       });
     }
+
+    console.log("✅ Employee is assigned to this task");
 
     // ============================================
     // PARSE EXPENSES
@@ -1884,81 +1923,237 @@ exports.updateTaskByEmployee = async (req, res) => {
     if (typeof expenses === "string") {
       try {
         expenses = JSON.parse(expenses);
+        console.log("📌 Expenses parsed from string");
       } catch (error) {
         expenses = [];
+        console.log("⚠️ Expenses parse failed, using empty array");
       }
     }
 
     // ============================================
-    // PARSE SUBTASKS (NEW)
+    // PARSE SUBTASKS
     // ============================================
 
     if (typeof subtasks === "string") {
       try {
         subtasks = JSON.parse(subtasks);
+        console.log("📌 Subtasks parsed from string");
       } catch (error) {
         subtasks = [];
+        console.log("⚠️ Subtasks parse failed, using empty array");
       }
     }
 
     // ============================================
-    // PROCESS SUBTASKS (NEW)
+    // PROCESS SUBTASKS - Employee-wise tracking
     // ============================================
 
     if (Array.isArray(subtasks) && subtasks.length > 0) {
-      // Map through each subtask from frontend
-      const updatedSubtasks = subtasks.map((updatedSubtask) => {
-        // Find the existing subtask in the task
-        const existingSubtask = task.subtasks.find(
-          (s) => s._id.toString() === updatedSubtask._id
-        );
+      console.log("📌 Processing Subtasks...");
+      console.log(`   - Total subtasks: ${subtasks.length}`);
+      
+      // ─── ✅ FIX: employeeSubtaskProgress ko PRESERVE karo ───
+      if (!task.employeeSubtaskProgress) {
+        task.employeeSubtaskProgress = {};
+        console.log("📌 Created new employeeSubtaskProgress (first time)");
+      } else {
+        console.log("📌 Existing employeeSubtaskProgress FOUND, preserving...");
+        console.log(`   - Current entries: ${JSON.stringify(Object.keys(task.employeeSubtaskProgress))}`);
+      }
 
-        if (!existingSubtask) {
-          // If subtask doesn't exist, return as is (should not happen)
-          return updatedSubtask;
-        }
+      // ─── Get all assigned employees ───
+      const assignedEmployeeIds = task.assignedTo.map(id => id.toString());
+      console.log(`📌 Assigned Employee IDs: ${JSON.stringify(assignedEmployeeIds)}`);
 
-        // Check if status is changing to "Completed"
-        const isNowCompleted = updatedSubtask.status === 'Completed';
-        const wasCompleted = existingSubtask.status === 'Completed';
-
-        // ─── VALIDATION: Check if subtask can be completed early ───
-        if (isNowCompleted && !wasCompleted && existingSubtask.submitDate) {
-          const now = new Date();
-          const submitDate = new Date(existingSubtask.submitDate);
-          
-          // If current time is BEFORE submitDate, block completion
-          if (now < submitDate) {
-            throw new Error(`Cannot complete "${existingSubtask.name}" before ${formatDateTime(submitDate)}. Please wait until the scheduled time.`);
-          }
-        }
-
-        // If status is "Completed" and it wasn't completed before
-        if (isNowCompleted && !wasCompleted) {
-          // Set submittedDate to current time
-          return {
-            ...updatedSubtask,
-            submittedDate: new Date().toISOString()
+      // ─── ✅ FIX: Initialize ONLY if not exists (preserve existing data!) ───
+      assignedEmployeeIds.forEach(empId => {
+        if (!task.employeeSubtaskProgress[empId]) {
+          task.employeeSubtaskProgress[empId] = {
+            subtaskStatus: {},
+            progress: 0
           };
+          console.log(`📌 Initialized NEW progress for employee: ${empId}`);
+        } else {
+          const empProgress = task.employeeSubtaskProgress[empId];
+          console.log(`📌 PRESERVED existing progress for employee: ${empId}`);
+          console.log(`   - Current progress: ${empProgress.progress}%`);
+          console.log(`   - Subtasks: ${Object.keys(empProgress.subtaskStatus).length}`);
         }
-
-        // If status changed from "Completed" to something else, keep submittedDate
-        if (!isNowCompleted && wasCompleted) {
-          return {
-            ...updatedSubtask,
-            submittedDate: existingSubtask.submittedDate // Keep the old submittedDate
-          };
-        }
-
-        // For other updates, preserve existing submittedDate
-        return {
-          ...updatedSubtask,
-          submittedDate: existingSubtask.submittedDate || null
-        };
       });
 
-      // Update task subtasks
-      task.subtasks = updatedSubtasks;
+      // ─── ✅ CRITICAL FIX: employeeId ko String mein convert karo ───
+      const currentEmployeeId = employeeId.toString();
+      console.log(`📌 Current Employee ID (from params): ${currentEmployeeId}`);
+
+      // ─── Update subtask status for this employee ───
+      subtasks.forEach(updatedSubtask => {
+        const subtaskId = updatedSubtask._id;
+        const subtaskStatus = updatedSubtask.status || 'Pending';
+        
+        console.log(`📌 Updating subtask ${subtaskId} -> ${subtaskStatus}`);
+        
+        // ✅ CRITICAL: Ensure employee entry exists for current employee
+        if (!task.employeeSubtaskProgress[currentEmployeeId]) {
+          task.employeeSubtaskProgress[currentEmployeeId] = {
+            subtaskStatus: {},
+            progress: 0
+          };
+          console.log(`📌 Created NEW entry for employee: ${currentEmployeeId}`);
+        }
+        
+        // ✅ Update this employee's status
+        task.employeeSubtaskProgress[currentEmployeeId].subtaskStatus[subtaskId] = {
+          status: subtaskStatus,
+          updatedAt: new Date()
+        };
+        
+        console.log(`   - Employee ${currentEmployeeId} marked subtask as ${subtaskStatus}`);
+        console.log(`   - Updated data:`, JSON.stringify(task.employeeSubtaskProgress[currentEmployeeId]));
+
+        // ─── Update main subtask status ───
+        const existingSubtask = task.subtasks.find(
+          (s) => s._id.toString() === subtaskId
+        );
+
+        if (existingSubtask) {
+          console.log(`   - Found existing subtask: ${existingSubtask.name}`);
+          
+          // ─── Check status for ALL employees ───
+          let allCompleted = true;
+          let anyCompleted = false;
+          let allHaveStatus = true;
+          
+          assignedEmployeeIds.forEach(empId => {
+            const empProgress = task.employeeSubtaskProgress[empId];
+            const status = empProgress?.subtaskStatus[subtaskId]?.status;
+            
+            console.log(`      Employee ${empId}: status = ${status || 'undefined'}`);
+            
+            if (!status) {
+              allHaveStatus = false;
+            } else if (status === 'Completed') {
+              anyCompleted = true;
+            } else {
+              allCompleted = false;
+            }
+          });
+
+          // ─── Update subtask status ───
+          if (allCompleted && assignedEmployeeIds.length > 0 && allHaveStatus) {
+            if (existingSubtask.status !== 'Completed') {
+              existingSubtask.status = 'Completed';
+              existingSubtask.submittedDate = new Date().toISOString();
+              console.log(`   ✅ ALL employees completed! Subtask marked as Completed`);
+            }
+          } else if (anyCompleted) {
+            if (existingSubtask.status !== 'Completed') {
+              existingSubtask.status = 'In Progress';
+              console.log(`   ⏳ Some employees completed. Subtask marked as In Progress`);
+            }
+          } else {
+            if (existingSubtask.status !== 'Completed') {
+              existingSubtask.status = 'Pending';
+              console.log(`   ⏸️ No one completed. Subtask marked as Pending`);
+            }
+          }
+        }
+      });
+
+      // ─── Calculate each employee's progress ───
+      console.log("📌 Calculating each employee's progress...");
+      
+      assignedEmployeeIds.forEach(empId => {
+        const empProgress = task.employeeSubtaskProgress[empId];
+        if (empProgress) {
+          const subtaskKeys = Object.keys(empProgress.subtaskStatus);
+          if (subtaskKeys.length > 0) {
+            const completed = subtaskKeys.filter(
+              key => empProgress.subtaskStatus[key].status === 'Completed'
+            ).length;
+            empProgress.progress = Math.round((completed / subtaskKeys.length) * 100);
+            console.log(`   - Employee ${empId}: ${empProgress.progress}% (${completed}/${subtaskKeys.length} completed)`);
+          } else {
+            empProgress.progress = 0;
+            console.log(`   - Employee ${empId}: 0% (no subtasks)`);
+          }
+        }
+      });
+
+      // ─── Calculate overall progress ───
+      let totalEmployeeProgress = 0;
+      let completedEmployees = 0;
+
+      assignedEmployeeIds.forEach(empId => {
+        const empProgress = task.employeeSubtaskProgress[empId];
+        if (empProgress) {
+          totalEmployeeProgress += empProgress.progress;
+          if (empProgress.progress >= 100) {
+            completedEmployees++;
+          }
+        }
+      });
+
+      let averageProgress = 0;
+      if (assignedEmployeeIds.length > 0) {
+        averageProgress = Math.round(totalEmployeeProgress / assignedEmployeeIds.length);
+      }
+      
+      const allCompleted = completedEmployees === assignedEmployeeIds.length && assignedEmployeeIds.length > 0;
+
+      console.log(`📌 Overall Progress Calculation:`);
+      console.log(`   - Total Progress Sum: ${totalEmployeeProgress}`);
+      console.log(`   - Total Employees: ${assignedEmployeeIds.length}`);
+      console.log(`   - Average Progress: ${averageProgress}%`);
+      console.log(`   - Completed Employees: ${completedEmployees}`);
+      console.log(`   - All Completed: ${allCompleted}`);
+
+      task.progress = averageProgress;
+
+      if (allCompleted) {
+        task.status = "Completed";
+        task.progress = 100;
+        console.log(`✅ Task status set to: Completed (from subtasks)`);
+      } else if (averageProgress > 0) {
+        task.status = "In Progress";
+        console.log(`✅ Task status set to: In Progress (from subtasks)`);
+      } else {
+        task.status = "Pending";
+        console.log(`✅ Task status set to: Pending (from subtasks)`);
+      }
+    } else {
+      console.log("📌 No subtasks to process");
+      
+      // ─── ✅ FIX: For tasks WITHOUT subtasks, use status from frontend ───
+      if (status) {
+        console.log(`📌 Setting status from frontend: ${status}`);
+        task.status = status;
+        
+        // If status is "Completed", set progress to 100%
+        if (status === 'Completed') {
+          task.progress = 100;
+          console.log(`📌 Progress set to 100% because status is Completed`);
+        } else if (progress !== undefined && progress !== null) {
+          // If progress is sent from frontend, use it
+          task.progress = Number(progress);
+          console.log(`📌 Progress set from frontend: ${task.progress}`);
+        }
+      } else if (progress !== undefined && progress !== null) {
+        // If only progress is sent (no status), update progress
+        task.progress = Number(progress);
+        console.log(`📌 Progress set from frontend: ${task.progress}`);
+        
+        // Update status based on progress
+        if (task.progress >= 100) {
+          task.status = "Completed";
+          console.log(`📌 Status set to Completed because progress is 100%`);
+        } else if (task.progress > 0) {
+          task.status = "In Progress";
+          console.log(`📌 Status set to In Progress because progress > 0`);
+        } else {
+          task.status = "Pending";
+          console.log(`📌 Status set to Pending because progress is 0`);
+        }
+      }
     }
 
     // ============================================
@@ -1972,6 +2167,7 @@ exports.updateTaskByEmployee = async (req, res) => {
         fileName: file.originalname,
         fileUrl: file.path.replace(/\\/g, "/"),
       }));
+      console.log(`📌 Uploaded ${uploadedAttachments.length} attachments`);
     }
 
     // ============================================
@@ -1981,11 +2177,13 @@ exports.updateTaskByEmployee = async (req, res) => {
     task.employeeUpdates.push({
       employeeId,
       updateText: updateText || "",
-      progress: progress || 0,
+      progress: task.progress || 0,
       remark: remark || "",
       attachments: uploadedAttachments,
       updatedAt: new Date(),
     });
+    
+    console.log(`📌 Added employee update entry for ${employeeId}`);
 
     // ============================================
     // ADD EXPENSES
@@ -2008,39 +2206,7 @@ exports.updateTaskByEmployee = async (req, res) => {
           approvalStatus: "Pending",
         });
       });
-    }
-
-    // ============================================
-    // UPDATE TASK PROGRESS (Auto-calculate from subtasks)
-    // ============================================
-
-    // Calculate progress from subtasks
-    if (task.subtasks && task.subtasks.length > 0) {
-      const completed = task.subtasks.filter(s => s.status === 'Completed').length;
-      const calculatedProgress = Math.round((completed / task.subtasks.length) * 100);
-      task.progress = calculatedProgress;
-
-      // Update task status based on progress
-      if (calculatedProgress >= 100) {
-        task.status = "Completed";
-      } else if (calculatedProgress > 0) {
-        task.status = "In Progress";
-      } else {
-        task.status = "Pending";
-      }
-    } else {
-      // If no subtasks, use the provided progress
-      if (progress !== undefined) {
-        task.progress = Number(progress);
-
-        if (Number(progress) >= 100) {
-          task.status = "Completed";
-        } else if (Number(progress) > 0) {
-          task.status = "In Progress";
-        } else {
-          task.status = "Pending";
-        }
-      }
+      console.log(`📌 Added ${expenses.length} expenses`);
     }
 
     // ============================================
@@ -2052,19 +2218,41 @@ exports.updateTaskByEmployee = async (req, res) => {
       const submitDate = new Date(task.submitDate);
       if (now > submitDate) {
         task.status = 'Overdue';
+        console.log(`⚠️ Task marked as Overdue`);
       }
     }
 
+    // ─── ✅ CRITICAL FIX: Mark employeeSubtaskProgress as modified ───
+    if (task.employeeSubtaskProgress) {
+      task.markModified('employeeSubtaskProgress');
+      console.log("📌 Marked employeeSubtaskProgress as modified");
+    }
+
+    console.log("📌 Saving task with data:");
+    console.log(`   - Status: ${task.status}`);
+    console.log(`   - Progress: ${task.progress}`);
+    console.log(`   - employeeSubtaskProgress: ${JSON.stringify(task.employeeSubtaskProgress, null, 2)}`);
+    
     await task.save();
+    console.log(`✅ Task saved successfully`);
 
     // ============================================
     // POPULATE UPDATED TASK
     // ============================================
 
     const updatedTask = await Task.findById(taskId)
-      .populate("assignedTo", "fullName email employeeId")
-      .populate("employeeUpdates.employeeId", "fullName email employeeId")
-      .populate("expenses.addedBy", "fullName email employeeId");
+      .populate("assignedTo", "name email employeeId phone")
+      .populate("createdBy", "name email employeeId phone")
+      .populate("employeeUpdates.employeeId", "name email employeeId phone")
+      .populate("expenses.addedBy", "name email employeeId phone");
+
+    console.log("========================================");
+    console.log(`✅ FINAL RESULT:`);
+    console.log(`   - Status: ${updatedTask.status}`);
+    console.log(`   - Progress: ${updatedTask.progress}%`);
+    console.log(`   - Subtasks: ${updatedTask.subtasks?.length || 0}`);
+    console.log(`   - Employee Progress Data: ${JSON.stringify(updatedTask.employeeSubtaskProgress, null, 2)}`);
+    console.log("========================================");
 
     return res.status(200).json({
       success: true,
@@ -2073,16 +2261,8 @@ exports.updateTaskByEmployee = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Update Task By Employee Error:", error);
-
-    // ─── Send specific error message for early completion ───
-    if (error.message.includes("Cannot complete")) {
-      return res.status(400).json({
-        success: false,
-        message: error.message,
-        type: "EARLY_COMPLETION_ERROR"
-      });
-    }
+    console.error("❌ Update Task By Employee Error:", error);
+    console.error(error.stack);
 
     return res.status(500).json({
       success: false,
@@ -2090,7 +2270,6 @@ exports.updateTaskByEmployee = async (req, res) => {
     });
   }
 };
-
 // ─── Helper function to format date time ───
 function formatDateTime(date) {
   return new Date(date).toLocaleString('en-IN', {
@@ -2151,6 +2330,111 @@ exports.getMyCreatedTasks = async (req, res) => {
   }
 };
 
+
+
+
+// ============================================
+// GET MY TODAY'S TASKS (Employee)
+// ============================================
+exports.getMyTodayTasks = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employee ID"
+      });
+    }
+
+    // ─── Today's date range ───
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // ─── Get all tasks for this employee ───
+    const tasks = await Task.find({
+      $or: [
+        // Tasks assigned to this employee
+        { assignedTo: employeeId },
+        // Tasks created by this employee
+        { 
+          createdBy: employeeId,
+          createdByType: "employee"
+        }
+      ]
+    })
+      .populate("createdBy", "fullName email employeeId")
+      .populate("assignedTo", "fullName email employeeId")
+      .populate("projectId", "projectName status")
+      .populate("department", "departmentName")
+      .populate("employeeUpdates.employeeId", "fullName email")
+      .populate("expenses.addedBy", "fullName email")
+      .sort({ createdAt: -1 });
+
+    // ─── Filter: Today's tasks OR Daily frequency active tasks ───
+    const todayTasks = tasks.filter(task => {
+      const createdAt = new Date(task.createdAt);
+      const isToday = createdAt >= todayStart && createdAt <= todayEnd;
+      
+      // Task is today's task if:
+      // 1. Created today, OR
+      // 2. Has Daily frequency and is active (Pending/In Progress)
+      const isDailyActive = task.frequency && 
+                           task.frequency.includes('Daily') && 
+                           ['Pending', 'In Progress'].includes(task.status);
+      
+      return isToday || isDailyActive;
+    });
+
+    // ─── Calculate stats ───
+    const stats = {
+      total: todayTasks.length,
+      pending: todayTasks.filter(t => t.status === 'Pending').length,
+      inProgress: todayTasks.filter(t => t.status === 'In Progress').length,
+      completed: todayTasks.filter(t => t.status === 'Completed').length,
+      overdue: todayTasks.filter(t => t.status === 'Overdue').length,
+      rejected: todayTasks.filter(t => t.status === 'Rejected').length,
+      highPriority: todayTasks.filter(t => t.priority === 'Critical' || t.priority === 'High').length,
+      mediumPriority: todayTasks.filter(t => t.priority === 'Medium').length,
+      lowPriority: todayTasks.filter(t => t.priority === 'Low').length,
+      assignedToMe: todayTasks.filter(t => 
+        t.assignedTo && t.assignedTo.some(emp => emp._id.toString() === employeeId)
+      ).length,
+      createdByMe: todayTasks.filter(t => 
+        t.createdBy && t.createdBy._id.toString() === employeeId
+      ).length,
+      dailyTasks: todayTasks.filter(t => 
+        t.frequency && t.frequency.includes('Daily')
+      ).length,
+      withSubtasks: todayTasks.filter(t => t.subtasks && t.subtasks.length > 0).length,
+      withAttachments: todayTasks.filter(t => t.attachments && t.attachments.length > 0).length,
+    };
+
+    return res.status(200).json({
+      success: true,
+      date: todayStart.toISOString(),
+      dateFormatted: todayStart.toLocaleDateString('en-IN', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }),
+      stats,
+      tasks: todayTasks
+    });
+
+  } catch (error) {
+    console.error("Get My Today Tasks Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
 
 
 
@@ -2521,17 +2805,39 @@ exports.getAdminDashboard = async (req, res) => {
       }
     ]);
 
-    // Get recent activities (last 5 task updates)
+    // ─── FIXED: Populate assignedTo with employee details ───
     const recentActivities = await Task.find()
       .sort({ updatedAt: -1 })
       .limit(5)
-      .select('taskName title status updatedAt assignedTo');
+      .populate({
+        path: 'assignedTo',
+        select: 'name email employeeId department profileImage'
+      })
+      .populate({
+        path: 'createdBy',
+        select: 'name email employeeId'
+      })
+      .lean();
 
-    // Format recent activities
+    // Format recent activities with proper user names
     const formattedActivities = recentActivities.map(task => {
-      const user = task.assignedTo && task.assignedTo.length > 0 
-        ? task.assignedTo[0]?.name || 'Unknown' 
-        : 'Unknown';
+      // Get user from assignedTo or createdBy
+      let userName = 'Unknown';
+      let userAvatar = 'U';
+      
+      // Check if assignedTo has employees
+      if (task.assignedTo && task.assignedTo.length > 0) {
+        const firstAssigned = task.assignedTo[0];
+        if (firstAssigned && firstAssigned.name) {
+          userName = firstAssigned.name;
+          userAvatar = userName.charAt(0).toUpperCase();
+        }
+      } 
+      // If no assignedTo, check createdBy
+      else if (task.createdBy && task.createdBy.name) {
+        userName = task.createdBy.name;
+        userAvatar = userName.charAt(0).toUpperCase();
+      }
       
       let action = 'updated task';
       if (task.status === 'Completed') action = 'completed task';
@@ -2539,11 +2845,11 @@ exports.getAdminDashboard = async (req, res) => {
       else if (task.status === 'In Progress') action = 'started task';
       
       return {
-        user: user,
+        user: userName,
         action: action,
         task: task.taskName || task.title || 'Task',
         time: formatTimeAgo(task.updatedAt),
-        avatar: user.charAt(0).toUpperCase()
+        avatar: userAvatar
       };
     });
 

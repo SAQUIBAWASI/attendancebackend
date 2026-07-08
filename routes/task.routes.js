@@ -91,7 +91,8 @@ const {
   getEmployeeDashboard,
   getAllNotifications,
   getNotificationsByEmployeeId,
-  deleteNotification
+  deleteNotification,
+  getMyTodayTasks
 } = require("../controller/taskController");
 
 // ✅ Admin APIs
@@ -252,6 +253,7 @@ router.delete("/delete/:id", deleteProject);
 
 router.get("/my-assigned-tasks/:employeeId", getMyAssignedTasks);
 router.get("/my-created-tasks/:employeeId", getMyCreatedTasks);
+router.get('/mytodaystasks/:employeeId', getMyTodayTasks);
 router.put("/employee/update-task/:taskId/:employeeId",   uploadAttachments.array("attachments", 10),  updateTaskByEmployee);
 
 
