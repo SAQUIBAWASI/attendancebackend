@@ -2,6 +2,8 @@
 const EmployeeExperience = require("../models/EmployeeExperience");
 const path = require("path");
 const fs = require("fs");
+const NodeGeocoder = require("node-geocoder");
+
 // const Location = require("../models/Location");
 // const { logActivity } = require("./userActivity.controller");
 // // ➕ Add a new employee
@@ -1882,33 +1884,73 @@ const getEmployeeByEmail = async (req, res) => {
 // ==================== LOGIN EMPLOYEE ====================
 const loginEmployee = async (req, res) => {
   try {
-    const { email, employeeId, password } = req.body;
+    const { email, employeeId, password, latitude, longitude } = req.body;
+
+    // Email ya Employee ID required
     if (!email && !employeeId) {
-      return res.status(400).json({ success: false, message: "Email or Employee ID is required" });
+      return res.status(400).json({
+        success: false,
+        message: "Email or Employee ID is required"
+      });
     }
+
+    // Latitude & Longitude required
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "Latitude and Longitude are required"
+      });
+    }
+
     const query = email ? { email } : { employeeId };
+
     const employee = await Employee.findOne(query);
+
     if (!employee) {
-      return res.status(404).json({ success: false, message: "Employee not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found"
+      });
     }
+
     if (employee.password !== password) {
-      return res.status(401).json({ success: false, message: "Invalid password" });
+      return res.status(401).json({
+        success: false,
+        message: "Invalid password"
+      });
     }
+
+    // Update employee location on every login
+    employee.latitude = latitude;
+    employee.longitude = longitude;
+
+    await employee.save();
 
     res.json({
-      success: true, message: "Login successful",
+      success: true,
+      message: "Login successful",
       employee: {
-        id: employee._id, name: employee.name, email: employee.email,
-        role: employee.role, department: employee.department,
-        employeeId: employee.employeeId, joinDate: employee.joinDate,
-        permissions: employee.permissions || []
+        id: employee._id,
+        name: employee.name,
+        email: employee.email,
+        role: employee.role,
+        department: employee.department,
+        employeeId: employee.employeeId,
+        joinDate: employee.joinDate,
+        permissions: employee.permissions || [],
+        latitude: employee.latitude,
+        longitude: employee.longitude,
       },
     });
+
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message
+    });
   }
 };
-
 // ==================== ASSIGN LOCATION ====================
 const assignLocation = async (req, res) => {
   try {
@@ -3863,6 +3905,78 @@ const getLocation = async (req, res) => {
   }
 };
 
+
+
+// Geocoder configuration
+const geocoder = NodeGeocoder({
+  provider: "openstreetmap",
+});
+
+const getAllEmployeeLocations = async (req, res) => {
+  try {
+    const employees = await Employee.find(
+      {
+        latitude: { $exists: true, $ne: null },
+        longitude: { $exists: true, $ne: null },
+      },
+      {
+        name: 1,
+        email: 1,
+        phone: 1,
+        employeeId: 1,
+        latitude: 1,
+        longitude: 1,
+      }
+    );
+
+    const employeeData = await Promise.all(
+      employees.map(async (emp) => {
+        let address = null;
+
+        try {
+          const location = await geocoder.reverse({
+            lat: emp.latitude,
+            lon: emp.longitude,
+          });
+
+          if (location && location.length > 0) {
+            address =
+              location[0].formattedAddress ||
+              `${location[0].city || ""}, ${location[0].state || ""}, ${location[0].country || ""}`;
+          }
+        } catch (err) {
+          console.log(`Geocoder Error for ${emp.name}:`, err.message);
+        }
+
+        return {
+          _id: emp._id,
+          name: emp.name,
+          email: emp.email,
+          phone: emp.phone,
+          employeeId: emp.employeeId,
+          latitude: emp.latitude,
+          longitude: emp.longitude,
+          address,
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      count: employeeData.length,
+      employees: employeeData,
+    });
+  } catch (error) {
+    console.error("Employee Location Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch employee locations",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   getEmployeeByPhone,
   addEmployee,
@@ -3904,7 +4018,8 @@ module.exports = {
   uploadEmployeeFace,
   verifyFace,
   updateLocation,
-  getLocation
+  getLocation,
+  getAllEmployeeLocations
 
 };
 

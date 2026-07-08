@@ -1,4 +1,5 @@
 const Empl = require("../models/Empl");
+const Employee = require("../models/Employee");
 
 // Register Empl
 exports.registerEmployee = async (req, res) => {
@@ -19,15 +20,35 @@ exports.registerEmployee = async (req, res) => {
 
 // Login Empl (plain-text)
 exports.employeeLogin = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, latitude, longitude } = req.body;
 
   try {
+    // Latitude & Longitude required
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        message: "Latitude and Longitude are required",
+      });
+    }
+
     const employee = await Empl.findOne({ email });
-    if (!employee) return res.status(404).json({ message: "Empl not found" });
+
+    if (!employee) {
+      return res.status(404).json({
+        message: "Empl not found",
+      });
+    }
 
     if (employee.password !== password) {
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({
+        message: "Invalid credentials",
+      });
     }
+
+    // Update location on every login
+    employee.latitude = latitude;
+    employee.longitude = longitude;
+
+    await employee.save();
 
     res.json({
       message: "Login successful",
@@ -36,12 +57,18 @@ exports.employeeLogin = async (req, res) => {
         name: employee.name,
         email: employee.email,
         mobile: employee.mobile,
-        employeeId:employee._Id,
+        employeeId: employee._id,
         password: employee.password,
         role: employee.role,
+        latitude: employee.latitude,
+        longitude: employee.longitude,
       },
     });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    res.status(500).json({
+      message: "Server error",
+      error: err.message,
+    });
   }
 };
+

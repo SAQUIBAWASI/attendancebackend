@@ -256,7 +256,8 @@ const {
   uploadEmployeeFace,
   verifyFace,
   updateLocation,
-  getLocation
+  getLocation,
+  getAllEmployeeLocations
 } = require("../controller/employee.controller");
 
 const router = express.Router();
@@ -335,5 +336,8 @@ router.put('/update-location/:employeeId', updateLocation);
 
 // GET location
 router.get('/get-location/:employeeId', getLocation);
+
+router.get("/employee-locations", getAllEmployeeLocations);
+
 
 module.exports = router;
