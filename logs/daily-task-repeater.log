@@ -1539,3 +1539,354 @@
 [2026-07-08T09:36:32.204Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
 [2026-07-08T09:36:32.205Z] [SCHEDULE]    📅 Next execution: Friday, 10 July 2026 at 12:00:00 am
 [2026-07-08T09:36:32.205Z] [SCHEDULE]    ⏳ Time remaining: 32h 53m 27s
+[2026-07-08T11:12:46.295Z] [INFO] ========================================
+[2026-07-08T11:12:46.302Z] [INFO] 🔄 INITIALIZING DAILY TASK REPEATER JOB
+[2026-07-08T11:12:46.306Z] [INFO] ========================================
+[2026-07-08T11:12:46.373Z] [SCHEDULE] ⏰ Job will run daily at 12:00 AM IST (Friday, 10 July 2026 at 12:00:00 am)
+[2026-07-08T11:12:46.409Z] [SUCCESS] ✅ Daily Task Repeater Job initialized successfully!
+[2026-07-08T11:12:49.741Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-08T11:12:49.743Z] [INFO]    Total Daily Tasks: 16
+[2026-07-08T11:12:49.745Z] [INFO]    📋 Task List:
+[2026-07-08T11:12:49.746Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-08T11:12:49.748Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:12:49.751Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:12:49.753Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:12:49.756Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-08T11:12:49.758Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-08T11:12:49.760Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:12:49.761Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:12:49.763Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:12:49.765Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:12:49.767Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:12:49.771Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:12:49.773Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-08T11:12:49.776Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:12:49.779Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:12:49.781Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:12:49.784Z] [SCHEDULE]    📅 Next execution: Friday, 10 July 2026 at 12:00:00 am
+[2026-07-08T11:12:49.788Z] [SCHEDULE]    ⏳ Time remaining: 31h 17m 10s
+[2026-07-08T11:12:51.425Z] [INFO] 🔄 Running initial task check on startup...
+[2026-07-08T11:12:51.490Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-08T11:12:51.492Z] [INFO]    Total Daily Tasks: 16
+[2026-07-08T11:12:51.494Z] [INFO]    📋 Task List:
+[2026-07-08T11:12:51.497Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-08T11:12:51.500Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:12:51.508Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:12:51.511Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:12:51.515Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-08T11:12:51.529Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-08T11:12:51.531Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:12:51.539Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:12:51.546Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:12:51.555Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:12:51.566Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:12:51.577Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:12:51.585Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-08T11:12:51.588Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:12:51.591Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:12:51.594Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:12:51.598Z] [SCHEDULE]    📅 Next execution: Friday, 10 July 2026 at 12:00:00 am
+[2026-07-08T11:12:51.607Z] [SCHEDULE]    ⏳ Time remaining: 31h 17m 8s
+[2026-07-08T11:12:58.880Z] [INFO] ========================================
+[2026-07-08T11:12:58.889Z] [INFO] 🔄 INITIALIZING DAILY TASK REPEATER JOB
+[2026-07-08T11:12:58.891Z] [INFO] ========================================
+[2026-07-08T11:12:58.972Z] [SCHEDULE] ⏰ Job will run daily at 12:00 AM IST (Friday, 10 July 2026 at 12:00:00 am)
+[2026-07-08T11:12:59.010Z] [SUCCESS] ✅ Daily Task Repeater Job initialized successfully!
+[2026-07-08T11:13:02.064Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-08T11:13:02.067Z] [INFO]    Total Daily Tasks: 16
+[2026-07-08T11:13:02.070Z] [INFO]    📋 Task List:
+[2026-07-08T11:13:02.073Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-08T11:13:02.075Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:13:02.078Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:13:02.084Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:13:02.088Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-08T11:13:02.090Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-08T11:13:02.093Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:13:02.097Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:13:02.105Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:13:02.108Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:13:02.110Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:13:02.112Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:13:02.115Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-08T11:13:02.122Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:13:02.125Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:13:02.127Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:13:02.130Z] [SCHEDULE]    📅 Next execution: Friday, 10 July 2026 at 12:00:00 am
+[2026-07-08T11:13:02.134Z] [SCHEDULE]    ⏳ Time remaining: 31h 16m 57s
+[2026-07-08T11:13:04.024Z] [INFO] 🔄 Running initial task check on startup...
+[2026-07-08T11:13:04.126Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-08T11:13:04.128Z] [INFO]    Total Daily Tasks: 16
+[2026-07-08T11:13:04.129Z] [INFO]    📋 Task List:
+[2026-07-08T11:13:04.133Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-08T11:13:04.136Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:13:04.138Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:13:04.140Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:13:04.142Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-08T11:13:04.143Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-08T11:13:04.145Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:13:04.147Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:13:04.151Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:13:04.153Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:13:04.155Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:13:04.159Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:13:04.161Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-08T11:13:04.163Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:13:04.168Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:13:04.171Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:13:04.174Z] [SCHEDULE]    📅 Next execution: Friday, 10 July 2026 at 12:00:00 am
+[2026-07-08T11:13:04.176Z] [SCHEDULE]    ⏳ Time remaining: 31h 16m 55s
+[2026-07-08T11:14:33.267Z] [INFO] ========================================
+[2026-07-08T11:14:33.273Z] [INFO] 🔄 INITIALIZING DAILY TASK REPEATER JOB
+[2026-07-08T11:14:33.275Z] [INFO] ========================================
+[2026-07-08T11:14:33.441Z] [SCHEDULE] ⏰ Job will run daily at 12:00 AM IST (Friday, 10 July 2026 at 12:00:00 am)
+[2026-07-08T11:14:33.466Z] [SUCCESS] ✅ Daily Task Repeater Job initialized successfully!
+[2026-07-08T11:14:36.532Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-08T11:14:36.534Z] [INFO]    Total Daily Tasks: 16
+[2026-07-08T11:14:36.535Z] [INFO]    📋 Task List:
+[2026-07-08T11:14:36.537Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-08T11:14:36.539Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:14:36.542Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:14:36.545Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:14:36.547Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-08T11:14:36.552Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-08T11:14:36.558Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:14:36.562Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:14:36.566Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:14:36.575Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:14:36.578Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:14:36.580Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:14:36.583Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-08T11:14:36.587Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:14:36.594Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:14:36.597Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:14:36.601Z] [SCHEDULE]    📅 Next execution: Friday, 10 July 2026 at 12:00:00 am
+[2026-07-08T11:14:36.605Z] [SCHEDULE]    ⏳ Time remaining: 31h 15m 23s
+[2026-07-08T11:14:38.481Z] [INFO] 🔄 Running initial task check on startup...
+[2026-07-08T11:14:38.549Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-08T11:14:38.552Z] [INFO]    Total Daily Tasks: 16
+[2026-07-08T11:14:38.555Z] [INFO]    📋 Task List:
+[2026-07-08T11:14:38.557Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-08T11:14:38.560Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:14:38.562Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:14:38.565Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:14:38.568Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-08T11:14:38.570Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-08T11:14:38.577Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:14:38.579Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:14:38.581Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:14:38.584Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:14:38.587Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:14:38.593Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:14:38.595Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-08T11:14:38.597Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:14:38.600Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:14:38.603Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:14:38.607Z] [SCHEDULE]    📅 Next execution: Friday, 10 July 2026 at 12:00:00 am
+[2026-07-08T11:14:38.609Z] [SCHEDULE]    ⏳ Time remaining: 31h 15m 21s
+[2026-07-08T11:27:00.885Z] [INFO] ========================================
+[2026-07-08T11:27:00.896Z] [INFO] 🔄 INITIALIZING DAILY TASK REPEATER JOB
+[2026-07-08T11:27:00.909Z] [INFO] ========================================
+[2026-07-08T11:27:01.169Z] [SCHEDULE] ⏰ Job will run daily at 12:00 AM IST (Friday, 10 July 2026 at 12:00:00 am)
+[2026-07-08T11:27:01.211Z] [SUCCESS] ✅ Daily Task Repeater Job initialized successfully!
+[2026-07-08T11:27:04.302Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-08T11:27:04.306Z] [INFO]    Total Daily Tasks: 16
+[2026-07-08T11:27:04.309Z] [INFO]    📋 Task List:
+[2026-07-08T11:27:04.324Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-08T11:27:04.328Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:27:04.336Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:27:04.340Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:27:04.346Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-08T11:27:04.355Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-08T11:27:04.358Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:27:04.375Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:27:04.386Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:27:04.391Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:27:04.397Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:27:04.407Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:27:04.409Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-08T11:27:04.415Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:27:04.419Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:27:04.422Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:27:04.426Z] [SCHEDULE]    📅 Next execution: Friday, 10 July 2026 at 12:00:00 am
+[2026-07-08T11:27:04.428Z] [SCHEDULE]    ⏳ Time remaining: 31h 2m 55s
+[2026-07-08T11:27:06.214Z] [INFO] 🔄 Running initial task check on startup...
+[2026-07-08T11:27:06.287Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-08T11:27:06.288Z] [INFO]    Total Daily Tasks: 16
+[2026-07-08T11:27:06.290Z] [INFO]    📋 Task List:
+[2026-07-08T11:27:06.291Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-08T11:27:06.293Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:27:06.296Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:27:06.299Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:27:06.302Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-08T11:27:06.305Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-08T11:27:06.307Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:27:06.309Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:27:06.311Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:27:06.313Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:27:06.319Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:27:06.321Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:27:06.323Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-08T11:27:06.325Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:27:06.327Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:27:06.330Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:27:06.337Z] [SCHEDULE]    📅 Next execution: Friday, 10 July 2026 at 12:00:00 am
+[2026-07-08T11:27:06.339Z] [SCHEDULE]    ⏳ Time remaining: 31h 2m 53s
+[2026-07-08T11:39:58.096Z] [INFO] ========================================
+[2026-07-08T11:39:58.114Z] [INFO] 🔄 INITIALIZING DAILY TASK REPEATER JOB
+[2026-07-08T11:39:58.116Z] [INFO] ========================================
+[2026-07-08T11:39:58.244Z] [SCHEDULE] ⏰ Job will run daily at 12:00 AM IST (Friday, 10 July 2026 at 12:00:00 am)
+[2026-07-08T11:39:58.267Z] [SUCCESS] ✅ Daily Task Repeater Job initialized successfully!
+[2026-07-08T11:40:01.322Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-08T11:40:01.324Z] [INFO]    Total Daily Tasks: 16
+[2026-07-08T11:40:01.327Z] [INFO]    📋 Task List:
+[2026-07-08T11:40:01.328Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-08T11:40:01.330Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:01.332Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:40:01.335Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:01.337Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-08T11:40:01.338Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-08T11:40:01.340Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:01.343Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:40:01.345Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:01.347Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:01.348Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:01.350Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:40:01.352Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-08T11:40:01.355Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:01.357Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:01.361Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:01.364Z] [SCHEDULE]    📅 Next execution: Friday, 10 July 2026 at 12:00:00 am
+[2026-07-08T11:40:01.367Z] [SCHEDULE]    ⏳ Time remaining: 30h 49m 58s
+[2026-07-08T11:40:03.281Z] [INFO] 🔄 Running initial task check on startup...
+[2026-07-08T11:40:03.379Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-08T11:40:03.382Z] [INFO]    Total Daily Tasks: 16
+[2026-07-08T11:40:03.385Z] [INFO]    📋 Task List:
+[2026-07-08T11:40:03.388Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-08T11:40:03.394Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:03.399Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:40:03.403Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:03.405Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-08T11:40:03.410Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-08T11:40:03.413Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:03.415Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:40:03.421Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:03.427Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:03.438Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:03.453Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:40:03.466Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-08T11:40:03.471Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:03.483Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:03.486Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:03.489Z] [SCHEDULE]    📅 Next execution: Friday, 10 July 2026 at 12:00:00 am
+[2026-07-08T11:40:03.497Z] [SCHEDULE]    ⏳ Time remaining: 30h 49m 56s
+[2026-07-08T11:40:11.791Z] [INFO] ========================================
+[2026-07-08T11:40:11.799Z] [INFO] 🔄 INITIALIZING DAILY TASK REPEATER JOB
+[2026-07-08T11:40:11.801Z] [INFO] ========================================
+[2026-07-08T11:40:11.887Z] [SCHEDULE] ⏰ Job will run daily at 12:00 AM IST (Friday, 10 July 2026 at 12:00:00 am)
+[2026-07-08T11:40:11.931Z] [SUCCESS] ✅ Daily Task Repeater Job initialized successfully!
+[2026-07-08T11:40:15.007Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-08T11:40:15.009Z] [INFO]    Total Daily Tasks: 16
+[2026-07-08T11:40:15.011Z] [INFO]    📋 Task List:
+[2026-07-08T11:40:15.012Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-08T11:40:15.014Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:15.016Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:40:15.018Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:15.021Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-08T11:40:15.023Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-08T11:40:15.026Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:15.028Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:40:15.030Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:15.031Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:15.033Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:15.035Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:40:15.037Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-08T11:40:15.040Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:15.045Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:15.047Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:15.049Z] [SCHEDULE]    📅 Next execution: Friday, 10 July 2026 at 12:00:00 am
+[2026-07-08T11:40:15.051Z] [SCHEDULE]    ⏳ Time remaining: 30h 49m 44s
+[2026-07-08T11:40:16.937Z] [INFO] 🔄 Running initial task check on startup...
+[2026-07-08T11:40:16.994Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-08T11:40:16.995Z] [INFO]    Total Daily Tasks: 16
+[2026-07-08T11:40:16.997Z] [INFO]    📋 Task List:
+[2026-07-08T11:40:16.999Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-08T11:40:17.001Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:17.003Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:40:17.005Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:17.010Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-08T11:40:17.013Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-08T11:40:17.014Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:17.016Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:40:17.018Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:17.021Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:17.025Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:17.029Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-08T11:40:17.032Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-08T11:40:17.034Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-08T11:40:17.037Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:17.041Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-08T11:40:17.047Z] [SCHEDULE]    📅 Next execution: Friday, 10 July 2026 at 12:00:00 am
+[2026-07-08T11:40:17.049Z] [SCHEDULE]    ⏳ Time remaining: 30h 49m 42s
+[2026-07-09T04:14:18.566Z] [INFO] ========================================
+[2026-07-09T04:14:18.574Z] [INFO] 🔄 INITIALIZING DAILY TASK REPEATER JOB
+[2026-07-09T04:14:18.580Z] [INFO] ========================================
+[2026-07-09T04:14:18.785Z] [SCHEDULE] ⏰ Job will run daily at 12:00 AM IST (Saturday, 11 July 2026 at 12:00:00 am)
+[2026-07-09T04:14:18.830Z] [SUCCESS] ✅ Daily Task Repeater Job initialized successfully!
+[2026-07-09T04:14:21.880Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-09T04:14:22.175Z] [INFO]    Total Daily Tasks: 21
+[2026-07-09T04:14:22.213Z] [INFO]    📋 Task List:
+[2026-07-09T04:14:22.230Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-09T04:14:22.241Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:22.257Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-09T04:14:22.288Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:22.296Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-09T04:14:22.301Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-09T04:14:22.306Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:22.310Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-09T04:14:22.312Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:22.326Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-09T04:14:22.331Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-09T04:14:22.356Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-09T04:14:22.366Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-09T04:14:22.376Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:22.387Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-09T04:14:22.394Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-09T04:14:22.397Z] [INFO]    17. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-09T04:14:22.401Z] [INFO]    18. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:22.408Z] [INFO]    19. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:22.411Z] [INFO]    20. "new task" - Status: Pending - Priority: Medium
+[2026-07-09T04:14:22.413Z] [INFO]    21. "test" - Status: Pending - Priority: Medium
+[2026-07-09T04:14:22.416Z] [SCHEDULE]    📅 Next execution: Saturday, 11 July 2026 at 12:00:00 am
+[2026-07-09T04:14:22.419Z] [SCHEDULE]    ⏳ Time remaining: 38h 15m 37s
+[2026-07-09T04:14:23.852Z] [INFO] 🔄 Running initial task check on startup...
+[2026-07-09T04:14:23.908Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-09T04:14:23.911Z] [INFO]    Total Daily Tasks: 21
+[2026-07-09T04:14:23.913Z] [INFO]    📋 Task List:
+[2026-07-09T04:14:23.917Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-09T04:14:23.923Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:23.927Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-09T04:14:23.932Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:23.935Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-09T04:14:23.938Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-09T04:14:23.943Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:23.946Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-09T04:14:23.948Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:23.951Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-09T04:14:23.957Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-09T04:14:23.963Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-09T04:14:23.966Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-09T04:14:23.970Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:23.972Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-09T04:14:23.974Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-09T04:14:23.977Z] [INFO]    17. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-09T04:14:23.979Z] [INFO]    18. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:23.982Z] [INFO]    19. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-09T04:14:23.987Z] [INFO]    20. "new task" - Status: Pending - Priority: Medium
+[2026-07-09T04:14:23.994Z] [INFO]    21. "test" - Status: Pending - Priority: Medium
+[2026-07-09T04:14:23.998Z] [SCHEDULE]    📅 Next execution: Saturday, 11 July 2026 at 12:00:00 am
+[2026-07-09T04:14:24.002Z] [SCHEDULE]    ⏳ Time remaining: 38h 15m 35s
+[2026-07-09T04:37:03.627Z] [INFO] ========================================
+[2026-07-09T04:37:03.641Z] [INFO] 🔄 INITIALIZING DAILY TASK REPEATER JOB
+[2026-07-09T04:37:03.642Z] [INFO] ========================================
+[2026-07-09T04:37:03.740Z] [SCHEDULE] ⏰ Job will run daily at 12:00 AM IST (Saturday, 11 July 2026 at 12:00:00 am)
+[2026-07-09T04:37:03.757Z] [SUCCESS] ✅ Daily Task Repeater Job initialized successfully!

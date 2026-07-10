@@ -2270,6 +2270,97 @@ exports.updateTaskByEmployee = async (req, res) => {
     });
   }
 };
+// ============================================
+// DELETE TASK EXPENSE (EMPLOYEE)
+// DELETE /api/tasks/:taskId/expenses/:expenseId
+// ============================================
+exports.deleteTaskExpense = async (req, res) => {
+  try {
+    const { taskId, expenseId } = req.params;
+    const { employeeId } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(taskId) || !mongoose.Types.ObjectId.isValid(expenseId)) {
+      return res.status(400).json({ success: false, message: "Invalid taskId or expenseId" });
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) return res.status(404).json({ success: false, message: "Task not found" });
+
+    const expenseIndex = task.expenses.findIndex(e => e._id.toString() === expenseId);
+    if (expenseIndex === -1) {
+      return res.status(404).json({ success: false, message: "Expense not found" });
+    }
+
+    // Only the employee who added it can delete it
+    const expense = task.expenses[expenseIndex];
+    const addedById = expense.addedBy?.toString();
+    if (employeeId && addedById && addedById !== employeeId.toString()) {
+      return res.status(403).json({ success: false, message: "Not authorized to delete this expense" });
+    }
+
+    task.expenses.splice(expenseIndex, 1);
+    await task.save();
+
+    console.log(`✅ Expense ${expenseId} deleted from task ${taskId}`);
+    return res.status(200).json({ success: true, message: "Expense deleted successfully" });
+
+  } catch (error) {
+    console.error("Delete Task Expense Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ============================================
+// UPDATE TASK EXPENSE (EMPLOYEE)
+// PUT /api/tasks/:taskId/expenses/:expenseId
+// ============================================
+exports.updateTaskExpense = async (req, res) => {
+  try {
+    const { taskId, expenseId } = req.params;
+    const { employeeId, location, distance, expenseAmount, description } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(taskId) || !mongoose.Types.ObjectId.isValid(expenseId)) {
+      return res.status(400).json({ success: false, message: "Invalid taskId or expenseId" });
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) return res.status(404).json({ success: false, message: "Task not found" });
+
+    const expense = task.expenses.find(e => e._id.toString() === expenseId);
+    if (!expense) {
+      return res.status(404).json({ success: false, message: "Expense not found" });
+    }
+
+    // Only the employee who added it can edit it
+    const addedById = expense.addedBy?.toString();
+    if (employeeId && addedById && addedById !== employeeId.toString()) {
+      return res.status(403).json({ success: false, message: "Not authorized to edit this expense" });
+    }
+
+    // Apply updates
+    if (location) {
+      expense.location = {
+        address: location.address || expense.location?.address || "",
+        latitude: parseFloat(location.latitude) || expense.location?.latitude || 0,
+        longitude: parseFloat(location.longitude) || expense.location?.longitude || 0,
+      };
+    }
+    if (distance !== undefined) expense.distance = Number(distance) || 0;
+    if (expenseAmount !== undefined) expense.expenseAmount = Number(expenseAmount) || 0;
+    if (description !== undefined) expense.description = description;
+
+    task.markModified('expenses');
+    await task.save();
+
+    console.log(`✅ Expense ${expenseId} updated in task ${taskId}`);
+    return res.status(200).json({ success: true, message: "Expense updated successfully", expense });
+
+  } catch (error) {
+    console.error("Update Task Expense Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // ─── Helper function to format date time ───
 function formatDateTime(date) {
   return new Date(date).toLocaleString('en-IN', {

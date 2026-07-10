@@ -1894,14 +1894,6 @@ const loginEmployee = async (req, res) => {
       });
     }
 
-    // Latitude & Longitude required
-    if (latitude === undefined || longitude === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: "Latitude and Longitude are required"
-      });
-    }
-
     const query = email ? { email } : { employeeId };
 
     const employee = await Employee.findOne(query);
@@ -1920,11 +1912,12 @@ const loginEmployee = async (req, res) => {
       });
     }
 
-    // Update employee location on every login
-    employee.latitude = latitude;
-    employee.longitude = longitude;
-
-    await employee.save();
+    // Update employee location on every login if coordinates are provided
+    if (latitude !== undefined && latitude !== null && longitude !== undefined && longitude !== null) {
+      employee.latitude = latitude;
+      employee.longitude = longitude;
+      await employee.save();
+    }
 
     res.json({
       success: true,
