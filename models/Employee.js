@@ -375,7 +375,46 @@ const employeeSchema = new mongoose.Schema({
   alternateNumber: { type: String },
   parentsName: { type: String },
 
-
+    // ─── Current Location ───
+  latitude: { type: Number, default: null },
+  longitude: { type: Number, default: null },
+  address: { type: String, default: null }, // ✅ CURRENT ADDRESS
+  
+  // ─── Login Location ───
+  lastLoginLocation: {
+    latitude: { type: Number, default: null },
+    longitude: { type: Number, default: null },
+    timestamp: { type: Date, default: null },
+    address: { type: String, default: null } // ✅ LOGIN ADDRESS
+  },
+  
+  // ─── Check-In Location ───
+  lastCheckInLocation: {
+    latitude: { type: Number, default: null },
+    longitude: { type: Number, default: null },
+    timestamp: { type: Date, default: null },
+    address: { type: String, default: null } // ✅ CHECK-IN ADDRESS
+  },
+  
+  // ─── Check-Out Location ───
+  lastCheckOutLocation: {
+    latitude: { type: Number, default: null },
+    longitude: { type: Number, default: null },
+    timestamp: { type: Date, default: null },
+    address: { type: String, default: null } // ✅ CHECK-OUT ADDRESS
+  },
+  
+  // ─── Location History (Optional) ───
+  locationHistory: [{
+    latitude: { type: Number },
+    longitude: { type: Number },
+    address: { type: String },
+    source: { type: String, enum: ['login', 'checkin', 'checkout', 'update'] },
+    timestamp: { type: Date, default: Date.now }
+  }],
+  
+  lastLocationUpdate: { type: Date, default: null },
+  lastKnownIp: { type: String, default: null },
   profileImage: {
     type: String,
     default: null

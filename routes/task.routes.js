@@ -92,8 +92,14 @@ const {
   getAllNotifications,
   getNotificationsByEmployeeId,
   deleteNotification,
+
   forwardTask,
-  getTaskIssues
+  getTaskIssues,
+
+  getMyTodayTasks,
+  deleteTaskExpense,
+  updateTaskExpense
+
 } = require("../controller/taskController");
 
 // ✅ Admin APIs
@@ -254,6 +260,7 @@ router.delete("/delete/:id", deleteProject);
 
 router.get("/my-assigned-tasks/:employeeId", getMyAssignedTasks);
 router.get("/my-created-tasks/:employeeId", getMyCreatedTasks);
+router.get('/mytodaystasks/:employeeId', getMyTodayTasks);
 router.put("/employee/update-task/:taskId/:employeeId",   uploadAttachments.array("attachments", 10),  updateTaskByEmployee);
 
 
@@ -268,6 +275,12 @@ router.put('/reported-issue/:taskId/:issueId', updateReportedIssue);
 
 // Delete reported issue
 router.delete('/reported-issue/:taskId/:issueId', deleteReportedIssue);
+
+// ─── Expense CRUD (Employee) ───
+// Delete a specific expense from a task
+router.delete('/:taskId/expenses/:expenseId', deleteTaskExpense);
+// Edit a specific expense in a task
+router.put('/:taskId/expenses/:expenseId', updateTaskExpense);
 
 router.get("/admin-dashboard", getAdminDashboard);
 router.get("/employee-dashboard/:employeeId", getEmployeeDashboard);

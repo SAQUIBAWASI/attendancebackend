@@ -2,6 +2,50 @@
 const EmployeeExperience = require("../models/EmployeeExperience");
 const path = require("path");
 const fs = require("fs");
+const NodeGeocoder = require("node-geocoder");
+
+
+
+const geocoder = NodeGeocoder({
+  provider: "openstreetmap",
+});
+
+// ─── Rate Limiter ───
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 1100; // 1.1 seconds
+
+// ─── Get Address from Coordinates ───
+const getAddressFromCoords = async (lat, lng) => {
+  if (!lat || !lng) return null;
+  
+  try {
+    // Rate limiting
+    const now = Date.now();
+    const timeSinceLastRequest = now - lastRequestTime;
+    if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+      await new Promise(resolve => 
+        setTimeout(resolve, MIN_REQUEST_INTERVAL - timeSinceLastRequest)
+      );
+    }
+    lastRequestTime = Date.now();
+
+    const location = await geocoder.reverse({
+      lat: lat,
+      lon: lng,
+    });
+
+    if (location && location.length > 0) {
+      return location[0].formattedAddress ||
+        `${location[0].city || ""}, ${location[0].state || ""}, ${location[0].country || ""}`;
+    }
+    return null;
+  } catch (err) {
+    console.log(`Geocoder Error:`, err.message);
+    return null;
+  }
+};
+
+
 // const Location = require("../models/Location");
 // const { logActivity } = require("./userActivity.controller");
 // // ➕ Add a new employee
@@ -1879,35 +1923,174 @@ const getEmployeeByEmail = async (req, res) => {
   }
 };
 
+// // ==================== LOGIN EMPLOYEE ====================
+// const loginEmployee = async (req, res) => {
+//   try {
+//     const { email, employeeId, password, latitude, longitude } = req.body;
+
+//     // Email ya Employee ID required
+//     if (!email && !employeeId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Email or Employee ID is required"
+//       });
+//     }
+
+//     // Latitude & Longitude required
+//     if (latitude === undefined || longitude === undefined) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Latitude and Longitude are required"
+//       });
+//     }
+
+//     const query = email ? { email } : { employeeId };
+
+//     const employee = await Employee.findOne(query);
+
+//     if (!employee) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Employee not found"
+//       });
+//     }
+
+//     if (employee.password !== password) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Invalid password"
+//       });
+//     }
+
+//     // Update employee location on every login
+//     employee.latitude = latitude;
+//     employee.longitude = longitude;
+
+//     await employee.save();
+
+//     res.json({
+//       success: true,
+//       message: "Login successful",
+//       employee: {
+//         id: employee._id,
+//         name: employee.name,
+//         email: employee.email,
+//         role: employee.role,
+//         department: employee.department,
+//         employeeId: employee.employeeId,
+//         joinDate: employee.joinDate,
+//         permissions: employee.permissions || [],
+//         latitude: employee.latitude,
+//         longitude: employee.longitude,
+//       },
+//     });
+
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Server Error",
+//       error: error.message
+//     });
+//   }
+// };
+
+
+
+
 // ==================== LOGIN EMPLOYEE ====================
 const loginEmployee = async (req, res) => {
   try {
-    const { email, employeeId, password } = req.body;
+    const { email, employeeId, password, latitude, longitude } = req.body;
+
     if (!email && !employeeId) {
-      return res.status(400).json({ success: false, message: "Email or Employee ID is required" });
-    }
-    const query = email ? { email } : { employeeId };
-    const employee = await Employee.findOne(query);
-    if (!employee) {
-      return res.status(404).json({ success: false, message: "Employee not found" });
-    }
-    if (employee.password !== password) {
-      return res.status(401).json({ success: false, message: "Invalid password" });
+      return res.status(400).json({
+        success: false,
+        message: "Email or Employee ID is required"
+      });
     }
 
+<<<<<<< HEAD
+=======
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "Latitude and Longitude are required"
+      });
+    }
+
+>>>>>>> 3b06757deec74b5b705759021beb0b292339f594
+    const query = email ? { email } : { employeeId };
+    const employee = await Employee.findOne(query);
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found"
+      });
+    }
+
+    if (employee.password !== password) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid password"
+      });
+    }
+
+<<<<<<< HEAD
+    // Update employee location on every login if coordinates are provided
+    if (latitude !== undefined && latitude !== null && longitude !== undefined && longitude !== null) {
+      employee.latitude = latitude;
+      employee.longitude = longitude;
+      await employee.save();
+    }
+=======
+    // ✅ Get address from coordinates
+    const address = await getAddressFromCoords(latitude, longitude);
+
+    // ⭐ Update employee location on login WITH ADDRESS
+    employee.latitude = latitude;
+    employee.longitude = longitude;
+    employee.address = address; // ✅ CURRENT ADDRESS
+    employee.lastLoginLocation = {
+      latitude: latitude,
+      longitude: longitude,
+      timestamp: new Date(),
+      address: address // ✅ LOGIN LOCATION ADDRESS
+    };
+    await employee.save();
+>>>>>>> 3b06757deec74b5b705759021beb0b292339f594
+
     res.json({
-      success: true, message: "Login successful",
+      success: true,
+      message: "Login successful",
       employee: {
-        id: employee._id, name: employee.name, email: employee.email,
-        role: employee.role, department: employee.department,
-        employeeId: employee.employeeId, joinDate: employee.joinDate,
-        permissions: employee.permissions || []
+        id: employee._id,
+        name: employee.name,
+        email: employee.email,
+        role: employee.role,
+        department: employee.department,
+        employeeId: employee.employeeId,
+        joinDate: employee.joinDate,
+        permissions: employee.permissions || [],
+        latitude: employee.latitude,
+        longitude: employee.longitude,
+        address: employee.address, // ✅ Return address
+        lastLoginLocation: employee.lastLoginLocation,
+        lastCheckInLocation: employee.lastCheckInLocation,
+        lastCheckOutLocation: employee.lastCheckOutLocation
       },
     });
+
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error", error: error.message });
+    console.error("Login error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message
+    });
   }
 };
+
 
 // ==================== ASSIGN LOCATION ====================
 const assignLocation = async (req, res) => {
@@ -3742,6 +3925,197 @@ const verifyFace = async (req, res) => {
   }
 };
 
+
+
+// ─── UPDATE EMPLOYEE LOCATION ───
+// PUT /api/employees/update-location/:employeeId
+const updateLocation = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { latitude, longitude } = req.body;
+
+    // Validate
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Employee ID is required'
+      });
+    }
+
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Latitude and longitude are required'
+      });
+    }
+
+    // Find and update employee
+    const employee = await Employee.findOneAndUpdate(
+      { 
+        $or: [
+          { _id: employeeId },
+          { employeeId: employeeId }
+        ]
+      },
+      {
+        $set: {
+          latitude: latitude,
+          longitude: longitude,
+          lastLocationUpdate: new Date()
+        }
+      },
+      { new: true }
+    ).select('-password -resetPasswordToken -resetPasswordExpires');
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Location updated successfully',
+      data: {
+        employeeId: employee.employeeId,
+        name: employee.name,
+        latitude: employee.latitude,
+        longitude: employee.longitude,
+        lastLocationUpdate: employee.lastLocationUpdate
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating location:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to update location'
+    });
+  }
+};
+
+// ─── GET EMPLOYEE LOCATION ───
+// GET /api/employees/get-location/:employeeId
+const getLocation = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Employee ID is required'
+      });
+    }
+
+    const employee = await Employee.findOne(
+      { 
+        $or: [
+          { _id: employeeId },
+          { employeeId: employeeId }
+        ]
+      }
+    ).select('employeeId name email department latitude longitude lastLocationUpdate');
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        employeeId: employee.employeeId,
+        name: employee.name,
+        email: employee.email,
+        department: employee.department,
+        latitude: employee.latitude || null,
+        longitude: employee.longitude || null,
+        lastLocationUpdate: employee.lastLocationUpdate || null
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching location:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch location'
+    });
+  }
+};
+
+
+
+const getAllEmployeeLocations = async (req, res) => {
+  try {
+    const employees = await Employee.find(
+      {
+        latitude: { $exists: true, $ne: null },
+        longitude: { $exists: true, $ne: null },
+      }
+    );
+
+    // ─── Directly map from database ───
+    const employeeData = employees.map(emp => ({
+      _id: emp._id,
+      name: emp.name,
+      email: emp.email,
+      phone: emp.phone,
+      employeeId: emp.employeeId,
+      department: emp.department,
+      role: emp.role,
+      latitude: emp.latitude,
+      longitude: emp.longitude,
+      address: emp.address || null,
+      lastLocationUpdate: emp.lastLocationUpdate,
+      lastLoginLocation: {
+        latitude: emp.lastLoginLocation?.latitude || null,
+        longitude: emp.lastLoginLocation?.longitude || null,
+        timestamp: emp.lastLoginLocation?.timestamp || null,
+        address: emp.lastLoginLocation?.address || null
+      },
+      lastCheckInLocation: {
+        latitude: emp.lastCheckInLocation?.latitude || null,
+        longitude: emp.lastCheckInLocation?.longitude || null,
+        timestamp: emp.lastCheckInLocation?.timestamp || null,
+        address: emp.lastCheckInLocation?.address || null
+      },
+      lastCheckOutLocation: {
+        latitude: emp.lastCheckOutLocation?.latitude || null,
+        longitude: emp.lastCheckOutLocation?.longitude || null,
+        timestamp: emp.lastCheckOutLocation?.timestamp || null,
+        address: emp.lastCheckOutLocation?.address || null
+      },
+      locationHistory: emp.locationHistory || [],
+      status: emp.status,
+      profileImage: emp.profileImage,
+    }));
+
+    const totalEmployees = employeeData.length;
+    const withAddress = employeeData.filter(e => e.address).length;
+
+    res.status(200).json({
+      success: true,
+      count: totalEmployees,
+      stats: {
+        total: totalEmployees,
+        withAddress: withAddress,
+        withoutAddress: totalEmployees - withAddress,
+      },
+      employees: employeeData,
+    });
+  } catch (error) {
+    console.error("Employee Location Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch employee locations",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   getEmployeeByPhone,
   addEmployee,
@@ -3781,7 +4155,10 @@ module.exports = {
   updateIssue,
   deleteIssue,
   uploadEmployeeFace,
-  verifyFace
+  verifyFace,
+  updateLocation,
+  getLocation,
+  getAllEmployeeLocations
 
 };
 

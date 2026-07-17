@@ -47,7 +47,6 @@ const taskSchema = new mongoose.Schema(
       },
     ],
 
-    // ─── CHANGED: department as ObjectId ───
     department: {
       type: String,
       default: null,
@@ -72,20 +71,17 @@ const taskSchema = new mongoose.Schema(
       max: 100,
     },
 
-    // ─── Frequency as Array ───
     frequency: {
       type: [String],
       enum: ["One Time", "Daily", "Weekly", "Monthly"],
       default: ["One Time"],
     },
 
-    // ─── Submit Date ───
     submitDate: {
       type: Date,
       default: null,
     },
 
-    // ─── Subtasks ───
     subtasks: [
       {
         name: {
@@ -120,6 +116,12 @@ const taskSchema = new mongoose.Schema(
         },
       },
     ],
+
+    // ─── ✅ IMPORTANT: Employee-wise subtask progress tracking ───
+employeeSubtaskProgress: {
+  type: mongoose.Schema.Types.Mixed,  // ✅ Mixed type
+  default: {}
+},
 
     voiceNote: {
       type: String,
