@@ -2009,8 +2009,6 @@ const loginEmployee = async (req, res) => {
       });
     }
 
-<<<<<<< HEAD
-=======
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({
         success: false,
@@ -2018,7 +2016,6 @@ const loginEmployee = async (req, res) => {
       });
     }
 
->>>>>>> 3b06757deec74b5b705759021beb0b292339f594
     const query = email ? { email } : { employeeId };
     const employee = await Employee.findOne(query);
 
@@ -2036,29 +2033,22 @@ const loginEmployee = async (req, res) => {
       });
     }
 
-<<<<<<< HEAD
-    // Update employee location on every login if coordinates are provided
-    if (latitude !== undefined && latitude !== null && longitude !== undefined && longitude !== null) {
-      employee.latitude = latitude;
-      employee.longitude = longitude;
-      await employee.save();
-    }
-=======
-    // ✅ Get address from coordinates
+    // Get address from coordinates
     const address = await getAddressFromCoords(latitude, longitude);
 
-    // ⭐ Update employee location on login WITH ADDRESS
+    // Update employee location
     employee.latitude = latitude;
     employee.longitude = longitude;
-    employee.address = address; // ✅ CURRENT ADDRESS
+    employee.address = address;
+
     employee.lastLoginLocation = {
-      latitude: latitude,
-      longitude: longitude,
+      latitude,
+      longitude,
       timestamp: new Date(),
-      address: address // ✅ LOGIN LOCATION ADDRESS
+      address
     };
+
     await employee.save();
->>>>>>> 3b06757deec74b5b705759021beb0b292339f594
 
     res.json({
       success: true,
@@ -2074,7 +2064,7 @@ const loginEmployee = async (req, res) => {
         permissions: employee.permissions || [],
         latitude: employee.latitude,
         longitude: employee.longitude,
-        address: employee.address, // ✅ Return address
+        address: employee.address,
         lastLoginLocation: employee.lastLoginLocation,
         lastCheckInLocation: employee.lastCheckInLocation,
         lastCheckOutLocation: employee.lastCheckOutLocation
@@ -2083,6 +2073,7 @@ const loginEmployee = async (req, res) => {
 
   } catch (error) {
     console.error("Login error:", error);
+
     res.status(500).json({
       success: false,
       message: "Server Error",
@@ -2090,7 +2081,6 @@ const loginEmployee = async (req, res) => {
     });
   }
 };
-
 
 // ==================== ASSIGN LOCATION ====================
 const assignLocation = async (req, res) => {

@@ -108,6 +108,8 @@ app.use("/api/attendancesummary", require("./routes/attendancesummary.routes"));
 app.use("/api/salary", require("./routes/salary.routes"));
 app.use("/api/user-activity", require("./routes/userActivity.routes"));
 app.use("/api/expense", require("./routes/expense.routes"));
+app.use("/api/call-data", require("./routes/callData.routes"));
+app.use("/api/visit-targets", require("./routes/visitTarget.routes"));
 app.use("/api/holidays", require("./routes/holiday.routes"));
 app.use("/api/tasks", require("./routes/task.routes"));
 app.use("/api/employee/tasks", require("./routes/employeeTask.routes"));
