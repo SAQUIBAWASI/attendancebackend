@@ -5295,3 +5295,344 @@
 [2026-07-18T13:54:02.422Z] [INFO]    66. "test" - Status: Pending - Priority: Medium
 [2026-07-18T13:54:02.423Z] [SCHEDULE]    📅 Next execution: Monday, 20 July 2026 at 12:00:00 am
 [2026-07-18T13:54:02.424Z] [SCHEDULE]    ⏳ Time remaining: 28h 35m 57s
+[2026-07-18T14:20:29.326Z] [INFO] ========================================
+[2026-07-18T14:20:29.327Z] [INFO] 🔄 INITIALIZING DAILY TASK REPEATER JOB
+[2026-07-18T14:20:29.328Z] [INFO] ========================================
+[2026-07-18T14:20:29.351Z] [SCHEDULE] ⏰ Job will run daily at 12:00 AM IST (Monday, 20 July 2026 at 12:00:00 am)
+[2026-07-18T14:20:29.359Z] [SUCCESS] ✅ Daily Task Repeater Job initialized successfully!
+[2026-07-18T14:20:32.440Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-18T14:20:32.440Z] [INFO]    Total Daily Tasks: 66
+[2026-07-18T14:20:32.441Z] [INFO]    📋 Task List:
+[2026-07-18T14:20:32.441Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-18T14:20:32.442Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.442Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.442Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.443Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-18T14:20:32.443Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-18T14:20:32.443Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.444Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.444Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.444Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.445Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.445Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.447Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-18T14:20:32.448Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.449Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.449Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.450Z] [INFO]    17. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.451Z] [INFO]    18. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.451Z] [INFO]    19. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.452Z] [INFO]    20. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.453Z] [INFO]    21. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.454Z] [INFO]    22. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.455Z] [INFO]    23. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.455Z] [INFO]    24. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.456Z] [INFO]    25. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.456Z] [INFO]    26. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.456Z] [INFO]    27. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.457Z] [INFO]    28. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.457Z] [INFO]    29. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.458Z] [INFO]    30. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.458Z] [INFO]    31. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.458Z] [INFO]    32. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.459Z] [INFO]    33. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.459Z] [INFO]    34. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.460Z] [INFO]    35. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.460Z] [INFO]    36. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.460Z] [INFO]    37. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.461Z] [INFO]    38. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.461Z] [INFO]    39. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.461Z] [INFO]    40. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.462Z] [INFO]    41. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.464Z] [INFO]    42. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.465Z] [INFO]    43. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.465Z] [INFO]    44. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.466Z] [INFO]    45. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.467Z] [INFO]    46. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.468Z] [INFO]    47. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.468Z] [INFO]    48. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.469Z] [INFO]    49. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.469Z] [INFO]    50. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.470Z] [INFO]    51. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.472Z] [INFO]    52. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.472Z] [INFO]    53. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.473Z] [INFO]    54. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.473Z] [INFO]    55. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.474Z] [INFO]    56. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.474Z] [INFO]    57. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.474Z] [INFO]    58. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.475Z] [INFO]    59. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.475Z] [INFO]    60. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.476Z] [INFO]    61. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.476Z] [INFO]    62. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.477Z] [INFO]    63. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.478Z] [INFO]    64. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:32.478Z] [INFO]    65. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.480Z] [INFO]    66. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:32.481Z] [SCHEDULE]    📅 Next execution: Monday, 20 July 2026 at 12:00:00 am
+[2026-07-18T14:20:32.482Z] [SCHEDULE]    ⏳ Time remaining: 28h 9m 27s
+[2026-07-18T14:20:34.371Z] [INFO] 🔄 Running initial task check on startup...
+[2026-07-18T14:20:34.420Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-18T14:20:34.420Z] [INFO]    Total Daily Tasks: 66
+[2026-07-18T14:20:34.421Z] [INFO]    📋 Task List:
+[2026-07-18T14:20:34.421Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-18T14:20:34.422Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.422Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.422Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.423Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-18T14:20:34.423Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-18T14:20:34.423Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.424Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.424Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.424Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.425Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.425Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.425Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-18T14:20:34.426Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.426Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.427Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.427Z] [INFO]    17. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.428Z] [INFO]    18. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.428Z] [INFO]    19. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.428Z] [INFO]    20. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.429Z] [INFO]    21. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.430Z] [INFO]    22. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.432Z] [INFO]    23. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.432Z] [INFO]    24. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.433Z] [INFO]    25. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.434Z] [INFO]    26. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.434Z] [INFO]    27. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.435Z] [INFO]    28. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.435Z] [INFO]    29. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.436Z] [INFO]    30. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.437Z] [INFO]    31. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.437Z] [INFO]    32. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.437Z] [INFO]    33. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.438Z] [INFO]    34. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.438Z] [INFO]    35. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.439Z] [INFO]    36. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.439Z] [INFO]    37. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.440Z] [INFO]    38. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.440Z] [INFO]    39. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.440Z] [INFO]    40. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.441Z] [INFO]    41. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.441Z] [INFO]    42. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.442Z] [INFO]    43. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.442Z] [INFO]    44. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.442Z] [INFO]    45. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.443Z] [INFO]    46. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.443Z] [INFO]    47. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.444Z] [INFO]    48. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.444Z] [INFO]    49. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.444Z] [INFO]    50. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.445Z] [INFO]    51. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.445Z] [INFO]    52. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.446Z] [INFO]    53. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.447Z] [INFO]    54. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.449Z] [INFO]    55. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.449Z] [INFO]    56. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.450Z] [INFO]    57. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.450Z] [INFO]    58. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.450Z] [INFO]    59. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.451Z] [INFO]    60. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.451Z] [INFO]    61. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.452Z] [INFO]    62. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.453Z] [INFO]    63. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.453Z] [INFO]    64. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-18T14:20:34.453Z] [INFO]    65. "new task" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.454Z] [INFO]    66. "test" - Status: Pending - Priority: Medium
+[2026-07-18T14:20:34.454Z] [SCHEDULE]    📅 Next execution: Monday, 20 July 2026 at 12:00:00 am
+[2026-07-18T14:20:34.455Z] [SCHEDULE]    ⏳ Time remaining: 28h 9m 25s
+[2026-07-18T14:30:52.269Z] [INFO] ========================================
+[2026-07-18T14:30:52.272Z] [INFO] 🔄 INITIALIZING DAILY TASK REPEATER JOB
+[2026-07-18T14:30:52.273Z] [INFO] ========================================
+[2026-07-18T14:30:52.295Z] [SCHEDULE] ⏰ Job will run daily at 12:00 AM IST (Sunday, 19 July 2026 at 12:00:00 am)
+[2026-07-18T14:30:52.303Z] [SUCCESS] ✅ Daily Task Repeater Job initialized successfully!
+[2026-07-22T05:19:37.023Z] [INFO] ========================================
+[2026-07-22T05:19:37.024Z] [INFO] 🔄 INITIALIZING DAILY TASK REPEATER JOB
+[2026-07-22T05:19:37.025Z] [INFO] ========================================
+[2026-07-22T05:19:37.161Z] [SCHEDULE] ⏰ Job will run daily at 12:00 AM IST (Friday, 24 July 2026 at 12:00:00 am)
+[2026-07-22T05:19:37.170Z] [SUCCESS] ✅ Daily Task Repeater Job initialized successfully!
+[2026-07-22T05:19:40.239Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-22T05:19:40.240Z] [INFO]    Total Daily Tasks: 86
+[2026-07-22T05:19:40.240Z] [INFO]    📋 Task List:
+[2026-07-22T05:19:40.241Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-22T05:19:40.243Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.244Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.244Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.245Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-22T05:19:40.247Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-22T05:19:40.248Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.248Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.249Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.249Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.250Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.250Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.250Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-22T05:19:40.251Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.251Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.251Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.252Z] [INFO]    17. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.252Z] [INFO]    18. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.253Z] [INFO]    19. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.253Z] [INFO]    20. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.254Z] [INFO]    21. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.254Z] [INFO]    22. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.255Z] [INFO]    23. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.255Z] [INFO]    24. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.256Z] [INFO]    25. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.256Z] [INFO]    26. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.257Z] [INFO]    27. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.260Z] [INFO]    28. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.261Z] [INFO]    29. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.262Z] [INFO]    30. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.263Z] [INFO]    31. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.264Z] [INFO]    32. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.265Z] [INFO]    33. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.266Z] [INFO]    34. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.266Z] [INFO]    35. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.267Z] [INFO]    36. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.268Z] [INFO]    37. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.268Z] [INFO]    38. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.270Z] [INFO]    39. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.271Z] [INFO]    40. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.272Z] [INFO]    41. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.272Z] [INFO]    42. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.272Z] [INFO]    43. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.273Z] [INFO]    44. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.273Z] [INFO]    45. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.278Z] [INFO]    46. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.280Z] [INFO]    47. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.282Z] [INFO]    48. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.282Z] [INFO]    49. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.283Z] [INFO]    50. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.284Z] [INFO]    51. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.285Z] [INFO]    52. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.286Z] [INFO]    53. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.287Z] [INFO]    54. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.287Z] [INFO]    55. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.288Z] [INFO]    56. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.288Z] [INFO]    57. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.288Z] [INFO]    58. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.289Z] [INFO]    59. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.290Z] [INFO]    60. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.291Z] [INFO]    61. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.297Z] [INFO]    62. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.298Z] [INFO]    63. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.300Z] [INFO]    64. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.300Z] [INFO]    65. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.301Z] [INFO]    66. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.302Z] [INFO]    67. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.303Z] [INFO]    68. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.349Z] [INFO]    69. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.350Z] [INFO]    70. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.350Z] [INFO]    71. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.358Z] [INFO]    72. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.365Z] [INFO]    73. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.366Z] [INFO]    74. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.367Z] [INFO]    75. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.367Z] [INFO]    76. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.368Z] [INFO]    77. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.368Z] [INFO]    78. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.369Z] [INFO]    79. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.369Z] [INFO]    80. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.370Z] [INFO]    81. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.370Z] [INFO]    82. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.371Z] [INFO]    83. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.371Z] [INFO]    84. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:40.372Z] [INFO]    85. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.372Z] [INFO]    86. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:40.373Z] [SCHEDULE]    📅 Next execution: Friday, 24 July 2026 at 12:00:00 am
+[2026-07-22T05:19:40.373Z] [SCHEDULE]    ⏳ Time remaining: 37h 10m 19s
+[2026-07-22T05:19:42.182Z] [INFO] 🔄 Running initial task check on startup...
+[2026-07-22T05:19:42.280Z] [INFO] 📊 CURRENT DAILY TASKS STATUS:
+[2026-07-22T05:19:42.280Z] [INFO]    Total Daily Tasks: 86
+[2026-07-22T05:19:42.281Z] [INFO]    📋 Task List:
+[2026-07-22T05:19:42.282Z] [INFO]    1. "Sample Collection" - Status: In Progress - Priority: High
+[2026-07-22T05:19:42.282Z] [INFO]    2. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.283Z] [INFO]    3. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.283Z] [INFO]    4. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.283Z] [INFO]    5. "new task" - Status: Completed - Priority: Medium
+[2026-07-22T05:19:42.284Z] [INFO]    6. "test" - Status: Completed - Priority: Medium
+[2026-07-22T05:19:42.284Z] [INFO]    7. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.285Z] [INFO]    8. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.285Z] [INFO]    9. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.285Z] [INFO]    10. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.286Z] [INFO]    11. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.286Z] [INFO]    12. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.287Z] [INFO]    13. "Lab Collection Report" - Status: Completed - Priority: High
+[2026-07-22T05:19:42.287Z] [INFO]    14. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.287Z] [INFO]    15. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.288Z] [INFO]    16. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.288Z] [INFO]    17. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.289Z] [INFO]    18. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.289Z] [INFO]    19. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.289Z] [INFO]    20. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.290Z] [INFO]    21. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.290Z] [INFO]    22. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.290Z] [INFO]    23. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.291Z] [INFO]    24. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.292Z] [INFO]    25. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.293Z] [INFO]    26. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.294Z] [INFO]    27. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.295Z] [INFO]    28. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.296Z] [INFO]    29. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.297Z] [INFO]    30. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.298Z] [INFO]    31. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.299Z] [INFO]    32. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.299Z] [INFO]    33. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.300Z] [INFO]    34. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.300Z] [INFO]    35. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.301Z] [INFO]    36. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.301Z] [INFO]    37. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.301Z] [INFO]    38. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.302Z] [INFO]    39. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.302Z] [INFO]    40. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.302Z] [INFO]    41. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.303Z] [INFO]    42. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.303Z] [INFO]    43. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.304Z] [INFO]    44. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.304Z] [INFO]    45. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.305Z] [INFO]    46. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.305Z] [INFO]    47. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.305Z] [INFO]    48. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.306Z] [INFO]    49. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.306Z] [INFO]    50. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.307Z] [INFO]    51. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.307Z] [INFO]    52. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.307Z] [INFO]    53. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.308Z] [INFO]    54. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.309Z] [INFO]    55. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.310Z] [INFO]    56. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.311Z] [INFO]    57. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.311Z] [INFO]    58. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.312Z] [INFO]    59. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.313Z] [INFO]    60. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.313Z] [INFO]    61. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.314Z] [INFO]    62. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.315Z] [INFO]    63. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.316Z] [INFO]    64. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.317Z] [INFO]    65. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.317Z] [INFO]    66. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.318Z] [INFO]    67. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.318Z] [INFO]    68. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.319Z] [INFO]    69. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.319Z] [INFO]    70. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.320Z] [INFO]    71. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.320Z] [INFO]    72. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.320Z] [INFO]    73. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.321Z] [INFO]    74. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.321Z] [INFO]    75. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.322Z] [INFO]    76. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.322Z] [INFO]    77. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.322Z] [INFO]    78. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.323Z] [INFO]    79. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.323Z] [INFO]    80. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.324Z] [INFO]    81. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.324Z] [INFO]    82. "Sample Collection" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.326Z] [INFO]    83. "Lab Collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.326Z] [INFO]    84. "Clinic collection Report" - Status: Pending - Priority: High
+[2026-07-22T05:19:42.327Z] [INFO]    85. "new task" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.328Z] [INFO]    86. "test" - Status: Pending - Priority: Medium
+[2026-07-22T05:19:42.331Z] [SCHEDULE]    📅 Next execution: Friday, 24 July 2026 at 12:00:00 am
+[2026-07-22T05:19:42.332Z] [SCHEDULE]    ⏳ Time remaining: 37h 10m 17s
