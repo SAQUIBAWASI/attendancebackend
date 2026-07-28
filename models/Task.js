@@ -36,7 +36,7 @@ const taskSchema = new mongoose.Schema(
 
     assignType: {
       type: String,
-      enum: ["ALL", "DEPARTMENT", "INDIVIDUAL", "SELF"],
+      enum: ["ALL", "DEPARTMENT", "INDIVIDUAL", "SELF", "TEAM"], // ✅ TEAM added
       default: "DEPARTMENT",
     },
 
@@ -46,6 +46,13 @@ const taskSchema = new mongoose.Schema(
         ref: "Employee",
       },
     ],
+
+    // ✅ NEW FIELD - Team reference
+    team: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Team",
+      default: null,
+    },
 
     department: {
       type: String,
@@ -117,11 +124,10 @@ const taskSchema = new mongoose.Schema(
       },
     ],
 
-    // ─── ✅ IMPORTANT: Employee-wise subtask progress tracking ───
-employeeSubtaskProgress: {
-  type: mongoose.Schema.Types.Mixed,  // ✅ Mixed type
-  default: {}
-},
+    employeeSubtaskProgress: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {}
+    },
 
     voiceNote: {
       type: String,
@@ -139,31 +145,26 @@ employeeSubtaskProgress: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Employee",
         },
-
         updateText: {
           type: String,
           trim: true,
         },
-
         progress: {
           type: Number,
           default: 0,
           min: 0,
           max: 100,
         },
-
         remark: {
           type: String,
           default: "",
         },
-
         attachments: [
           {
             fileName: String,
             fileUrl: String,
           },
         ],
-
         updatedAt: {
           type: Date,
           default: Date.now,
@@ -177,51 +178,41 @@ employeeSubtaskProgress: {
           address: {
             type: String,
           },
-
           latitude: {
             type: Number,
           },
-
           longitude: {
             type: Number,
           },
         },
-
         distance: {
           type: Number,
           default: 0,
         },
-
         expenseAmount: {
           type: Number,
           default: 0,
         },
-
         description: {
           type: String,
         },
-
         receiptImage: {
           type: String,
           default: null,
         },
-
         expenseDate: {
           type: Date,
           default: Date.now,
         },
-
         addedBy: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Employee",
         },
-
         approvalStatus: {
           type: String,
           enum: ["Pending", "Approved", "Rejected"],
           default: "Pending",
         },
-
         approvedBy: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Employee",
@@ -235,11 +226,9 @@ employeeSubtaskProgress: {
         fileName: {
           type: String,
         },
-
         fileUrl: {
           type: String,
         },
-
         uploadedAt: {
           type: Date,
           default: Date.now,
@@ -253,27 +242,22 @@ employeeSubtaskProgress: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Employee",
         },
-
         issueTitle: {
           type: String,
         },
-
         issueDescription: {
           type: String,
         },
-
         priority: {
           type: String,
           enum: ["Low", "Medium", "High", "Critical"],
           default: "Medium",
         },
-
         status: {
           type: String,
           enum: ["Open", "In Progress", "Resolved", "Closed"],
           default: "Open",
         },
-
         reportedAt: {
           type: Date,
           default: Date.now,
@@ -285,5 +269,9 @@ employeeSubtaskProgress: {
     timestamps: true,
   }
 );
+
+// ✅ Index for better query performance
+taskSchema.index({ team: 1 });
+taskSchema.index({ assignType: 1 });
 
 module.exports = mongoose.model("Task", taskSchema);

@@ -576,6 +576,7 @@ const Admin = require("../models/Admin");
 const Department = require("../models/Department");
 const Project = require("../models/Project");
 const TaskNotification = require("../models/TaskNotification");
+const Team = require("../models/Team");
 const mongoose = require("mongoose");
 
 // ============================================
@@ -589,12 +590,13 @@ exports.createTask = async (req, res) => {
       description,
       projectId,
       createdBy,
-      createdByType = "admin",
+      createdByType = "employee",
 
-      // Frontend se department name aayega (String)
-      department,
-      assignedTo,
-
+      // Frontend se aane wale fields
+      assignType,        // INDIVIDUAL, TEAM, DEPARTMENT, ALL
+      department,        // String - department name
+      team,              // String - team ID
+      assignedTo,        // Array of employee IDs
       priority,
       frequency,
       submitDate,
@@ -610,7 +612,6 @@ exports.createTask = async (req, res) => {
     // ============================================
 
     let voiceNote = null;
-
     if (req.file) {
       voiceNote = req.file.path.replace(/\\/g, "/");
     }
@@ -624,14 +625,11 @@ exports.createTask = async (req, res) => {
       try {
         assignedTo = JSON.parse(assignedTo);
       } catch (error) {
-        return res.status(400).json({
-          success: false,
-          message: "assignedTo must be a valid array",
-        });
+        assignedTo = [];
       }
     }
 
-    // Parse frequency (array)
+    // Parse frequency
     if (typeof frequency === "string") {
       try {
         frequency = JSON.parse(frequency);
@@ -690,10 +688,10 @@ exports.createTask = async (req, res) => {
       });
     }
 
-    if (!department) {
+    if (!createdBy) {
       return res.status(400).json({
         success: false,
-        message: "department is required",
+        message: "createdBy is required",
       });
     }
 
@@ -714,39 +712,137 @@ exports.createTask = async (req, res) => {
     let employeeIds = [];
 
     // ============================================
-    // ASSIGNMENT LOGIC
+    // ASSIGNMENT LOGIC BASED ON assignType
     // ============================================
 
-    // If assignedTo is provided, use those employees
-    if (assignedTo && assignedTo.length > 0) {
-      // Validate employees exist and are active
-      const validEmployees = await Employee.find({
-        _id: { $in: assignedTo },
-        status: "active",
-        department: department, // String se compare
-      }).select("_id");
+    switch (assignType) {
+      case 'INDIVIDUAL': {
+        // Individual employees selected
+        if (!assignedTo || assignedTo.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Please select at least one employee for individual assignment",
+          });
+        }
 
-      if (validEmployees.length !== assignedTo.length) {
+        // Validate employees exist and are active
+        const validEmployees = await Employee.find({
+          _id: { $in: assignedTo },
+          status: "active",
+        }).select("_id");
+
+        if (validEmployees.length !== assignedTo.length) {
+          return res.status(400).json({
+            success: false,
+            message: "Some employee ids are invalid or inactive",
+          });
+        }
+        employeeIds = assignedTo;
+        break;
+      }
+
+      case 'TEAM': {
+        // Team assignment
+        if (!team) {
+          return res.status(400).json({
+            success: false,
+            message: "Please select a team",
+          });
+        }
+
+        // Find team and get members
+        const teamData = await Team.findById(team).populate('members', '_id');
+        if (!teamData) {
+          return res.status(404).json({
+            success: false,
+            message: "Team not found",
+          });
+        }
+
+        if (!teamData.members || teamData.members.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Team has no members",
+          });
+        }
+
+        employeeIds = teamData.members.map(member => member._id);
+        break;
+      }
+
+      case 'DEPARTMENT': {
+        // Department assignment
+        if (!department) {
+          return res.status(400).json({
+            success: false,
+            message: "Please select a department",
+          });
+        }
+
+        // Get all active employees from department
+        const employees = await Employee.find({
+          department: department,
+          status: "active",
+        }).select("_id");
+
+        if (employees.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: "No active employees found in selected department",
+          });
+        }
+        employeeIds = employees.map((emp) => emp._id);
+        break;
+      }
+
+      case 'ALL': {
+        // Assign to all active employees
+        const allEmployees = await Employee.find({
+          status: "active",
+        }).select("_id");
+
+        if (allEmployees.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: "No active employees found",
+          });
+        }
+        employeeIds = allEmployees.map((emp) => emp._id);
+        break;
+      }
+
+      default: {
+        // Default: try to use assignedTo, if not then department
+        if (assignedTo && assignedTo.length > 0) {
+          const validEmployees = await Employee.find({
+            _id: { $in: assignedTo },
+            status: "active",
+          }).select("_id");
+
+          if (validEmployees.length === assignedTo.length) {
+            employeeIds = assignedTo;
+            break;
+          }
+        }
+
+        // Fallback to department
+        if (department) {
+          const employees = await Employee.find({
+            department: department,
+            status: "active",
+          }).select("_id");
+
+          if (employees.length > 0) {
+            employeeIds = employees.map((emp) => emp._id);
+            break;
+          }
+        }
+
         return res.status(400).json({
           success: false,
-          message: "Some employee ids are invalid, inactive, or not in the selected department",
+          message: "No valid assignment targets found. Please select employees, team, or department.",
         });
       }
-      employeeIds = assignedTo;
-    } else {
-      // If no employees selected, get all active from department
-      const employees = await Employee.find({
-        department: department, // String se compare
-        status: "active",
-      }).select("_id");
-
-      if (employees.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "No active employees found in selected department",
-        });
-      }
-      employeeIds = employees.map((emp) => emp._id);
     }
 
     // ============================================
@@ -773,19 +869,20 @@ exports.createTask = async (req, res) => {
       description,
       projectId: projectId || null,
       createdBy,
-      createdByType,
-      assignType: "DEPARTMENT",
+      createdByType: createdByType || "employee",
+      assignType: assignType || "INDIVIDUAL",
       assignedTo: employeeIds,
-      department: department, // String
+      department: department || null,
+      team: team || null,
       priority: priority || "Medium",
       frequency: frequency,
       submitDate: submitDate ? new Date(submitDate) : null,
       voiceNote,
-      remark,
+      remark: remark || '',
       subtasks: processedSubtasks,
-      attachments,
-      employeeUpdates,
-      expenses,
+      attachments: attachments || [],
+      employeeUpdates: employeeUpdates || [],
+      expenses: expenses || [],
       progress: 0,
       status: "Pending"
     };
@@ -803,8 +900,8 @@ exports.createTask = async (req, res) => {
     // ============================================
     
     if (employeeIds.length > 0) {
-      const sender = await Employee.findById(createdBy).select("name");
-      const senderName = sender ? sender.name : 'Admin';
+      const sender = await Employee.findById(createdBy).select("fullName name");
+      const senderName = sender ? (sender.fullName || sender.name || 'User') : 'User';
       
       const submitDateStr = submitDate ? ` by ${new Date(submitDate).toLocaleDateString()}` : '';
       const priorityStr = priority ? ` (${priority} priority)` : '';
@@ -832,14 +929,35 @@ exports.createTask = async (req, res) => {
 
     const populatedTask = await Task.findById(task._id)
       .populate("projectId", "projectName status")
-      .populate("assignedTo", "fullName email employeeId")
-      .populate("employeeUpdates.employeeId", "fullName email")
-      .populate("expenses.addedBy", "fullName email");
+      .populate("assignedTo", "fullName name email employeeId department")
+      .populate("employeeUpdates.employeeId", "fullName name email")
+      .populate("expenses.addedBy", "fullName name email");
+
+    // Get assignment description for response
+    let assignmentDescription = '';
+    switch (assignType) {
+      case 'INDIVIDUAL':
+        assignmentDescription = `${employeeIds.length} individual employee(s)`;
+        break;
+      case 'TEAM':
+        const teamData = await Team.findById(team).select("teamName");
+        assignmentDescription = `team "${teamData ? teamData.teamName : team}" with ${employeeIds.length} members`;
+        break;
+      case 'DEPARTMENT':
+        assignmentDescription = `department "${department}" with ${employeeIds.length} employees`;
+        break;
+      case 'ALL':
+        assignmentDescription = `all ${employeeIds.length} employees`;
+        break;
+      default:
+        assignmentDescription = `${employeeIds.length} employee(s)`;
+    }
 
     return res.status(201).json({
       success: true,
-      message: `Task assigned to ${employeeIds.length} employee(s) successfully`,
+      message: `Task assigned to ${assignmentDescription} successfully`,
       assignedCount: employeeIds.length,
+      assignType: assignType,
       task: populatedTask,
     });
 
@@ -862,6 +980,7 @@ exports.getAllTasks = async (req, res) => {
       department,
       assignType,
       createdBy,
+      team,           // ✅ Team filter add kiya
       search,
       page = 1,
       limit = 10,
@@ -892,6 +1011,11 @@ exports.getAllTasks = async (req, res) => {
       filter.createdBy = createdBy;
     }
 
+    // ✅ Team filter
+    if (team) {
+      filter.team = team;
+    }
+
     // Search functionality
     if (search) {
       filter.$or = [
@@ -917,9 +1041,26 @@ exports.getAllTasks = async (req, res) => {
     const tasks = await Task.find(filter)
       .populate("createdBy", "name email phone employeeId")
       .populate("assignedTo", "name email department profileImage employeeId")
-      .populate("employeeUpdates.employeeId", "name email employeeId phone")  // ✅ FIX: employeeUpdates populate
-      .populate("expenses.addedBy", "name email employeeId")  // ✅ FIX: expenses.addedBy populate
-      .populate("reportedIssues.employeeId", "name email employeeId")  // ✅ FIX: reportedIssues populate
+      .populate("employeeUpdates.employeeId", "name email employeeId phone")
+      .populate("expenses.addedBy", "name email employeeId")
+      .populate("reportedIssues.employeeId", "name email employeeId")
+      // ✅ TEAM populate with members
+      .populate({
+        path: "team",
+        select: "teamName description teamLead members department status",
+        populate: [
+          {
+            path: "teamLead",
+            model: "Employee",
+            select: "name email employeeId profileImage"
+          },
+          {
+            path: "members",
+            model: "Employee",
+            select: "name email employeeId department profileImage"
+          }
+        ]
+      })
       .sort(sortOptions)
       .skip(skip)
       .limit(limitNumber);
@@ -954,7 +1095,6 @@ exports.getAllTasks = async (req, res) => {
     });
   }
 };
-
 // ============================================
 // 3. GET TASK BY ID (Admin)
 // ============================================

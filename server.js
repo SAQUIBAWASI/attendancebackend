@@ -120,6 +120,9 @@ app.use("/api/client-requests", require("./routes/clientRequest.routes"));
 // ✅ Notifications
 app.use("/api/notifications", require("./routes/notification.routes"));
 
+
+app.use("/api/teams", require("./routes/team.routes"));
+
 // ✅ Simple Test Route to verify server update
 app.get("/api/test-application-routes", (req, res) => {
   res.json({ message: "Job Application Routes are active!" });
