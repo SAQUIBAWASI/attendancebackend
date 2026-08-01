@@ -257,7 +257,8 @@ const {
   verifyFace,
   updateLocation,
   getLocation,
-  getAllEmployeeLocations
+  getAllEmployeeLocations,
+  updateImageCaptureAttendance
 } = require("../controller/employee.controller");
 
 const router = express.Router();
@@ -339,5 +340,6 @@ router.get('/get-location/:employeeId', getLocation);
 
 router.get("/employee-locations", getAllEmployeeLocations);
 
+router.put('/update-image-capture', updateImageCaptureAttendance);
 
 module.exports = router;

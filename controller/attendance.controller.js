@@ -1440,9 +1440,18 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 
 
 
+// ==================== CHECK-IN WITH IMAGE ====================
 exports.checkIn = async (req, res) => {
   try {
     const { employeeId, employeeEmail, latitude, longitude, reason } = req.body;
+    
+    // ✅ Get image from multer and convert to custom path
+    let checkInImage = null;
+    if (req.file) {
+      // Convert Windows path to URL path
+      const fileName = req.file.filename;
+      checkInImage = `/uploads/attendanceimage/${fileName}`;
+    }
 
     if (!employeeId || !employeeEmail || !latitude || !longitude) {
       return res.status(400).json({ message: "Employee ID, email, and location are required" });
@@ -1459,12 +1468,12 @@ exports.checkIn = async (req, res) => {
     // ⭐ UPDATE: Save location in employee DB on check-in WITH ADDRESS
     employee.latitude = latitude;
     employee.longitude = longitude;
-    employee.address = address; // ✅ CURRENT ADDRESS
+    employee.address = address;
     employee.lastCheckInLocation = {
       latitude: latitude,
       longitude: longitude,
       timestamp: new Date(),
-      address: address // ✅ CHECK-IN LOCATION ADDRESS
+      address: address
     };
     await employee.save();
 
@@ -1510,6 +1519,7 @@ exports.checkIn = async (req, res) => {
     const attendanceData = {
       employeeId,
       employeeEmail,
+      name: employee.name || employeeEmail.split('@')[0],
       checkInTime: new Date(),
       latitude,
       longitude,
@@ -1517,6 +1527,7 @@ exports.checkIn = async (req, res) => {
       onsite,
       officeName: assignedLocation.name,
       status: "checked-in",
+      checkInImage: checkInImage, // ✅ Save check-in image with custom path
     };
 
     if (reason) {
@@ -1532,11 +1543,10 @@ exports.checkIn = async (req, res) => {
         : `✅ Check-in successful, ${employeeName} (Outside assigned location: ${distance}m away)`,
       attendance,
       employeeName: employeeName,
-      // ⭐ Return updated employee location WITH ADDRESS
       employeeLocation: {
         latitude: employee.latitude,
         longitude: employee.longitude,
-        address: employee.address, // ✅ Return address
+        address: employee.address,
         lastUpdated: employee.lastCheckInLocation?.timestamp || new Date()
       }
     });
@@ -1545,6 +1555,7 @@ exports.checkIn = async (req, res) => {
     res.status(500).json({ message: "Check-In failed", error: err.message });
   }
 };
+
 // exports.checkOut = async (req, res) => {
 //   try {
 //     const { employeeId, latitude, longitude, reason } = req.body;
@@ -2162,9 +2173,18 @@ exports.checkIn = async (req, res) => {
 
 
 
+// ==================== CHECK-OUT WITH IMAGE ====================
 exports.checkOut = async (req, res) => {
   try {
     const { employeeId, latitude, longitude, reason } = req.body;
+    
+    // ✅ Get image from multer and convert to custom path
+    let checkOutImage = null;
+    if (req.file) {
+      // Convert Windows path to URL path
+      const fileName = req.file.filename;
+      checkOutImage = `/uploads/attendanceimage/${fileName}`;
+    }
 
     if (!employeeId || latitude == null || longitude == null) {
       return res.status(400).json({ message: "Employee ID and location are required" });
@@ -2181,12 +2201,12 @@ exports.checkOut = async (req, res) => {
     // ⭐ UPDATE: Save location in employee DB on check-out WITH ADDRESS
     employee.latitude = latitude;
     employee.longitude = longitude;
-    employee.address = address; // ✅ CURRENT ADDRESS
+    employee.address = address;
     employee.lastCheckOutLocation = {
       latitude: latitude,
       longitude: longitude,
       timestamp: new Date(),
-      address: address // ✅ CHECK-OUT LOCATION ADDRESS
+      address: address
     };
     await employee.save();
 
@@ -2248,6 +2268,7 @@ exports.checkOut = async (req, res) => {
     existingCheckIn.longitude = longitude;
     existingCheckIn.distance = distance;
     existingCheckIn.onsite = onsite;
+    existingCheckIn.checkOutImage = checkOutImage; // ✅ Save check-out image with custom path
 
     if (!onsite) {
       existingCheckIn.reason = reason || "No reason provided";
@@ -2338,8 +2359,10 @@ exports.checkOut = async (req, res) => {
         checkoutLocation: {
           latitude: latitude,
           longitude: longitude,
-          address: address // ✅ ADDRESS IN METADATA
-        }
+          address: address
+        },
+        checkInImage: existingCheckIn.checkInImage,
+        checkOutImage: existingCheckIn.checkOutImage,
       },
     });
 
@@ -2356,11 +2379,10 @@ exports.checkOut = async (req, res) => {
         otHours: otHours.toFixed(2),
         otAmount: otAmount.toFixed(2),
       },
-      // ⭐ Return updated employee location WITH ADDRESS
       employeeLocation: {
         latitude: employee.latitude,
         longitude: employee.longitude,
-        address: employee.address, // ✅ Return address
+        address: employee.address,
         lastCheckIn: employee.lastCheckInLocation?.timestamp || null,
         lastCheckOut: employee.lastCheckOutLocation?.timestamp || new Date()
       }
@@ -2374,6 +2396,9 @@ exports.checkOut = async (req, res) => {
     });
   }
 };
+
+
+
 
 
 exports.checkInForQR = async (req, res) => {

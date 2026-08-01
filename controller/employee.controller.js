@@ -2121,7 +2121,7 @@ const getAssignedLocationByEmployeeId = async (req, res) => {
 };
 
 // ==================== UPDATE EMPLOYEE ====================
-// employee.controller.js - FIXED updateEmployee function
+// employee.controller.js - FIXED updateEmployee function with Image Attendance field
 
 const updateEmployee = async (req, res) => {
   try {
@@ -2154,7 +2154,7 @@ const updateEmployee = async (req, res) => {
       mongooseUpdate.$set[key] = updateData[key];
     });
 
-    // ✅ FIX: Check if salary is changing
+    // ✅ Check if salary is changing
     if (newSalary !== undefined && newSalary !== oldSalary && oldSalary > 0) {
       // ✅ Get effective date - if not provided, use current date
       let effectiveDate;
@@ -2197,22 +2197,38 @@ const updateEmployee = async (req, res) => {
         effectiveMonth: effectiveDate.getMonth() + 1,
         effectiveYear: effectiveDate.getFullYear(),
         reason: updateData.incrementReason || "Salary updated via Edit Employee",
-        isActive: true  // ✅ IMPORTANT: Set to true
+        isActive: true
       };
       
       existingEmployee.salaryIncrements.push(incrementRecord);
       mongooseUpdate.$set.salaryIncrements = existingEmployee.salaryIncrements;
     }
+
+    // ✅ NEW: Handle Image Attendance field
+    if (updateData.isAllowedImageCapturedAttendance !== undefined) {
+      // Convert string "true"/"false" to boolean
+      if (typeof updateData.isAllowedImageCapturedAttendance === 'string') {
+        mongooseUpdate.$set.isAllowedImageCapturedAttendance = updateData.isAllowedImageCapturedAttendance === 'true';
+      } else {
+        mongooseUpdate.$set.isAllowedImageCapturedAttendance = Boolean(updateData.isAllowedImageCapturedAttendance);
+      }
+    }
     
-    const updatedEmployee = await Employee.findByIdAndUpdate(id, mongooseUpdate, { new: true, runValidators: true });
+    const updatedEmployee = await Employee.findByIdAndUpdate(id, mongooseUpdate, { 
+      new: true, 
+      runValidators: true 
+    });
     
-    res.status(200).json({ success: true, message: "Employee updated successfully", employee: updatedEmployee });
+    res.status(200).json({ 
+      success: true, 
+      message: "Employee updated successfully", 
+      employee: updatedEmployee 
+    });
   } catch (error) {
     console.error("Update employee error:", error);
     res.status(500).json({ success: false, message: "Server error", error: error.message });
   }
 };
-
 // ==================== DELETE EMPLOYEE ====================
 const deleteEmployee = async (req, res) => {
   try {
@@ -4106,6 +4122,111 @@ const getAllEmployeeLocations = async (req, res) => {
   }
 };
 
+
+
+
+const updateImageCaptureAttendance = async (req, res) => {
+  try {
+    const { employeeId, employeeIds, isAllowed } = req.body;
+
+    // Validate isAllowed
+    if (typeof isAllowed !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: "isAllowed must be a boolean value (true/false)"
+      });
+    }
+
+    // ============ SINGLE EMPLOYEE ============
+    if (employeeId) {
+      const employee = await Employee.findOne({ employeeId });
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message: "Employee not found"
+        });
+      }
+
+      employee.isAllowedImageCapturedAttendance = isAllowed;
+      await employee.save();
+
+      return res.status(200).json({
+        success: true,
+        message: `Image capture setting updated for ${employee.name}`,
+        data: {
+          employeeId: employee.employeeId,
+          name: employee.name,
+          department: employee.department,
+          isAllowedImageCapturedAttendance: employee.isAllowedImageCapturedAttendance
+        }
+      });
+    }
+
+    // ============ MULTIPLE EMPLOYEES (BULK) ============
+    if (employeeIds && Array.isArray(employeeIds) && employeeIds.length > 0) {
+      const results = {
+        success: [],
+        failed: [],
+        total: employeeIds.length
+      };
+
+      for (const id of employeeIds) {
+        try {
+          const employee = await Employee.findOne({ employeeId: id });
+
+          if (!employee) {
+            results.failed.push({
+              employeeId: id,
+              reason: "Employee not found"
+            });
+            continue;
+          }
+
+          employee.isAllowedImageCapturedAttendance = isAllowed;
+          await employee.save();
+
+          results.success.push({
+            employeeId: employee.employeeId,
+            name: employee.name,
+            department: employee.department,
+            isAllowedImageCapturedAttendance: employee.isAllowedImageCapturedAttendance
+          });
+
+        } catch (err) {
+          results.failed.push({
+            employeeId: id,
+            reason: err.message
+          });
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Bulk update: ${results.success.length} updated, ${results.failed.length} failed`,
+        data: results
+      });
+    }
+
+    // ============ NO EMPLOYEE PROVIDED ============
+    return res.status(400).json({
+      success: false,
+      message: "Please provide either employeeId (single) or employeeIds (bulk)"
+    });
+
+  } catch (error) {
+    console.error("Error updating image capture attendance:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
+
+
+
+
 module.exports = {
   getEmployeeByPhone,
   addEmployee,
@@ -4148,7 +4269,9 @@ module.exports = {
   verifyFace,
   updateLocation,
   getLocation,
-  getAllEmployeeLocations
+  getAllEmployeeLocations,
+  updateImageCaptureAttendance
+
 
 };
 

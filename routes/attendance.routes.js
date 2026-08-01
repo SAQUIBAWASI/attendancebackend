@@ -58,8 +58,51 @@
 
 const express = require("express");
 const attendanceController = require("../controller/attendance.controller");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 
 const router = express.Router();
+
+
+
+// ✅ CUSTOM UPLOAD DIRECTORY - /uploads/attendanceimage
+const uploadDir = path.join(__dirname, "../uploads/attendanceimage");
+
+// Ensure upload directories exist
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// ✅ Storage configuration with custom path
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    cb(null, `attendance-${uniqueSuffix}${ext}`);
+  },
+});
+
+// File filter - only images
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith("image/")) {
+    cb(null, true);
+  } else {
+    cb(new Error("Only image files are allowed"), false);
+  }
+};
+
+// Multer upload instance
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: fileFilter,
+});
 
 // ❌ REMOVE multer completely
 // const multer = require("multer");
@@ -67,8 +110,8 @@ const router = express.Router();
 // const upload = multer({ storage });
 
 // ✅ Clean checkin & checkout WITHOUT multer
-router.post("/checkin", attendanceController.checkIn);
-router.post("/checkout", attendanceController.checkOut);
+router.post("/checkin",   upload.single("image"), attendanceController.checkIn);
+router.post("/checkout",   upload.single("image"), attendanceController.checkOut);
 
 router.post("/break-in", attendanceController.breakIn);
 

@@ -439,6 +439,12 @@ const employeeSchema = new mongoose.Schema({
   joinDate: { type: Date, required: true },
   dob: { type: Date },
 
+  // In Employee model, ensure this field exists
+isAllowedImageCapturedAttendance: {
+  type: Boolean,
+  default: false
+},
+
 
 
   assignedWorkingDays: {

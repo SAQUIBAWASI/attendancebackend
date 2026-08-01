@@ -330,6 +330,20 @@ const attendanceSchema = new mongoose.Schema(
     },
 
     // =========================
+    // IMAGES (CUSTOM PATH)
+    // =========================
+
+    checkInImage: {
+      type: String, // ✅ "/uploads/attendanceimage/filename.jpg"
+      default: null,
+    },
+
+    checkOutImage: {
+      type: String, // ✅ "/uploads/attendanceimage/filename.jpg"
+      default: null,
+    },
+
+    // =========================
     // EXTRA
     // =========================
 
