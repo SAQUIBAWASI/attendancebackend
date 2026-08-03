@@ -2022,7 +2022,7 @@ const loginEmployee = async (req, res) => {
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: "Employee not found"
+        message: "Invalid Email"
       });
     }
 
@@ -2067,7 +2067,8 @@ const loginEmployee = async (req, res) => {
         address: employee.address,
         lastLoginLocation: employee.lastLoginLocation,
         lastCheckInLocation: employee.lastCheckInLocation,
-        lastCheckOutLocation: employee.lastCheckOutLocation
+        lastCheckOutLocation: employee.lastCheckOutLocation,
+        isAllowedImageCapturedAttendance: employee.isAllowedImageCapturedAttendance
       },
     });
 
