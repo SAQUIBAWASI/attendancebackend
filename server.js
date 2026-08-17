@@ -113,6 +113,7 @@ app.use("/api/visit-targets", require("./routes/visitTarget.routes"));
 app.use("/api/holidays", require("./routes/holiday.routes"));
 app.use("/api/tasks", require("./routes/task.routes"));
 app.use("/api/employee/tasks", require("./routes/employeeTask.routes"));
+const patientRoutes = require("./routes/patients");
 
 // ✅ Client Requests
 app.use("/api/client-requests", require("./routes/clientRequest.routes"));
@@ -121,8 +122,12 @@ app.use("/api/client-requests", require("./routes/clientRequest.routes"));
 app.use("/api/notifications", require("./routes/notification.routes"));
 
 
+app.use("/api/appointment-slots", require("./routes/appointmentSlot.routes"));
+
+
 app.use("/api/teams", require("./routes/team.routes"));
 app.use("/api/partners", require("./routes/partner.routes"));
+app.use("/api/patients", patientRoutes);
 
 
 // ✅ Simple Test Route to verify server update
@@ -142,6 +147,8 @@ app.get("/api/ping-debug", (req, res) => {
 app.use("/api/department", require("./routes/department.routes"));
 app.use("/api/roles", require("./routes/role.routes"));
 app.use("/api/permissions", require("./routes/permission.routes"));
+app.use("/api/services", require("./routes/serviceRoutes"));
+
 
 // ✅ COMP-OFF ROUTES - Add this line (if not already present, remove duplicate)
 app.use("/api/leaves", require("./routes/compOff.routes"));  // ✅ Comp-off routes
