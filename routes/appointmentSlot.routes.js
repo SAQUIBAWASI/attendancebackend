@@ -246,100 +246,56 @@ router.post("/generate", async (req, res) => {
 });
 
 
-// 4. GET ALL SLOTS (with dynamic schedule generation and booked DB slot merging)
+// =============================================
+// 4. GET ALL SLOTS (ONLY FROM DB - NO GENERATION)
+// =============================================
 router.get("/", async (req, res) => {
   try {
-    const { dayOfWeek, status, shift } = req.query;
+    const { dayOfWeek, status, shift, doctorId } = req.query;
 
-    // Load config
-    let config = await AppointmentSlotConfig.findOne({ doctorId: "default" });
-    if (!config) {
-      config = getDefaultConfig();
-    }
-
-    const { opDuration, opGap, consultationFee = 300, weeklySchedules } = config;
-    let generatedSlots = [];
-
-    if (dayOfWeek && dayOfWeek !== "All") {
-      const daySched = (weeklySchedules || []).find(
-        (s) => s.dayOfWeek.toLowerCase() === dayOfWeek.toLowerCase()
-      );
-      if (daySched) {
-        generatedSlots = generateSlotsForDaySchedule(daySched, opDuration, opGap, consultationFee);
-      }
-    } else {
-      (weeklySchedules || []).forEach((daySched) => {
-        const daySlots = generateSlotsForDaySchedule(daySched, opDuration, opGap, consultationFee);
-        generatedSlots = generatedSlots.concat(daySlots);
-      });
-    }
-
-    // Fetch saved/booked slots from MongoDB
-    const filter = { doctorId: "default" };
+    // Build filter
+    const filter = {};
     if (dayOfWeek && dayOfWeek !== "All") {
       filter.dayOfWeek = new RegExp(`^${dayOfWeek}$`, "i");
     }
-
-    const dbSlots = await AppointmentSlot.find(filter).sort({ startTime24: 1 });
-
-    // Map DB slots by slotId and by day+time for quick lookup
-    const dbSlotMapBySlotId = new Map();
-    const dbSlotMapByDayTime = new Map();
-
-    dbSlots.forEach((slot) => {
-      if (slot.slotId) {
-        dbSlotMapBySlotId.set(slot.slotId, slot);
-      }
-      const dayTimeKey = `${slot.dayOfWeek?.toLowerCase()}_${slot.startTime24 || slot.startTime}`;
-      dbSlotMapByDayTime.set(dayTimeKey, slot);
-    });
-
-    // Merge DB slots into generated slots
-    const mergedSlotIds = new Set();
-
-    let finalSlots = generatedSlots.map((genSlot) => {
-      const dayTimeKey = `${genSlot.dayOfWeek?.toLowerCase()}_${genSlot.startTime24 || genSlot.startTime}`;
-      const dbMatch = dbSlotMapBySlotId.get(genSlot.slotId) || dbSlotMapByDayTime.get(dayTimeKey);
-
-      if (dbMatch) {
-        mergedSlotIds.add(dbMatch._id.toString());
-        return {
-          ...genSlot,
-          ...dbMatch.toObject(),
-          _id: dbMatch._id
-        };
-      }
-      return genSlot;
-    });
-
-    // Append any extra DB slots that were custom created and not in generatedSlots
-    dbSlots.forEach((dbSlot) => {
-      if (!mergedSlotIds.has(dbSlot._id.toString())) {
-        finalSlots.push(dbSlot.toObject());
-      }
-    });
-
-    // Apply status and shift filters if requested
     if (status && status !== "All") {
-      finalSlots = finalSlots.filter((s) => s.status === status);
+      filter.status = status;
     }
     if (shift && shift !== "All") {
-      finalSlots = finalSlots.filter((s) => s.shift && s.shift.toLowerCase() === shift.toLowerCase());
+      filter.shift = new RegExp(`^${shift}$`, "i");
+    }
+    if (doctorId) {
+      filter.doctorId = doctorId;
     }
 
-    // Sort final slots by start time
-    finalSlots.sort((a, b) => timeToMinutes(a.startTime24) - timeToMinutes(b.startTime24));
+    // Fetch slots from MongoDB only - NO GENERATION
+    const slots = await AppointmentSlot.find(filter).sort({ startTime24: 1 });
+
+    // Apply additional filters if needed
+    let filteredSlots = slots;
+    
+    if (status && status !== "All") {
+      filteredSlots = filteredSlots.filter((s) => s.status === status);
+    }
+    if (shift && shift !== "All") {
+      filteredSlots = filteredSlots.filter((s) => s.shift && s.shift.toLowerCase() === shift.toLowerCase());
+    }
 
     return res.status(200).json({
       success: true,
-      count: finalSlots.length,
-      slots: finalSlots
+      count: filteredSlots.length,
+      slots: filteredSlots
     });
   } catch (error) {
     console.error("Error fetching appointment slots:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 });
+
+
 
 // 5. BOOK AN APPOINTMENT SLOT (Guaranteed persistence in DB)
 router.post("/book", async (req, res) => {
@@ -456,37 +412,115 @@ router.get("/getallbookings", async (req, res) => {
   }
 });
 
-// 6. CREATE MANUAL CUSTOM SLOT
+// =============================================
+// 6. CREATE MANUAL CUSTOM SLOT (FIXED)
+// =============================================
 router.post("/", async (req, res) => {
   try {
-    const { dayOfWeek, startTime, endTime, startTime24, endTime24, shift, status, type, patientName, notes } = req.body;
-
-    if (!dayOfWeek || !startTime || !endTime) {
-      return res.status(400).json({ success: false, message: "Day, Start Time, and End Time are required" });
-    }
-
-    const newSlot = new AppointmentSlot({
-      slotId: `custom_${Date.now()}`,
-      doctorId: "default",
+    const {
       dayOfWeek,
       startTime,
       endTime,
+      startTime24,
+      endTime24,
+      shift,
+      status,
+      type,
+      patientName,
+      notes,
+      doctorId,
+      doctorName,
+      doctorSpecialization,
+      duration,
+      gap,
+      consultationFee,
+      date,
+      slotNumber,
+      patientPhone,
+      patientAge,
+      patientGender,
+      patientAddress,
+      purpose,
+      paymentStatus
+    } = req.body;
+
+    // Validate required fields
+    if (!dayOfWeek || !startTime || !endTime) {
+      return res.status(400).json({
+        success: false,
+        message: "Day, Start Time, and End Time are required"
+      });
+    }
+
+    // Auto-generate slotId
+    const dayPrefix = dayOfWeek.substring(0, 3).toLowerCase();
+    const count = await AppointmentSlot.countDocuments({ dayOfWeek });
+    const slotId = `custom_${dayPrefix}_${count + 1}`;
+
+    // Auto-calculate duration if not provided
+    let calculatedDuration = duration;
+    if (!calculatedDuration && startTime24 && endTime24) {
+      const start = startTime24.split(':').map(Number);
+      const end = endTime24.split(':').map(Number);
+      const startMinutes = start[0] * 60 + start[1];
+      const endMinutes = end[0] * 60 + end[1];
+      calculatedDuration = endMinutes - startMinutes;
+    }
+    if (!calculatedDuration) {
+      calculatedDuration = 20;
+    }
+
+    const newSlot = new AppointmentSlot({
+      slotId: slotId,
+      doctorId: doctorId || "default",
+      doctorName: doctorName || "General OP Doctor",
+      doctorSpecialization: doctorSpecialization || "",
+      dayOfWeek: dayOfWeek,
+      date: date || "",
+      startTime: startTime,
+      endTime: endTime,
       startTime24: startTime24 || startTime,
       endTime24: endTime24 || endTime,
+      duration: calculatedDuration,
+      gap: gap || 5,
       shift: shift || "Morning",
       type: type || "op",
       status: status || "available",
+      consultationFee: consultationFee || 300,
+      slotNumber: slotNumber || 0,
       patientName: patientName || "",
-      notes: notes || ""
+      patientPhone: patientPhone || "",
+      patientAge: patientAge || "",
+      patientGender: patientGender || "Male",
+      patientAddress: patientAddress || "",
+      purpose: purpose || "",
+      notes: notes || "",
+      paymentStatus: paymentStatus || "Pending",
+      isActive: true
     });
 
     await newSlot.save();
-    return res.status(201).json({ success: true, message: "Custom slot created successfully!", slot: newSlot });
+
+    return res.status(201).json({
+      success: true,
+      message: "Custom slot created successfully!",
+      slot: newSlot
+    });
   } catch (error) {
     console.error("Error creating slot:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Slot ID already exists"
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 });
+
 
 // 7. UPDATE SLOT STATUS OR DETAILS
 router.put("/:id", async (req, res) => {
