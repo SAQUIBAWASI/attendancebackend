@@ -17,7 +17,7 @@ const patientSchema = new mongoose.Schema({
   feeAmount: { type: Number, required: true, default: 300 },
   paymentType: { type: String, enum: ['online', 'cash'], required: true },
   reason: { type: String },
-  paymentStatus: { type: String, enum: ['pending', 'paid'], default: 'pending' }
+  paymentStatus: { type: String, enum: ['Pending', 'Paid'], default: 'Pending' }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Patient', patientSchema);

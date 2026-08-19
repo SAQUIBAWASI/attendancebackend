@@ -3,6 +3,8 @@ const router = express.Router();
 const mongoose = require("mongoose");
 const AppointmentSlotConfig = require("../models/AppointmentSlotConfig");
 const AppointmentSlot = require("../models/AppointmentSlot");
+const Appointment = require("../models/Appointment");
+
 
 // Helper function to format minutes to 12-hour AM/PM string
 function minutesTo12Hour(mins) {
@@ -269,7 +271,10 @@ router.get("/", async (req, res) => {
     }
 
     // Fetch slots from MongoDB only - NO GENERATION
-    const slots = await AppointmentSlot.find(filter).sort({ startTime24: 1 });
+    // Populate doctorId with full doctor details
+    const slots = await AppointmentSlot.find(filter)
+      .sort({ startTime24: 1 })
+      .populate('doctorId', 'name email phone specialization qualification experience address consultationFee');
 
     // Apply additional filters if needed
     let filteredSlots = slots;
@@ -296,8 +301,7 @@ router.get("/", async (req, res) => {
 });
 
 
-
-// 5. BOOK AN APPOINTMENT SLOT (Guaranteed persistence in DB)
+// 5. BOOK AN APPOINTMENT SLOT (Using Appointment Schema)
 router.post("/book", async (req, res) => {
   try {
     const {
@@ -305,85 +309,165 @@ router.post("/book", async (req, res) => {
       _id,
       dayOfWeek,
       date,
+      appointmentDate,
       startTime,
       endTime,
+      startTime24,
+      endTime24,
+      doctorId,
+      doctorName,
+      doctorSpecialization,
       patientName,
       patientAge,
       patientGender,
       patientAddress,
-      purpose,
       patientPhone,
+      patientEmail,
+      purpose,
+      symptoms,
       consultationFee,
-      paymentStatus
+      paymentType,
+      paymentStatus,
+      appointmentType,
+      priority,
+      referredBy,
+      insuranceProvider,
+      insurancePolicyNumber,
+      patientBloodGroup,
+      patientMedicalHistory,
+      patientAllergies,
+      patientMedications,
+      notes
     } = req.body;
 
-    let bookedSlot = null;
+    console.log("📥 Booking request received:", req.body);
 
-    // 1. Try finding by Mongo _id
+    let slot = null;
+    let bookedAppointment = null;
+
+    // ✅ Use appointmentDate if provided, else use date
+    const finalDate = appointmentDate || date || new Date().toISOString().split('T')[0];
+
+    // ✅ STEP 1: Try finding slot by various methods
     if (_id && mongoose.Types.ObjectId.isValid(_id)) {
-      bookedSlot = await AppointmentSlot.findById(_id);
+      slot = await AppointmentSlot.findById(_id);
     }
 
-    // 2. Try finding by slotId or dayOfWeek + startTime
-    if (!bookedSlot && (slotId || (dayOfWeek && startTime))) {
-      const query = { doctorId: "default" };
-      if (slotId) query.slotId = slotId;
-      if (dayOfWeek) query.dayOfWeek = new RegExp(`^${dayOfWeek}$`, "i");
-      if (startTime) query.startTime = startTime;
-
-      bookedSlot = await AppointmentSlot.findOne(query);
+    if (!slot && slotId) {
+      if (mongoose.Types.ObjectId.isValid(slotId)) {
+        slot = await AppointmentSlot.findById(slotId);
+      } else {
+        slot = await AppointmentSlot.findOne({ slotId: slotId });
+      }
     }
 
-    // 3. Update existing slot in DB
-    if (bookedSlot) {
-      bookedSlot.status = "booked";
-      if (patientName) bookedSlot.patientName = patientName;
-      if (patientAge) bookedSlot.patientAge = patientAge;
-      if (patientGender) bookedSlot.patientGender = patientGender;
-      if (patientAddress) bookedSlot.patientAddress = patientAddress;
-      if (purpose) bookedSlot.purpose = purpose;
-      if (patientPhone) bookedSlot.patientPhone = patientPhone;
-      if (date) bookedSlot.date = date;
-      if (consultationFee !== undefined) bookedSlot.consultationFee = consultationFee;
-      bookedSlot.paymentStatus = paymentStatus || bookedSlot.paymentStatus || "Pending";
-
-      await bookedSlot.save();
-    } else {
-      // 4. Create new booked slot if not found
-      bookedSlot = new AppointmentSlot({
-        slotId: slotId || `slot_${Date.now()}`,
-        doctorId: "default",
-        dayOfWeek: dayOfWeek || "Monday",
-        date: date || new Date().toISOString().split("T")[0],
-        startTime: startTime || "09:00 AM",
-        endTime: endTime || "09:20 AM",
-        startTime24: startTime || "09:00",
-        endTime24: endTime || "09:20",
-        shift: "Morning Shift",
-        status: "booked",
-        consultationFee: consultationFee !== undefined ? consultationFee : 300,
-        paymentStatus: paymentStatus || "Pending",
-        patientName: patientName || "",
-        patientAge: patientAge || "",
-        patientGender: patientGender || "Male",
-        patientAddress: patientAddress || "",
-        purpose: purpose || "",
-        patientPhone: patientPhone || ""
+    if (!slot && dayOfWeek && startTime && doctorId) {
+      slot = await AppointmentSlot.findOne({
+        doctorId: doctorId,
+        dayOfWeek: new RegExp(`^${dayOfWeek}$`, "i"),
+        startTime: startTime,
+        status: 'available'
       });
-      await bookedSlot.save();
     }
 
+    if (!slot && finalDate && startTime && doctorId) {
+      slot = await AppointmentSlot.findOne({
+        doctorId: doctorId,
+        date: finalDate,
+        startTime: startTime,
+        status: 'available'
+      });
+    }
+
+    if (!slot && doctorId && startTime) {
+      slot = await AppointmentSlot.findOne({
+        doctorId: doctorId,
+        startTime: startTime,
+        status: 'available'
+      });
+    }
+
+    // ✅ STEP 2: If slot found, check if available and book it
+    if (slot) {
+      if (slot.status !== 'available') {
+        return res.status(400).json({
+          success: false,
+          message: `Slot is not available. Current status: ${slot.status}`
+        });
+      }
+
+      // Update slot status to booked
+      slot.status = 'booked';
+      if (finalDate) slot.date = finalDate;
+      await slot.save();
+    } else {
+      // ✅ STEP 2.5: If no slot found, DO NOT create new slot
+      // Just return error saying slot not found
+      return res.status(404).json({
+        success: false,
+        message: "Slot not found. Please select a valid available slot."
+      });
+    }
+
+    // ✅ STEP 3: Create new Appointment - ONLY with frontend data
+    const appointmentData = {
+      slotId: slot._id,
+      appointmentDate: finalDate,
+      slotDetails: {
+        dayOfWeek: slot.dayOfWeek || dayOfWeek,
+        date: finalDate,
+        startTime: slot.startTime || startTime,
+        endTime: slot.endTime || endTime,
+        startTime24: slot.startTime24 || startTime24,
+        endTime24: slot.endTime24 || endTime24,
+        doctorId: slot.doctorId || doctorId,
+        doctorName: slot.doctorName || doctorName,
+        doctorSpecialization: slot.doctorSpecialization || doctorSpecialization
+      },
+      patientName: patientName,
+      patientAge: patientAge,
+      patientGender: patientGender,
+      patientPhone: patientPhone,
+      patientEmail: patientEmail || "",
+      patientAddress: patientAddress || "",
+      patientBloodGroup: patientBloodGroup || "",
+      patientMedicalHistory: patientMedicalHistory || "",
+      patientAllergies: patientAllergies || "",
+      patientMedications: patientMedications || "",
+      purpose: purpose || "",
+      symptoms: symptoms || "",
+      consultationFee: consultationFee || 300,
+      paymentType: paymentType || "cash",
+      paymentStatus: paymentStatus || "Pending",
+      appointmentType: appointmentType || "Consultation",
+      priority: priority || "Normal",
+      referredBy: referredBy || "",
+      insuranceProvider: insuranceProvider || "",
+      insurancePolicyNumber: insurancePolicyNumber || "",
+      notes: notes || "",
+      status: "confirmed",
+      bookedAt: new Date()
+    };
+
+    bookedAppointment = new Appointment(appointmentData);
+    await bookedAppointment.save();
 
     return res.status(200).json({
       success: true,
-      message: `Appointment slot successfully booked for ${patientName}!`,
-      slot: bookedSlot
+      message: `✅ Appointment booked successfully for ${patientName}!`,
+      appointment: bookedAppointment,
+      slot: slot
     });
+
   } catch (error) {
-    console.error("Error booking slot API:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("❌ Error booking appointment:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 });
+
 
 
 // ✅ GET ALL BOOKINGS
@@ -391,7 +475,7 @@ router.post("/book", async (req, res) => {
 router.get("/getallbookings", async (req, res) => {
   try {
     // Get all bookings directly from database
-    const bookings = await AppointmentSlot.find({})
+    const bookings = await Appointment.find({})
       .sort({ date: -1, startTime: 1 });
 
     return res.status(200).json({
