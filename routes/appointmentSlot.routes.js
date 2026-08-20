@@ -612,7 +612,7 @@ router.put("/:id", async (req, res) => {
     const { id } = req.params;
     const updateData = req.body;
 
-    const updatedSlot = await AppointmentSlot.findByIdAndUpdate(id, updateData, { new: true });
+    const updatedSlot = await Appointment.findByIdAndUpdate(id, updateData, { new: true });
     if (!updatedSlot) {
       return res.status(404).json({ success: false, message: "Slot not found" });
     }
@@ -628,7 +628,7 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const deletedSlot = await AppointmentSlot.findByIdAndDelete(id);
+    const deletedSlot = await Appointment.findByIdAndDelete(id);
 
     if (!deletedSlot) {
       return res.status(404).json({ success: false, message: "Slot not found" });

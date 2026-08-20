@@ -1,6 +1,8 @@
 const Service = require('../models/Service');
 const AppointmentSlotConfig = require("../models/AppointmentSlotConfig");
 const AppointmentSlot = require("../models/AppointmentSlot");
+const Appointment = require("../models/Appointment");
+
 
 
 // =============================================
@@ -222,7 +224,7 @@ const addServiceToBooking = async (req, res) => {
     }
 
     // Find booking
-    const booking = await AppointmentSlot.findById(bookingId);
+    const booking = await Appointment.findById(bookingId);
     if (!booking) {
       return res.status(404).json({
         success: false,
@@ -230,13 +232,6 @@ const addServiceToBooking = async (req, res) => {
       });
     }
 
-    // Check if booking is booked/completed
-    if (booking.status !== "booked" && booking.status !== "completed") {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot add service to booking with status "${booking.status}"`
-      });
-    }
 
     // Check if service already exists
     const existingService = booking.services.find(
