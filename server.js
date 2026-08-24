@@ -149,6 +149,7 @@ app.use("/api/roles", require("./routes/role.routes"));
 app.use("/api/permissions", require("./routes/permission.routes"));
 app.use("/api/services", require("./routes/serviceRoutes"));
 app.use("/api/doctors", require("./routes/doctorRoutes"));
+app.use("/api/letterheads", require("./routes/letterHeadRoutes"));
 
 
 // ✅ COMP-OFF ROUTES - Add this line (if not already present, remove duplicate)
