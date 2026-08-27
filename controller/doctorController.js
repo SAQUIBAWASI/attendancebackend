@@ -430,6 +430,78 @@ const getDoctorStats = async (req, res) => {
   }
 };
 
+
+
+// =============================================
+// Doctor Login
+// =============================================
+const doctorLogin = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Validation
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
+
+    // Find doctor by email
+    const doctor = await Doctor.findOne({ email });
+    if (!doctor) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
+    }
+
+    // Check if doctor is active
+    if (doctor.status !== 'active') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account is not active. Please contact admin.'
+      });
+    }
+
+    // Compare password (assuming plain text for now, but should use bcrypt in production)
+    if (doctor.password !== password) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
+    }
+
+    // Remove password from response
+    const doctorResponse = doctor.toObject();
+    delete doctorResponse.password;
+
+    // Generate JWT token (optional - if you're using JWT)
+    // const token = jwt.sign(
+    //   { id: doctor._id, email: doctor.email, role: 'doctor' },
+    //   process.env.JWT_SECRET,
+    //   { expiresIn: '7d' }
+    // );
+
+    res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      data: doctorResponse,
+      // token: token // Uncomment if using JWT
+    });
+
+  } catch (error) {
+    console.error('Error during doctor login:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to login',
+      error: error.message
+    });
+  }
+};
+
+
 module.exports = {
   addDoctor,
   getAllDoctors,
@@ -437,5 +509,6 @@ module.exports = {
   updateDoctor,
   deleteDoctor,
   updateDoctorPassword,
-  getDoctorStats
+  getDoctorStats,
+  doctorLogin
 };

@@ -6,7 +6,8 @@ const {
   getDoctorById,
   updateDoctor,
   deleteDoctor,
-  getDoctorStats
+  getDoctorStats,
+  doctorLogin
 } = require('../controller/doctorController');
 
 // =============================================
@@ -32,5 +33,9 @@ router.put('/updatedoctor/:id', updateDoctor);
 
 // DELETE /api/doctors/:id - Delete doctor
 router.delete('/deletedoctor/:id', deleteDoctor);
+
+
+router.post('/doctorlogin', doctorLogin);
+
 
 module.exports = router;
