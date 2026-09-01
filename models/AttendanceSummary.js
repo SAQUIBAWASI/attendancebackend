@@ -82,6 +82,7 @@ const AttendanceSummarySchema = new mongoose.Schema({
   },
 
   overTimeHours: { type: Number, default: 0 }, // 👈 OT
+  paymentStatus: { type: String, default: "Pending" },
 
   fromDate: { type: Date },
   toDate: { type: Date },

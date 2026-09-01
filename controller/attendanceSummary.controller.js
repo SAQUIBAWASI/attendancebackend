@@ -11108,7 +11108,7 @@ exports.updateAttendanceDynamic = async (req, res) => {
  */
 exports.updatePayrollDetails = async (req, res) => {
   try {
-    const { employeeId, month, calculatedSalary, extraWork, presentDays, workingDays, halfDayWorking, fullDayNotWorking, weekOffDays, holidays } = req.body;
+    const { employeeId, month, calculatedSalary, extraWork, presentDays, workingDays, halfDayWorking, fullDayNotWorking, weekOffDays, holidays, paymentStatus } = req.body;
 
     if (!employeeId || !month) {
       return res.status(400).json({
@@ -11149,6 +11149,7 @@ exports.updatePayrollDetails = async (req, res) => {
     if (fullDayNotWorking !== undefined) summary.fullDayNotWorking = fullDayNotWorking;
     if (weekOffDays !== undefined) summary.weekOffDays = weekOffDays;
     if (holidays !== undefined) summary.holidays = holidays;
+    if (paymentStatus !== undefined) summary.paymentStatus = paymentStatus;
 
     const savedSummary = await summary.save();
 

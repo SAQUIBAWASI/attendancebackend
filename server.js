@@ -115,6 +115,10 @@ app.use("/api/tasks", require("./routes/task.routes"));
 app.use("/api/employee/tasks", require("./routes/employeeTask.routes"));
 const patientRoutes = require("./routes/patients");
 
+
+const dashboardRoutes = require("./routes/dashboard.routes");
+const eventRoutes = require("./routes/eventRoutes");
+
 // ✅ Client Requests
 app.use("/api/client-requests", require("./routes/clientRequest.routes"));
 
@@ -150,6 +154,9 @@ app.use("/api/permissions", require("./routes/permission.routes"));
 app.use("/api/services", require("./routes/serviceRoutes"));
 app.use("/api/doctors", require("./routes/doctorRoutes"));
 app.use("/api/letterheads", require("./routes/letterHeadRoutes"));
+app.use("/api/dashboard", require("./routes/dashboard.routes"));
+
+app.use("/api/events", require("./routes/eventRoutes"));
 
 
 // ✅ COMP-OFF ROUTES - Add this line (if not already present, remove duplicate)
