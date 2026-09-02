@@ -297,7 +297,7 @@ const removeServiceFromBooking = async (req, res) => {
   try {
     const { bookingId, serviceId } = req.params;
 
-    const booking = await AppointmentSlot.findById(bookingId);
+    const booking = await Appointment.findById(bookingId);
     if (!booking) {
       return res.status(404).json({
         success: false,
@@ -348,7 +348,7 @@ const getBookingServices = async (req, res) => {
   try {
     const { bookingId } = req.params;
 
-    const booking = await AppointmentSlot.findById(bookingId);
+    const booking = await Appointment.findById(bookingId);
     if (!booking) {
       return res.status(404).json({
         success: false,
@@ -388,7 +388,7 @@ const updateBookingService = async (req, res) => {
     const { bookingId, serviceId } = req.params;
     const { name, price, description } = req.body;
 
-    const booking = await AppointmentSlot.findById(bookingId);
+    const booking = await Appointment.findById(bookingId);
     if (!booking) {
       return res.status(404).json({
         success: false,
@@ -460,7 +460,7 @@ const updateServicePaymentStatus = async (req, res) => {
       });
     }
 
-    const booking = await AppointmentSlot.findById(bookingId);
+    const booking = await Appointment.findById(bookingId);
     if (!booking) {
       return res.status(404).json({
         success: false,
