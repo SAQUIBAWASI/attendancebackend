@@ -337,7 +337,8 @@ router.post("/book", async (req, res) => {
       patientMedicalHistory,
       patientAllergies,
       patientMedications,
-      notes
+      notes,
+      isOP  // <-- ADD THIS LINE - receive isOP from frontend
     } = req.body;
 
     console.log("📥 Booking request received:", req.body);
@@ -446,7 +447,8 @@ router.post("/book", async (req, res) => {
       insurancePolicyNumber: insurancePolicyNumber || "",
       notes: notes || "",
       status: "confirmed",
-      bookedAt: new Date()
+      bookedAt: new Date(),
+      isOP: isOP || false  // <-- ADD THIS LINE - save isOP to appointment
     };
 
     bookedAppointment = new Appointment(appointmentData);

@@ -119,6 +119,11 @@ const appointmentSchema = new mongoose.Schema(
       }],
       default: []
     },
+
+     isOP: {
+    type: Boolean,
+    default: false,
+  },
     
     // =============================================
     // STATUS TRACKING
