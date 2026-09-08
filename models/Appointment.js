@@ -22,12 +22,12 @@ const appointmentSchema = new mongoose.Schema(
     },
     
     // =============================================
-    // ✅ NEW: APPOINTMENT DATE (Direct field)
+    // APPOINTMENT DATE
     // =============================================
-    appointmentDate: { type: String, default: "" }, // YYYY-MM-DD format
+    appointmentDate: { type: String, default: "" },
     
     // =============================================
-    // PATIENT DETAILS (ALL OPTIONAL)
+    // PATIENT DETAILS
     // =============================================
     patientId: { 
       type: mongoose.Schema.Types.ObjectId, 
@@ -70,7 +70,18 @@ const appointmentSchema = new mongoose.Schema(
       enum: ["Normal", "High", "Urgent", "Emergency"], 
       default: "Normal" 
     },
+    
+    // =============================================
+    // ===== REFERRAL FIELDS (UPDATED) =====
+    // =============================================
     referredBy: { type: String, default: "" },
+    referralContactId: { type: String, default: "" },
+    referralCommission: { type: String, default: "" },
+referralCommissionType: { 
+  type: String, 
+  enum: ["clinic", "pharmacy", "lab", "Clinic", "Pharmacy", "Lab", ""], 
+  default: "" 
+},
     
     // =============================================
     // INSURANCE
@@ -79,7 +90,7 @@ const appointmentSchema = new mongoose.Schema(
     insurancePolicyNumber: { type: String, default: "" },
     
     // =============================================
-    // PAYMENT DETAILS
+    // PAYMENT DETAILS (UPDATED)
     // =============================================
     consultationFee: { type: Number, default: 300 },
     paymentType: { 
@@ -89,7 +100,7 @@ const appointmentSchema = new mongoose.Schema(
     },
     paymentStatus: { 
       type: String, 
-      enum: ["Pending", "Paid", "Partial", "Refunded"], 
+      enum: ["Pending", "Paid", "Partial", "Due", "Refunded"], 
       default: "Pending" 
     },
     paymentTransactionId: { type: String, default: "" },
@@ -102,28 +113,31 @@ const appointmentSchema = new mongoose.Schema(
     billingDate: { type: Date, default: null },
     
     // =============================================
-    // SERVICES
+    // ===== SERVICES WITH PAYMENT STATUS (UPDATED) =====
     // =============================================
     services: {
       type: [{
         serviceId: { type: String },
         name: { type: String },
-        price: { type: Number },
+        price: { type: Number, default: 0 },
         description: { type: String, default: "" },
         paymentStatus: { 
           type: String, 
-          enum: ["Pending", "Paid"], 
+          enum: ["Pending", "Paid", "Partial", "Due"], 
           default: "Pending" 
-        },
+        }, // <-- UPDATED
         addedAt: { type: Date, default: Date.now }
       }],
       default: []
     },
 
-     isOP: {
-    type: Boolean,
-    default: false,
-  },
+    // =============================================
+    // ===== CALCULATED FIELDS (NEW) =====
+    // =============================================
+    subtotal: { type: Number, default: 0 },
+    commissionAmount: { type: Number, default: 0 },
+    finalPayable: { type: Number, default: 0 },
+    isOP: { type: Boolean, default: false },
     
     // =============================================
     // STATUS TRACKING
@@ -212,10 +226,11 @@ appointmentSchema.index({ patientPhone: 1 });
 appointmentSchema.index({ status: 1 });
 appointmentSchema.index({ paymentStatus: 1 });
 appointmentSchema.index({ createdAt: -1 });
-appointmentSchema.index({ appointmentDate: 1 }); // ✅ Index for appointmentDate
+appointmentSchema.index({ appointmentDate: 1 });
+appointmentSchema.index({ referralContactId: 1 }); // <-- NEW
 
 // =============================================
-// VIRTUAL FIELDS
+// VIRTUAL FIELDS (UPDATED)
 // =============================================
 
 appointmentSchema.virtual('totalFee').get(function() {
@@ -232,6 +247,14 @@ appointmentSchema.virtual('grandTotal').get(function() {
   return (this.consultationFee || 0) + this.servicesTotal;
 });
 
+// ===== NEW VIRTUAL: Amount after referral discount =====
+appointmentSchema.virtual('finalPayableAmount').get(function() {
+  const subtotal = this.subtotal || this.grandTotal;
+  const commissionPercent = parseFloat(this.referralCommission) || 0;
+  const commissionAmount = (subtotal * commissionPercent) / 100;
+  return subtotal - commissionAmount;
+});
+
 appointmentSchema.virtual('isCompleted').get(function() {
   return this.status === 'completed';
 });
@@ -245,7 +268,7 @@ appointmentSchema.virtual('isActive').get(function() {
 });
 
 // =============================================
-// METHODS
+// METHODS (UPDATED)
 // =============================================
 
 appointmentSchema.methods.confirm = function() {
@@ -287,27 +310,56 @@ appointmentSchema.methods.cancel = function(reason = '') {
   return this.save();
 };
 
+// ===== UPDATED: Add service with paymentStatus =====
 appointmentSchema.methods.addService = function(serviceData) {
   this.services.push({
     ...serviceData,
+    paymentStatus: serviceData.paymentStatus || "Pending",
     addedAt: new Date()
   });
   this.totalAmount = this.grandTotal;
+  this.subtotal = this.grandTotal;
+  this.finalPayable = this.finalPayableAmount;
   return this.save();
 };
 
 appointmentSchema.methods.removeService = function(serviceId) {
   this.services = this.services.filter(s => s.serviceId !== serviceId);
   this.totalAmount = this.grandTotal;
+  this.subtotal = this.grandTotal;
+  this.finalPayable = this.finalPayableAmount;
   return this.save();
 };
 
+// ===== UPDATED: Mark as paid with calculation =====
 appointmentSchema.methods.markAsPaid = function(amount = null) {
-  const amountToPay = amount || this.grandTotal;
+  const amountToPay = amount || this.finalPayable || this.grandTotal;
   this.paymentStatus = 'Paid';
   this.amountPaid = amountToPay;
   this.balanceAmount = 0;
   this.billingDate = new Date();
+  return this.save();
+};
+
+// ===== NEW: Update service payment status =====
+appointmentSchema.methods.updateServicePaymentStatus = function(serviceId, paymentStatus) {
+  const service = this.services.find(s => s.serviceId === serviceId);
+  if (service) {
+    service.paymentStatus = paymentStatus;
+    return this.save();
+  }
+  throw new Error('Service not found');
+};
+
+// ===== NEW: Recalculate all totals =====
+appointmentSchema.methods.recalculateTotals = function() {
+  const consultationFee = this.consultationFee || 0;
+  const servicesTotal = this.services.reduce((sum, s) => sum + (s.price || 0), 0);
+  this.subtotal = consultationFee + servicesTotal;
+  const commissionPercent = parseFloat(this.referralCommission) || 0;
+  this.commissionAmount = (this.subtotal * commissionPercent) / 100;
+  this.finalPayable = this.subtotal - this.commissionAmount;
+  this.totalAmount = this.subtotal;
   return this.save();
 };
 
@@ -378,13 +430,11 @@ appointmentSchema.statics.getPaymentSummary = function() {
   ]);
 };
 
-// ✅ NEW: Get appointments by appointmentDate
 appointmentSchema.statics.getByAppointmentDate = function(date) {
   return this.find({ appointmentDate: date })
     .sort({ startTime: 1 });
 };
 
-// ✅ NEW: Get appointments by date range
 appointmentSchema.statics.getByAppointmentDateRange = function(startDate, endDate) {
   return this.find({
     appointmentDate: { $gte: startDate, $lte: endDate }
@@ -396,8 +446,15 @@ appointmentSchema.statics.getByAppointmentDateRange = function(startDate, endDat
 // =============================================
 
 appointmentSchema.pre('save', function(next) {
-  this.totalAmount = this.grandTotal;
-  this.balanceAmount = this.totalAmount - (this.amountPaid || 0);
+  // Calculate totals before saving
+  const consultationFee = this.consultationFee || 0;
+  const servicesTotal = this.services.reduce((sum, service) => sum + (service.price || 0), 0);
+  this.subtotal = consultationFee + servicesTotal;
+  const commissionPercent = parseFloat(this.referralCommission) || 0;
+  this.commissionAmount = (this.subtotal * commissionPercent) / 100;
+  this.finalPayable = this.subtotal - this.commissionAmount;
+  this.totalAmount = this.subtotal;
+  this.balanceAmount = this.finalPayable - (this.amountPaid || 0);
   next();
 });
 

@@ -301,7 +301,7 @@ router.get("/", async (req, res) => {
 });
 
 
-// 5. BOOK AN APPOINTMENT SLOT (Using Appointment Schema)
+// 5. BOOK AN APPOINTMENT SLOT (Updated)
 router.post("/book", async (req, res) => {
   try {
     const {
@@ -328,9 +328,15 @@ router.post("/book", async (req, res) => {
       consultationFee,
       paymentType,
       paymentStatus,
+      partialAmount,
+      amountPaid,
+      balanceAmount,
       appointmentType,
       priority,
       referredBy,
+      referralContactId,
+      referralCommission,
+      referralCommissionType,
       insuranceProvider,
       insurancePolicyNumber,
       patientBloodGroup,
@@ -338,7 +344,8 @@ router.post("/book", async (req, res) => {
       patientAllergies,
       patientMedications,
       notes,
-      isOP  // <-- ADD THIS LINE - receive isOP from frontend
+      isOP,
+      services
     } = req.body;
 
     console.log("📥 Booking request received:", req.body);
@@ -346,10 +353,9 @@ router.post("/book", async (req, res) => {
     let slot = null;
     let bookedAppointment = null;
 
-    // ✅ Use appointmentDate if provided, else use date
     const finalDate = appointmentDate || date || new Date().toISOString().split('T')[0];
 
-    // ✅ STEP 1: Try finding slot by various methods
+    // ===== FIND SLOT =====
     if (_id && mongoose.Types.ObjectId.isValid(_id)) {
       slot = await AppointmentSlot.findById(_id);
     }
@@ -388,29 +394,58 @@ router.post("/book", async (req, res) => {
       });
     }
 
-    // ✅ STEP 2: If slot found, check if available and book it
-    if (slot) {
-      if (slot.status !== 'available') {
-        return res.status(400).json({
-          success: false,
-          message: `Slot is not available. Current status: ${slot.status}`
-        });
-      }
-
-      // Update slot status to booked
-      slot.status = 'booked';
-      if (finalDate) slot.date = finalDate;
-      await slot.save();
-    } else {
-      // ✅ STEP 2.5: If no slot found, DO NOT create new slot
-      // Just return error saying slot not found
+    if (!slot) {
       return res.status(404).json({
         success: false,
         message: "Slot not found. Please select a valid available slot."
       });
     }
 
-    // ✅ STEP 3: Create new Appointment - ONLY with frontend data
+    if (slot.status !== 'available') {
+      return res.status(400).json({
+        success: false,
+        message: `Slot is not available. Current status: ${slot.status}`
+      });
+    }
+
+    // Update slot status
+    slot.status = 'booked';
+    if (finalDate) slot.date = finalDate;
+    await slot.save();
+
+    // ===== CALCULATE TOTALS =====
+    const consultationFeeValue = consultationFee || 300;
+    const servicesTotal = (services || []).reduce((sum, s) => sum + (s.price || 0), 0);
+    const subtotal = consultationFeeValue + servicesTotal;
+    const commissionPercent = parseFloat(referralCommission) || 0;
+    const commissionAmount = (subtotal * commissionPercent) / 100;
+    const finalPayable = subtotal - commissionAmount;  // <-- THIS IS THE CORRECT TOTAL
+
+    // ===== PAYMENT CALCULATIONS =====
+    let finalPaymentStatus = paymentStatus || "Pending";
+    let finalAmountPaid = amountPaid || 0;
+    let finalBalanceAmount = balanceAmount || finalPayable;
+
+    if (paymentStatus === "Paid") {
+      finalAmountPaid = finalPayable;
+      finalBalanceAmount = 0;
+    } else if (paymentStatus === "Partial" && partialAmount) {
+      finalAmountPaid = parseFloat(partialAmount) || 0;
+      finalBalanceAmount = finalPayable - finalAmountPaid;
+      if (finalBalanceAmount <= 0) {
+        finalPaymentStatus = "Paid";
+        finalAmountPaid = finalPayable;
+        finalBalanceAmount = 0;
+      }
+    } else if (paymentStatus === "Due") {
+      finalAmountPaid = 0;
+      finalBalanceAmount = finalPayable;
+    } else {
+      finalAmountPaid = 0;
+      finalBalanceAmount = finalPayable;
+    }
+
+    // ===== CREATE APPOINTMENT =====
     const appointmentData = {
       slotId: slot._id,
       appointmentDate: finalDate,
@@ -437,18 +472,41 @@ router.post("/book", async (req, res) => {
       patientMedications: patientMedications || "",
       purpose: purpose || "",
       symptoms: symptoms || "",
-      consultationFee: consultationFee || 300,
+      consultationFee: consultationFeeValue,
       paymentType: paymentType || "cash",
-      paymentStatus: paymentStatus || "Pending",
+      paymentStatus: finalPaymentStatus,
+      amountPaid: finalAmountPaid,
+      balanceAmount: finalBalanceAmount,
       appointmentType: appointmentType || "Consultation",
       priority: priority || "Normal",
+      
+      // ===== REFERRAL FIELDS =====
       referredBy: referredBy || "",
+      referralContactId: referralContactId || "",
+      referralCommission: referralCommission || "",
+      referralCommissionType: referralCommissionType || "",
+      
+      // ===== SERVICES =====
+      services: (services || []).map(s => ({
+        serviceId: s.serviceId || s._id,
+        name: s.name,
+        price: s.price || 0,
+        description: s.description || "",
+        paymentStatus: s.paymentStatus || "Pending"
+      })),
+      
+      // ===== CALCULATED FIELDS =====
+      subtotal: subtotal,
+      commissionAmount: commissionAmount,
+      finalPayable: finalPayable,
+      totalAmount: finalPayable,  // <-- CHANGE: Use finalPayable instead of subtotal
+      
       insuranceProvider: insuranceProvider || "",
       insurancePolicyNumber: insurancePolicyNumber || "",
       notes: notes || "",
       status: "confirmed",
       bookedAt: new Date(),
-      isOP: isOP || false  // <-- ADD THIS LINE - save isOP to appointment
+      isOP: isOP || false
     };
 
     bookedAppointment = new Appointment(appointmentData);

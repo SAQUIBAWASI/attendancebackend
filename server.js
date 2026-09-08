@@ -114,6 +114,8 @@ app.use("/api/holidays", require("./routes/holiday.routes"));
 app.use("/api/tasks", require("./routes/task.routes"));
 app.use("/api/employee/tasks", require("./routes/employeeTask.routes"));
 const patientRoutes = require("./routes/patients");
+const referralContactRoutes = require('./routes/referralContactRoutes');
+
 
 
 const dashboardRoutes = require("./routes/dashboard.routes");
@@ -157,6 +159,9 @@ app.use("/api/letterheads", require("./routes/letterHeadRoutes"));
 app.use("/api/dashboard", require("./routes/dashboard.routes"));
 
 app.use("/api/events", require("./routes/eventRoutes"));
+
+app.use('/api/referralcontacts', referralContactRoutes);
+
 
 
 // ✅ COMP-OFF ROUTES - Add this line (if not already present, remove duplicate)
