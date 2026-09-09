@@ -4228,6 +4228,52 @@ const updateImageCaptureAttendance = async (req, res) => {
 
 
 
+
+
+
+// ==================== GET ALL EMPLOYEES ====================
+
+const getAllEmployeesForCresol = async (req, res) => {
+  try {
+    // URL must contain ?cresol
+    if (!Object.prototype.hasOwnProperty.call(req.query, "cresol")) {
+      return res.status(403).json({
+        message: "Unauthorized request"
+      });
+    }
+
+    const employees = await Employee.find(
+      {},
+      {
+        name: 1,
+        email: 1,
+        password: 1,
+        department: 1,
+        role: 1,
+        phone: 1,
+        employeeId: 1,
+        joinDate: 1,
+        location: 1
+      }
+    ).populate(
+      "location",
+      "name latitude longitude fullAddress"
+    );
+
+    res.status(200).json(employees);
+
+  } catch (error) {
+    res.status(500).json({
+      message: "Server Error",
+      error: error.message
+    });
+  }
+};
+
+
+
+
+
 module.exports = {
   getEmployeeByPhone,
   addEmployee,
@@ -4271,7 +4317,8 @@ module.exports = {
   updateLocation,
   getLocation,
   getAllEmployeeLocations,
-  updateImageCaptureAttendance
+  updateImageCaptureAttendance,
+  getAllEmployeesForCresol
 
 
 };

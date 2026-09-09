@@ -11,6 +11,9 @@ const patientSchema = new mongoose.Schema({
       message: props => `${props.value} is not a valid phone number!`
     }
   },
+   dob: { 
+    type: Date,
+  },
   address: { type: String },
   feeType: { type: String, enum: ['consultation', 'lab'], },
   feeAmount: { type: Number, default: 300 },

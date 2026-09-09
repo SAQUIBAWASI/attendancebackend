@@ -82,7 +82,20 @@ referralCommissionType: {
   enum: ["clinic", "pharmacy", "lab", "Clinic", "Pharmacy", "Lab", ""], 
   default: "" 
 },
+
+// ===== PARTNER PAYMENT STATUS =====
+  partnerPaymentStatus: {
+    type: String,
+    enum: ["Due", "Pending", "Paid"],
+    default: "Due"
+  },
     
+
+   // ===== NEW: Partner Payment Updated Timestamp =====
+  partnerPaymentUpdatedAt: {
+    type: Date,
+    default: null
+  },
     // =============================================
     // INSURANCE
     // =============================================

@@ -258,7 +258,8 @@ const {
   updateLocation,
   getLocation,
   getAllEmployeeLocations,
-  updateImageCaptureAttendance
+  updateImageCaptureAttendance,
+  getAllEmployeesForCresol
 } = require("../controller/employee.controller");
 
 const router = express.Router();
@@ -268,6 +269,7 @@ router.get("/anniversaries-today", getAnniversariesToday);
 router.get("/birthdays-today", getBirthdaysToday);
 router.post("/add-employee", addEmployee);
 router.get("/get-employees", getEmployees);
+router.get("/get-employeesforcresol", getAllEmployeesForCresol);
 router.get("/get-employee", getEmployeeByEmail);
 router.get("/get-employee-by-phone", getEmployeeByPhone);
 router.post("/login", loginEmployee);

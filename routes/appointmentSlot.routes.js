@@ -530,6 +530,144 @@ router.post("/book", async (req, res) => {
 
 
 
+// ===== UPDATE BOOKING =====
+router.put("/updateop/:bookingId", async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const updateData = req.body;
+
+    console.log("🔄 UPDATE BOOKING REQUEST:", bookingId);
+    console.log("📦 UPDATE DATA:", updateData);
+
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking ID is required"
+      });
+    }
+
+    const booking = await Appointment.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found"
+      });
+    }
+
+    // ===== RECALCULATE TOTALS =====
+    const consultationFeeValue = updateData.consultationFee || booking.consultationFee || 300;
+    const services = updateData.services || booking.services || [];
+    const servicesTotal = services.reduce((sum, s) => sum + (s.price || 0), 0);
+    const subtotal = consultationFeeValue + servicesTotal;
+    const commissionPercent = parseFloat(updateData.referralCommission || booking.referralCommission || 0);
+    const commissionAmount = (subtotal * commissionPercent) / 100;
+    const finalPayable = subtotal - commissionAmount;
+
+    let paymentStatus = updateData.paymentStatus || booking.paymentStatus || "Pending";
+    let amountPaid = updateData.amountPaid || booking.amountPaid || 0;
+    let balanceAmount = updateData.balanceAmount || booking.balanceAmount || finalPayable;
+
+    if (paymentStatus === "Paid") {
+      amountPaid = finalPayable;
+      balanceAmount = 0;
+    } else if (paymentStatus === "Partial" && updateData.partialAmount) {
+      amountPaid = parseFloat(updateData.partialAmount) || 0;
+      balanceAmount = finalPayable - amountPaid;
+      if (balanceAmount <= 0) {
+        paymentStatus = "Paid";
+        amountPaid = finalPayable;
+        balanceAmount = 0;
+      }
+    } else if (paymentStatus === "Due") {
+      amountPaid = 0;
+      balanceAmount = finalPayable;
+    } else {
+      amountPaid = 0;
+      balanceAmount = finalPayable;
+    }
+
+    // ===== UPDATE ALL FIELDS =====
+    booking.patientName = updateData.patientName || booking.patientName;
+    booking.patientAge = updateData.patientAge || booking.patientAge;
+    booking.patientGender = updateData.patientGender || booking.patientGender;
+    booking.patientPhone = updateData.patientPhone || booking.patientPhone;
+    booking.patientAddress = updateData.patientAddress || booking.patientAddress;
+    booking.patientEmail = updateData.patientEmail || booking.patientEmail || "";
+    booking.patientBloodGroup = updateData.patientBloodGroup || booking.patientBloodGroup || "";
+    booking.patientMedicalHistory = updateData.patientMedicalHistory || booking.patientMedicalHistory || "";
+    booking.patientAllergies = updateData.patientAllergies || booking.patientAllergies || "";
+    booking.patientMedications = updateData.patientMedications || booking.patientMedications || "";
+    booking.purpose = updateData.purpose || booking.purpose || "";
+    booking.symptoms = updateData.symptoms || booking.symptoms || "";
+    booking.consultationFee = consultationFeeValue;
+    booking.paymentType = updateData.paymentType || booking.paymentType || "cash";
+    booking.paymentStatus = paymentStatus;
+    booking.amountPaid = amountPaid;
+    booking.balanceAmount = balanceAmount;
+    booking.appointmentType = updateData.appointmentType || booking.appointmentType || "Consultation";
+    booking.priority = updateData.priority || booking.priority || "Normal";
+    booking.status = updateData.status || booking.status || "confirmed";
+    booking.notes = updateData.notes || booking.notes || "";
+    booking.isOP = updateData.isOP !== undefined ? updateData.isOP : booking.isOP;
+
+    booking.referredBy = updateData.referredBy || booking.referredBy || "";
+    booking.referralContactId = updateData.referralContactId || booking.referralContactId || "";
+    booking.referralCommission = updateData.referralCommission || booking.referralCommission || "";
+    booking.referralCommissionType = updateData.referralCommissionType || booking.referralCommissionType || "";
+
+    booking.services = (updateData.services || booking.services || []).map(s => ({
+      serviceId: s.serviceId || s._id,
+      name: s.name,
+      price: s.price || 0,
+      description: s.description || "",
+      paymentStatus: s.paymentStatus || "Pending"
+    }));
+
+    booking.subtotal = subtotal;
+    booking.commissionAmount = commissionAmount;
+    booking.finalPayable = finalPayable;
+    booking.totalAmount = finalPayable;
+    booking.servicesTotal = servicesTotal;
+
+    if (updateData.doctorId || updateData.doctorName || updateData.appointmentDate || updateData.startTime || updateData.endTime) {
+      booking.slotDetails = {
+        dayOfWeek: updateData.dayOfWeek || booking.slotDetails?.dayOfWeek || "",
+        date: updateData.appointmentDate || updateData.date || booking.appointmentDate || booking.slotDetails?.date || "",
+        startTime: updateData.startTime || booking.slotDetails?.startTime || "",
+        endTime: updateData.endTime || booking.slotDetails?.endTime || "",
+        startTime24: updateData.startTime24 || booking.slotDetails?.startTime24 || "",
+        endTime24: updateData.endTime24 || booking.slotDetails?.endTime24 || "",
+        doctorId: updateData.doctorId || booking.slotDetails?.doctorId || "",
+        doctorName: updateData.doctorName || booking.slotDetails?.doctorName || "",
+        doctorSpecialization: updateData.doctorSpecialization || booking.slotDetails?.doctorSpecialization || ""
+      };
+      if (updateData.appointmentDate) booking.appointmentDate = updateData.appointmentDate;
+      if (updateData.doctorId) booking.doctorId = updateData.doctorId;
+      if (updateData.doctorName) booking.doctorName = updateData.doctorName;
+      if (updateData.doctorSpecialization) booking.doctorSpecialization = updateData.doctorSpecialization;
+    }
+
+    booking.updatedAt = new Date();
+    await booking.save();
+
+    console.log("✅ Booking updated:", booking._id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Booking updated successfully",
+      data: booking
+    });
+
+  } catch (error) {
+    console.error("❌ Error updating booking:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update booking",
+      error: error.message
+    });
+  }
+});
+
 // ✅ GET ALL BOOKINGS
 // Route: GET /getallbookings
 router.get("/getallbookings", async (req, res) => {
@@ -710,5 +848,95 @@ router.delete("/clear/all", async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
+
+
+
+// ================================================================
+// 2. UPDATE PARTNER PAYMENT STATUS (WITH TIMESTAMP)
+// ================================================================
+router.put("/:bookingId/update-partner-payment", async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { partnerPaymentStatus } = req.body;
+
+    // Validate input
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking ID is required"
+      });
+    }
+
+    if (!partnerPaymentStatus) {
+      return res.status(400).json({
+        success: false,
+        message: "Partner payment status is required"
+      });
+    }
+
+    // Validate partnerPaymentStatus values
+    const validStatuses = ["Due", "Pending", "Paid"];
+    if (!validStatuses.includes(partnerPaymentStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid partner payment status. Allowed values: ${validStatuses.join(", ")}`
+      });
+    }
+
+    // Find booking by ID
+    const booking = await Appointment.findById(bookingId);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found"
+      });
+    }
+
+    // Store previous status for reference
+    const previousStatus = booking.partnerPaymentStatus || "Due";
+
+    // Update partner payment status
+    booking.partnerPaymentStatus = partnerPaymentStatus;
+    booking.updatedAt = new Date();
+    
+    // ===== ADD TIMESTAMP FIELD =====
+    booking.partnerPaymentUpdatedAt = new Date(); // NEW: dedicated timestamp field
+
+    // Save the updated booking
+    await booking.save();
+
+    // Return success response with timestamp
+    return res.status(200).json({
+      success: true,
+      message: `Partner payment status updated from "${previousStatus}" to "${partnerPaymentStatus}" successfully`,
+      data: {
+        _id: booking._id,
+        partnerPaymentStatus: booking.partnerPaymentStatus,
+        previousStatus: previousStatus,
+        updatedAt: booking.updatedAt,
+        partnerPaymentUpdatedAt: booking.partnerPaymentUpdatedAt, // NEW: timestamp field
+        formattedDate: new Date(booking.partnerPaymentUpdatedAt).toLocaleString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true
+        })
+      }
+    });
+
+  } catch (error) {
+    console.error("Error updating partner payment status:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update partner payment status",
+      error: error.message
+    });
+  }
+});
+
 
 module.exports = router;
