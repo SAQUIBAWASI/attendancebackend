@@ -5,8 +5,8 @@ const appointmentSchema = new mongoose.Schema(
     // =============================================
     // REFERENCE TO SLOT
     // =============================================
-    slotId: { 
-      type: mongoose.Schema.Types.ObjectId, 
+    slotId: {
+      type: mongoose.Schema.Types.ObjectId,
       ref: "AppointmentSlot"
     },
     slotDetails: {
@@ -20,102 +20,163 @@ const appointmentSchema = new mongoose.Schema(
       doctorName: { type: String },
       doctorSpecialization: { type: String }
     },
-    
+
     // =============================================
     // APPOINTMENT DATE
     // =============================================
     appointmentDate: { type: String, default: "" },
-    
+
     // =============================================
     // PATIENT DETAILS
     // =============================================
-    patientId: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: "Patient" 
+    patientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Patient"
     },
     patientName: { type: String },
     patientAge: { type: Number },
-    patientGender: { 
-      type: String, 
+    patientGender: {
+      type: String,
       enum: ["Male", "Female", "Other"]
     },
+    // ✅ ADD THESE TWO — otherwise Mongoose strips them out
+    patientTitle: { type: String, default: "Mr." },
+    patientDob: { type: String, default: "" },
+    // ✅
     patientPhone: { type: String },
     patientEmail: { type: String, default: "" },
     patientAddress: { type: String, default: "" },
-    
+
     // =============================================
     // MEDICAL INFO
     // =============================================
-    patientBloodGroup: { 
-      type: String, 
-      enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", ""], 
-      default: "" 
+    patientBloodGroup: {
+      type: String,
+      enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", ""],
+      default: ""
     },
     patientMedicalHistory: { type: String, default: "" },
     patientAllergies: { type: String, default: "" },
     patientMedications: { type: String, default: "" },
-    
+
     // =============================================
     // APPOINTMENT DETAILS
     // =============================================
     purpose: { type: String, default: "" },
     symptoms: { type: String, default: "" },
-    appointmentType: { 
-      type: String, 
-      enum: ["New", "Follow-up", "Consultation", "Emergency", ""], 
-      default: "Consultation" 
+    appointmentType: {
+      type: String,
+      enum: ["New", "Follow-up", "Consultation", "Emergency", ""],
+      default: "Consultation"
     },
-    priority: { 
-      type: String, 
-      enum: ["Normal", "High", "Urgent", "Emergency"], 
-      default: "Normal" 
+    priority: {
+      type: String,
+      enum: ["Normal", "High", "Urgent", "Emergency"],
+      default: "Normal"
     },
-    
+
     // =============================================
-    // ===== REFERRAL FIELDS (UPDATED) =====
+    // ===== REFERRAL FIELDS (UPDATED WITH REF) =====
     // =============================================
-    referredBy: { type: String, default: "" },
-    referralContactId: { type: String, default: "" },
+    referredBy: { type: String, default: "" }, // Display name (denormalized)
+
+    // ✅ Main referral contact reference
+    referralContactId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ReferralContact",
+      default: null
+    },
+
+    // ✅ Customer referral reference
+    referralCustomerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ReferralContact",
+      default: null
+    },
+
+    // ✅ Doctor referral reference
+    referralDoctorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ReferralContact",
+      default: null
+    },
+
+    // ✅ Denormalized names for display
+    referredByCustomer: { type: String, default: "" },
+    referredByDoctor: { type: String, default: "" },
+
+    // Commission details
     referralCommission: { type: String, default: "" },
-referralCommissionType: { 
-  type: String, 
-  enum: ["clinic", "pharmacy", "lab", "Clinic", "Pharmacy", "Lab", ""], 
-  default: "" 
-},
+    referralCommissionType: {
+      type: String,
+      enum: ["clinic", "pharmacy", "lab", "Clinic", "Pharmacy", "Lab", ""],
+      default: ""
+    },
 
-// ===== PARTNER PAYMENT STATUS =====
-  partnerPaymentStatus: {
-    type: String,
-    enum: ["Due", "Pending", "Paid"],
-    default: "Due"
-  },
-    
+    // ===== PARTNER PAYMENT STATUS =====
+    partnerPaymentStatus: {
+      type: String,
+      enum: ["Due", "Pending", "Paid"],
+      default: "Due"
+    },
 
-   // ===== NEW: Partner Payment Updated Timestamp =====
-  partnerPaymentUpdatedAt: {
-    type: Date,
-    default: null
-  },
+    // ===== Partner Payment Updated Timestamp =====
+    partnerPaymentUpdatedAt: {
+      type: Date,
+      default: null
+    },
+
     // =============================================
     // INSURANCE
     // =============================================
     insuranceProvider: { type: String, default: "" },
     insurancePolicyNumber: { type: String, default: "" },
-    
+
     // =============================================
-    // PAYMENT DETAILS (UPDATED)
+    // PAYMENT DETAILS
     // =============================================
-    consultationFee: { type: Number, default: 300 },
-    paymentType: { 
-      type: String, 
-      enum: ["cash", "online", "insurance", "card", ""], 
-      default: "cash" 
+    paymentType: {
+      type: String,
+      enum: ["cash", "online", "insurance", "card", ""],
+      default: "cash"
     },
-    paymentStatus: { 
-      type: String, 
-      enum: ["Pending", "Paid", "Partial", "Due", "Refunded"], 
-      default: "Pending" 
+    paymentStatus: {
+      type: String,
+      enum: ["Pending", "Paid", "Partial", "Due", "Refunded"],
+      default: "Pending"
     },
+
+    // models/Appointment.js
+doctorPaymentStatus: {
+  type: String,
+  enum: ["Pending", "Paid"],
+  default: "Pending"
+},
+
+
+ // ✅ ADD THESE NEW FIELDS
+    medicines: [
+      {
+        name: {
+          type: String,
+          trim: true,
+        },
+        price: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+      },
+    ],
+    medicineTotal: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+  customerPaymentStatus: { type: String, default: "Pending" }, // ✅ Add this
+    // ✅ ADD THIS — otherwise Mongoose strips it
+    partialAmount: { type: Number, default: 0 },
     paymentTransactionId: { type: String, default: "" },
     totalAmount: { type: Number, default: 0 },
     amountPaid: { type: Number, default: 0 },
@@ -124,9 +185,9 @@ referralCommissionType: {
     tax: { type: Number, default: 0 },
     billNumber: { type: String, default: "" },
     billingDate: { type: Date, default: null },
-    
+
     // =============================================
-    // ===== SERVICES WITH PAYMENT STATUS (UPDATED) =====
+    // SERVICES
     // =============================================
     services: {
       type: [{
@@ -134,31 +195,31 @@ referralCommissionType: {
         name: { type: String },
         price: { type: Number, default: 0 },
         description: { type: String, default: "" },
-        paymentStatus: { 
-          type: String, 
-          enum: ["Pending", "Paid", "Partial", "Due"], 
-          default: "Pending" 
-        }, // <-- UPDATED
+        paymentStatus: {
+          type: String,
+          enum: ["Pending", "Paid", "Partial", "Due"],
+          default: "Pending"
+        },
         addedAt: { type: Date, default: Date.now }
       }],
       default: []
     },
 
     // =============================================
-    // ===== CALCULATED FIELDS (NEW) =====
+    // CALCULATED FIELDS
     // =============================================
     subtotal: { type: Number, default: 0 },
     commissionAmount: { type: Number, default: 0 },
     finalPayable: { type: Number, default: 0 },
     isOP: { type: Boolean, default: false },
-    
+
     // =============================================
     // STATUS TRACKING
     // =============================================
-    status: { 
-      type: String, 
-      enum: ["pending", "confirmed", "consulting", "completed", "cancelled"], 
-      default: "pending" 
+    status: {
+      type: String,
+      enum: ["pending", "confirmed", "consulting", "completed", "cancelled"],
+      default: "pending"
     },
     consultationStarted: { type: Boolean, default: false },
     consultationCompleted: { type: Boolean, default: false },
@@ -166,14 +227,14 @@ referralCommissionType: {
     cancellationReason: { type: String, default: "" },
     completedAt: { type: Date, default: null },
     bookedAt: { type: Date, default: Date.now },
-    
+
     // =============================================
     // FOLLOW-UP
     // =============================================
     followUpRequired: { type: Boolean, default: false },
     followUpDate: { type: String, default: "" },
     followUpNotes: { type: String, default: "" },
-    
+
     // =============================================
     // TIME TRACKING
     // =============================================
@@ -181,7 +242,7 @@ referralCommissionType: {
     checkOutTime: { type: Date, default: null },
     waitingTime: { type: Number, default: 0 },
     actualConsultationDuration: { type: Number, default: 0 },
-    
+
     // =============================================
     // MEDICAL NOTES
     // =============================================
@@ -192,14 +253,14 @@ referralCommissionType: {
     labTestsOrdered: { type: [String], default: [] },
     imagingOrdered: { type: [String], default: [] },
     referralToSpecialist: { type: String, default: "" },
-    
+
     // =============================================
     // TELEMEDICINE
     // =============================================
     isTelemedicine: { type: Boolean, default: false },
     telemedicinePlatform: { type: String, default: "" },
     telemedicineLink: { type: String, default: "" },
-    
+
     // =============================================
     // NOTIFICATIONS
     // =============================================
@@ -207,18 +268,18 @@ referralCommissionType: {
     reminderSentAt: { type: Date, default: null },
     smsSent: { type: Boolean, default: false },
     emailSent: { type: Boolean, default: false },
-    
+
     // =============================================
     // FEEDBACK
     // =============================================
-    patientRating: { 
-      type: Number, 
-      min: 1, 
-      max: 5, 
-      default: null 
+    patientRating: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: null
     },
     patientFeedback: { type: String, default: "" },
-    
+
     // =============================================
     // STAFF
     // =============================================
@@ -240,51 +301,52 @@ appointmentSchema.index({ status: 1 });
 appointmentSchema.index({ paymentStatus: 1 });
 appointmentSchema.index({ createdAt: -1 });
 appointmentSchema.index({ appointmentDate: 1 });
-appointmentSchema.index({ referralContactId: 1 }); // <-- NEW
+appointmentSchema.index({ referralContactId: 1 });
+appointmentSchema.index({ referralCustomerId: 1 }); // ✅ NEW
+appointmentSchema.index({ referralDoctorId: 1 });   // ✅ NEW
 
 // =============================================
-// VIRTUAL FIELDS (UPDATED)
+// VIRTUAL FIELDS
 // =============================================
 
-appointmentSchema.virtual('totalFee').get(function() {
+appointmentSchema.virtual('totalFee').get(function () {
   const consultationFee = this.consultationFee || 0;
   const servicesTotal = this.services.reduce((sum, service) => sum + (service.price || 0), 0);
   return consultationFee + servicesTotal;
 });
 
-appointmentSchema.virtual('servicesTotal').get(function() {
+appointmentSchema.virtual('servicesTotal').get(function () {
   return this.services.reduce((sum, service) => sum + (service.price || 0), 0);
 });
 
-appointmentSchema.virtual('grandTotal').get(function() {
+appointmentSchema.virtual('grandTotal').get(function () {
   return (this.consultationFee || 0) + this.servicesTotal;
 });
 
-// ===== NEW VIRTUAL: Amount after referral discount =====
-appointmentSchema.virtual('finalPayableAmount').get(function() {
+appointmentSchema.virtual('finalPayableAmount').get(function () {
   const subtotal = this.subtotal || this.grandTotal;
   const commissionPercent = parseFloat(this.referralCommission) || 0;
   const commissionAmount = (subtotal * commissionPercent) / 100;
   return subtotal - commissionAmount;
 });
 
-appointmentSchema.virtual('isCompleted').get(function() {
+appointmentSchema.virtual('isCompleted').get(function () {
   return this.status === 'completed';
 });
 
-appointmentSchema.virtual('isCancelled').get(function() {
+appointmentSchema.virtual('isCancelled').get(function () {
   return this.status === 'cancelled';
 });
 
-appointmentSchema.virtual('isActive').get(function() {
+appointmentSchema.virtual('isActive').get(function () {
   return this.status !== 'cancelled' && this.status !== 'completed';
 });
 
 // =============================================
-// METHODS (UPDATED)
+// METHODS
 // =============================================
 
-appointmentSchema.methods.confirm = function() {
+appointmentSchema.methods.confirm = function () {
   if (this.status !== 'pending') {
     throw new Error('Appointment cannot be confirmed');
   }
@@ -292,7 +354,7 @@ appointmentSchema.methods.confirm = function() {
   return this.save();
 };
 
-appointmentSchema.methods.startConsultation = function() {
+appointmentSchema.methods.startConsultation = function () {
   if (this.status !== 'confirmed' && this.status !== 'pending') {
     throw new Error('Appointment cannot be started');
   }
@@ -302,7 +364,7 @@ appointmentSchema.methods.startConsultation = function() {
   return this.save();
 };
 
-appointmentSchema.methods.complete = function() {
+appointmentSchema.methods.complete = function () {
   if (this.status !== 'consulting' && this.status !== 'confirmed') {
     throw new Error('Appointment cannot be completed');
   }
@@ -313,7 +375,7 @@ appointmentSchema.methods.complete = function() {
   return this.save();
 };
 
-appointmentSchema.methods.cancel = function(reason = '') {
+appointmentSchema.methods.cancel = function (reason = '') {
   if (this.status === 'completed' || this.status === 'cancelled') {
     throw new Error('Appointment cannot be cancelled');
   }
@@ -323,8 +385,7 @@ appointmentSchema.methods.cancel = function(reason = '') {
   return this.save();
 };
 
-// ===== UPDATED: Add service with paymentStatus =====
-appointmentSchema.methods.addService = function(serviceData) {
+appointmentSchema.methods.addService = function (serviceData) {
   this.services.push({
     ...serviceData,
     paymentStatus: serviceData.paymentStatus || "Pending",
@@ -336,7 +397,7 @@ appointmentSchema.methods.addService = function(serviceData) {
   return this.save();
 };
 
-appointmentSchema.methods.removeService = function(serviceId) {
+appointmentSchema.methods.removeService = function (serviceId) {
   this.services = this.services.filter(s => s.serviceId !== serviceId);
   this.totalAmount = this.grandTotal;
   this.subtotal = this.grandTotal;
@@ -344,8 +405,7 @@ appointmentSchema.methods.removeService = function(serviceId) {
   return this.save();
 };
 
-// ===== UPDATED: Mark as paid with calculation =====
-appointmentSchema.methods.markAsPaid = function(amount = null) {
+appointmentSchema.methods.markAsPaid = function (amount = null) {
   const amountToPay = amount || this.finalPayable || this.grandTotal;
   this.paymentStatus = 'Paid';
   this.amountPaid = amountToPay;
@@ -354,8 +414,7 @@ appointmentSchema.methods.markAsPaid = function(amount = null) {
   return this.save();
 };
 
-// ===== NEW: Update service payment status =====
-appointmentSchema.methods.updateServicePaymentStatus = function(serviceId, paymentStatus) {
+appointmentSchema.methods.updateServicePaymentStatus = function (serviceId, paymentStatus) {
   const service = this.services.find(s => s.serviceId === serviceId);
   if (service) {
     service.paymentStatus = paymentStatus;
@@ -364,8 +423,7 @@ appointmentSchema.methods.updateServicePaymentStatus = function(serviceId, payme
   throw new Error('Service not found');
 };
 
-// ===== NEW: Recalculate all totals =====
-appointmentSchema.methods.recalculateTotals = function() {
+appointmentSchema.methods.recalculateTotals = function () {
   const consultationFee = this.consultationFee || 0;
   const servicesTotal = this.services.reduce((sum, s) => sum + (s.price || 0), 0);
   this.subtotal = consultationFee + servicesTotal;
@@ -380,21 +438,21 @@ appointmentSchema.methods.recalculateTotals = function() {
 // STATICS
 // =============================================
 
-appointmentSchema.statics.getByPatientPhone = function(phone) {
+appointmentSchema.statics.getByPatientPhone = function (phone) {
   return this.find({ patientPhone: phone })
     .sort({ createdAt: -1 });
 };
 
-appointmentSchema.statics.getByPatientId = function(patientId) {
+appointmentSchema.statics.getByPatientId = function (patientId) {
   return this.find({ patientId: patientId })
     .sort({ createdAt: -1 });
 };
 
-appointmentSchema.statics.getBySlotId = function(slotId) {
+appointmentSchema.statics.getBySlotId = function (slotId) {
   return this.findOne({ slotId: slotId });
 };
 
-appointmentSchema.statics.getTodayAppointments = function() {
+appointmentSchema.statics.getTodayAppointments = function () {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
@@ -404,33 +462,33 @@ appointmentSchema.statics.getTodayAppointments = function() {
   }).sort({ createdAt: 1 });
 };
 
-appointmentSchema.statics.getPendingAppointments = function() {
+appointmentSchema.statics.getPendingAppointments = function () {
   return this.find({ status: 'pending' })
     .sort({ createdAt: -1 });
 };
 
-appointmentSchema.statics.getConfirmedAppointments = function() {
+appointmentSchema.statics.getConfirmedAppointments = function () {
   return this.find({ status: 'confirmed' })
     .sort({ createdAt: -1 });
 };
 
-appointmentSchema.statics.getCompletedAppointments = function() {
+appointmentSchema.statics.getCompletedAppointments = function () {
   return this.find({ status: 'completed' })
     .sort({ createdAt: -1 });
 };
 
-appointmentSchema.statics.getCancelledAppointments = function() {
+appointmentSchema.statics.getCancelledAppointments = function () {
   return this.find({ status: 'cancelled' })
     .sort({ createdAt: -1 });
 };
 
-appointmentSchema.statics.getByDateRange = function(startDate, endDate) {
+appointmentSchema.statics.getByDateRange = function (startDate, endDate) {
   return this.find({
     createdAt: { $gte: startDate, $lte: endDate }
   }).sort({ createdAt: 1 });
 };
 
-appointmentSchema.statics.getPaymentSummary = function() {
+appointmentSchema.statics.getPaymentSummary = function () {
   return this.aggregate([
     {
       $group: {
@@ -443,23 +501,40 @@ appointmentSchema.statics.getPaymentSummary = function() {
   ]);
 };
 
-appointmentSchema.statics.getByAppointmentDate = function(date) {
+appointmentSchema.statics.getByAppointmentDate = function (date) {
   return this.find({ appointmentDate: date })
     .sort({ startTime: 1 });
 };
 
-appointmentSchema.statics.getByAppointmentDateRange = function(startDate, endDate) {
+appointmentSchema.statics.getByAppointmentDateRange = function (startDate, endDate) {
   return this.find({
     appointmentDate: { $gte: startDate, $lte: endDate }
   }).sort({ appointmentDate: 1, startTime: 1 });
+};
+
+// ✅ NEW: Get appointments by referral contact
+appointmentSchema.statics.getByReferralContactId = function (referralContactId) {
+  return this.find({ referralContactId: referralContactId })
+    .sort({ createdAt: -1 });
+};
+
+// ✅ NEW: Get appointments by customer referral
+appointmentSchema.statics.getByReferralCustomerId = function (referralCustomerId) {
+  return this.find({ referralCustomerId: referralCustomerId })
+    .sort({ createdAt: -1 });
+};
+
+// ✅ NEW: Get appointments by doctor referral
+appointmentSchema.statics.getByReferralDoctorId = function (referralDoctorId) {
+  return this.find({ referralDoctorId: referralDoctorId })
+    .sort({ createdAt: -1 });
 };
 
 // =============================================
 // MIDDLEWARE
 // =============================================
 
-appointmentSchema.pre('save', function(next) {
-  // Calculate totals before saving
+appointmentSchema.pre('save', function (next) {
   const consultationFee = this.consultationFee || 0;
   const servicesTotal = this.services.reduce((sum, service) => sum + (service.price || 0), 0);
   this.subtotal = consultationFee + servicesTotal;
