@@ -9284,7 +9284,277 @@ const Leave = require("../models/Leave");
 const Shift = require("../models/Shift");
 const Holiday = require("../models/Holiday");
 
+// ============================================
+// ✅ HELPER: Format date to YYYY-MM-DD
+// ============================================
+const formatDateLocal = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+// ============================================
+// ✅ HELPER: Calculate Earned WeekOffs
+// ============================================
+const calculateEarnedWeekOffs = (
+  employeeId, 
+  year, 
+  monthNum, 
+  dailyAttendance, 
+  empLeaves, 
+  weekOffDay, 
+  shiftHours = 8, 
+  holidayDaysInMonth = 0,
+  weekOffPerMonth = 4,
+  isDevOrMarketing = false,
+  isFlexibleWeekOff = false
+) => {
+  const firstDay = new Date(year, monthNum - 1, 1);
+  const lastDay = new Date(year, monthNum, 0);
+  
+  const attendanceMap = new Map();
+  (dailyAttendance || []).forEach(record => {
+    if (record && record.checkInTime) {
+      const dateKey = formatDateLocal(record.checkInTime);
+      let hours = 0;
+      if (record.totalHours) hours = parseFloat(record.totalHours);
+      else if (record.workingHours) hours = parseFloat(record.workingHours);
+      else if (record.checkOutTime) {
+        hours = (new Date(record.checkOutTime) - new Date(record.checkInTime)) / (1000 * 60 * 60);
+      }
+      const existing = attendanceMap.get(dateKey) || 0;
+      attendanceMap.set(dateKey, existing + hours);
+    }
+  });
+
+  const isLeaveDay = (date) => {
+    if (!date || !employeeId) return false;
+    const dateStr = formatDateLocal(date);
+    return (empLeaves || []).some(leave => {
+      if (!leave || !leave.startDate || !leave.endDate) return false;
+      const startStr = formatDateLocal(leave.startDate);
+      const endStr = formatDateLocal(leave.endDate);
+      return dateStr >= startStr && dateStr <= endStr;
+    });
+  };
+
+  // ============================================
+  // 🏥 FLEXIBLE WEEK OFF (Medical/Nursing/Lab/Consultant)
+  // ============================================
+  if (isFlexibleWeekOff) {
+    let presentDays = 0;
+    let halfDays = 0;
+    let leavesCount = 0;
+    const absentDates = [];
+    const presentDates = [];
+    const halfDayDates = [];
+    const leaveDates = [];
+    
+    for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
+      const dateKey = formatDateLocal(d);
+      
+      if (isLeaveDay(d)) {
+        leavesCount++;
+        leaveDates.push(dateKey);
+        continue;
+      }
+      
+      const hoursWorked = attendanceMap.get(dateKey);
+      
+      if (hoursWorked !== undefined && hoursWorked > 0) {
+        if (hoursWorked >= shiftHours * 0.8) {
+          presentDays++;
+          presentDates.push(dateKey);
+        } else if (hoursWorked >= shiftHours * 0.4) {
+          halfDays += 0.5;
+          halfDayDates.push(dateKey);
+        } else {
+          absentDates.push(dateKey);
+        }
+      } else {
+        absentDates.push(dateKey);
+      }
+    }
+    
+    const absentCount = absentDates.length;
+    const weekOffsCount = Math.min(absentCount, weekOffPerMonth);
+    const extraAbsentCount = Math.max(0, absentCount - weekOffPerMonth);
+    
+    const weekOffDates = absentDates.slice(0, weekOffsCount);
+    const extraAbsentDates = absentDates.slice(weekOffsCount);
+    
+    const totalWorkingDays = presentDays + (halfDays * 0.5);
+    
+    console.log(`🏥 FLEXIBLE (${employeeId}) - ${year}-${monthNum}:`);
+    console.log(`   Present: ${presentDays}, Half: ${halfDays}, Leaves: ${leavesCount}`);
+    console.log(`   Total Absent: ${absentCount}, WeekOffs: ${weekOffsCount}, ExtraAbsent: ${extraAbsentCount}`);
+    
+    return {
+      weeklyBreakdown: [],
+      earnedWeekOffs: weekOffsCount,
+      totalWeekOffDays: weekOffsCount,
+      totalWorkingDaysInMonth: totalWorkingDays,
+      extraEarnedWeekOffs: extraAbsentCount,
+      maxAllowedWeekOffs: weekOffPerMonth,
+      presentDays,
+      halfDays,
+      absentDays: extraAbsentCount,
+      totalAbsentDays: absentCount,
+      weekOffsTaken: weekOffsCount,
+      leavesCount,
+      isFlexible: true,
+      weekOffDates,
+      extraAbsentDates,
+      presentDates,
+      halfDayDates,
+      leaveDates
+    };
+  }
+  
+  // ============================================
+  // 🎯 FIXED WEEK OFF (Dev/Marketing/Others)
+  // ============================================
+  const weekOffDayNum = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].indexOf(weekOffDay);
+  const safeWeekOffDayNum = weekOffDayNum >= 0 ? weekOffDayNum : 0;
+  
+  let totalWeekOffDays = 0;
+  const weekOffDates = [];
+  for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
+    if (d.getDay() === safeWeekOffDayNum) {
+      totalWeekOffDays++;
+      weekOffDates.push(formatDateLocal(d));
+    }
+  }
+  
+  let totalWorkingDays = 0;
+  let weeklyBreakdown = [];
+  let eligibleWeeks = 0;
+  let totalLeaves = 0;
+  
+  let currentWeekStart = new Date(firstDay);
+  while (currentWeekStart.getDay() !== 1) {
+    currentWeekStart.setDate(currentWeekStart.getDate() - 1);
+  }
+
+  let weekNumber = 1;
+
+  while (currentWeekStart <= lastDay) {
+    const weekEnd = new Date(currentWeekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    
+    let presentDays = 0;
+    let halfDays = 0;
+    let leavesCount = 0;
+    let weekOffDays = 0;
+    let daysInMonthInThisWeek = 0;
+    let attendedDays = 0;
+    let actualWorkingDaysInWeek = 0;
+
+    for (let d = new Date(currentWeekStart); d <= weekEnd; d.setDate(d.getDate() + 1)) {
+      if (d < firstDay || d > lastDay) continue;
+      daysInMonthInThisWeek++;
+      if (d.getDay() !== safeWeekOffDayNum) actualWorkingDaysInWeek++;
+    }
+
+    for (let d = new Date(currentWeekStart); d <= weekEnd; d.setDate(d.getDate() + 1)) {
+      if (d < firstDay || d > lastDay) continue;
+      
+      const dateKey = formatDateLocal(d);
+      const isWeekOff = (d.getDay() === safeWeekOffDayNum);
+      
+      if (isWeekOff) {
+        weekOffDays++;
+        continue;
+      }
+
+      if (isLeaveDay(d)) {
+        leavesCount++;
+        totalLeaves++;
+        continue;
+      }
+
+      const hoursWorked = attendanceMap.get(dateKey);
+      if (hoursWorked !== undefined && hoursWorked > 0) {
+        if (hoursWorked >= shiftHours * 0.8) {
+          presentDays++;
+          attendedDays++;
+          totalWorkingDays++;
+        } else if (hoursWorked >= shiftHours * 0.4) {
+          halfDays += 0.5;
+          attendedDays += 0.5;
+          totalWorkingDays += 0.5;
+        }
+      }
+    }
+
+    const effectiveWorkingDays = presentDays + halfDays + leavesCount;
+    
+    let isEligibleForWeekoff = false;
+    if (daysInMonthInThisWeek === 7) {
+      isEligibleForWeekoff = effectiveWorkingDays >= 5;
+    } else {
+      const employeeAttendedDays = presentDays + halfDays;
+      isEligibleForWeekoff = (employeeAttendedDays >= actualWorkingDaysInWeek) && (actualWorkingDaysInWeek >= 3);
+    }
+
+    if (daysInMonthInThisWeek > 0) {
+      weeklyBreakdown.push({
+        weekNumber, daysInMonthInThisWeek, actualWorkingDaysInWeek,
+        presentDays, halfDays, leaves: leavesCount, weekOffDays, attendedDays,
+        effectiveWorkingDays: Math.round(effectiveWorkingDays * 10) / 10,
+        isEligibleForWeekoff,
+        isPartialWeek: daysInMonthInThisWeek < 7
+      });
+      
+      if (isEligibleForWeekoff) eligibleWeeks++;
+    }
+
+    currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+    weekNumber++;
+  }
+
+  const totalActiveDays = totalWorkingDays + totalLeaves + holidayDaysInMonth;
+  
+  let earnedWeekOffs;
+  let maxAllowedWeekOffs;
+  
+  if (isDevOrMarketing) {
+    maxAllowedWeekOffs = totalWeekOffDays;
+    earnedWeekOffs = totalWeekOffDays;
+  } else {
+    maxAllowedWeekOffs = Math.min(weekOffPerMonth, totalWeekOffDays);
+    const ratioBased = Math.floor(totalActiveDays / 6);
+    earnedWeekOffs = Math.max(eligibleWeeks, ratioBased);
+    earnedWeekOffs = Math.min(earnedWeekOffs, maxAllowedWeekOffs);
+  }
+  
+  const extraEarnedWeekOffs = isDevOrMarketing 
+    ? 0 
+    : Math.max(0, eligibleWeeks - maxAllowedWeekOffs);
+
+  console.log(`📊 ${year}-${monthNum} ${weekOffDay}:`);
+  console.log(`   Working Days: ${totalWorkingDays}, Leaves: ${totalLeaves}, Holidays: ${holidayDaysInMonth}`);
+  console.log(`   Eligible Weeks: ${eligibleWeeks}, Max Allowed: ${maxAllowedWeekOffs}`);
+  console.log(`   FINAL EARNED: ${earnedWeekOffs}, Extra: ${extraEarnedWeekOffs}`);
+
+  return {
+    weeklyBreakdown,
+    earnedWeekOffs,
+    totalWeekOffDays,
+    totalWorkingDaysInMonth: totalWorkingDays,
+    extraEarnedWeekOffs,
+    maxAllowedWeekOffs,
+    weekOffDates,
+    isFlexible: false
+  };
+};
+
+// ============================================================================
 // ✅ EMPLOYEE WEEKOFF MAPPING
+// ============================================================================
 const EMPLOYEE_WEEKOFF_MAP = {
   'EMP001': { weekOffDay: 'Sunday', dayNum: 0, weekOffType: '0+4', weekOffPerMonth: 4 },
   'EMP002': { weekOffDay: 'Sunday', dayNum: 0, weekOffType: '0+4', weekOffPerMonth: 4 },
@@ -9294,39 +9564,26 @@ const EMPLOYEE_WEEKOFF_MAP = {
   'EMP008': { weekOffDay: 'Sunday', dayNum: 0, weekOffType: '0+4', weekOffPerMonth: 4 },
   'EMP006': { weekOffDay: 'Tuesday', dayNum: 2, weekOffType: '0+2', weekOffPerMonth: 2 },
   'EMP007': { weekOffDay: 'Friday', dayNum: 5, weekOffType: '0+4', weekOffPerMonth: 4 },
-  // ✅ Subir (EMP020) - 3 working days per week, 3 hour shift
   'EMP020': { 
-    weekOffDay: 'Sunday', 
-    dayNum: 0, 
-    weekOffType: '0+4', 
-    weekOffPerMonth: 4, 
-    workingDaysPerWeek: 3,
-    maxWorkingDaysPerMonth: 15
+    weekOffDay: 'Sunday', dayNum: 0, weekOffType: '0+4', weekOffPerMonth: 4, 
+    workingDaysPerWeek: 3, maxWorkingDaysPerMonth: 15
   }
 };
 
-// ✅ HELPER FUNCTION: Calculate dynamic weekoffs for specific day
 const calculateWeekOffsForDay = (year, month, targetDay) => {
   const monthIndex = month - 1;
   const daysInMonth = new Date(year, month, 0).getDate();
-
   let count = 0;
   for (let day = 1; day <= daysInMonth; day++) {
     const currentDate = new Date(year, monthIndex, day);
-    if (currentDate.getDay() === targetDay) {
-      count++;
-    }
+    if (currentDate.getDay() === targetDay) count++;
   }
   return count;
 };
 
 // ============================================================================
-// 🚀 DYNAMIC SHIFT LOGIC IMPLEMENTATION
+// 🚀 DYNAMIC SHIFT LOGIC
 // ============================================================================
-
-/**
- * 🛠️ Helper: Get Default Shift Time
- */
 const getDefaultShiftTime = (shiftType) => {
   switch (shiftType) {
     case "Morning": return { start: "06:00", end: "15:00" };
@@ -9337,9 +9594,6 @@ const getDefaultShiftTime = (shiftType) => {
   }
 };
 
-/**
- * 🛠️ Helper: Get Employee Shift
- */
 const getEmployeeShift = (employeeId, shiftsData, masterShifts) => {
   if (!shiftsData || !masterShifts) return null;
 
@@ -9373,12 +9627,10 @@ const getEmployeeShift = (employeeId, shiftsData, masterShifts) => {
     }
   }
 
-  // Calculate Duration
   if (startTime && endTime) {
     const start = new Date(`2000-01-01T${startTime}`);
     const end = new Date(`2000-01-01T${endTime}`);
     if (end < start) end.setDate(end.getDate() + 1);
-
     const diff = (end - start) / (1000 * 60 * 60);
     duration = Number(diff.toFixed(2));
   }
@@ -9393,58 +9645,35 @@ const getEmployeeShift = (employeeId, shiftsData, masterShifts) => {
   };
 };
 
-/**
- * ✅ FIXED: Calculate Day Type Based on Shift Duration
- * - Short shifts (3-6 hours): 
- *   - Full Day: 90%+ of shift hours (2.7+ hrs for 3hr shift)
- *   - Half Day: 50%+ of shift hours (1.5+ hrs for 3hr shift)
- *   - Leave: < 50% of shift hours
- * - Standard shifts (7-12 hours):
- *   - Full Day: 8.8+ hours
- *   - Half Day: 4.5-8.79 hours
- *   - Leave: < 4.5 hours
- */
 const calculateShiftDayType = (hours, shiftDuration) => {
   const h = parseFloat(hours) || 0;
 
-  // 🟢 SHORT SHIFTS (3 - 6 Hours) - EMP020 ka shift 3 hours hai
   if (shiftDuration >= 3 && shiftDuration <= 6) {
-    if (h >= shiftDuration * 0.9) return "full";        // 2.7+ hours for 3hr shift = Full Day
-    if (h >= shiftDuration * 0.5) return "half";        // 1.5+ hours for 3hr shift = Half Day
-    return "full_leave";                                // < 1.5 hours = Leave
-  }
-  
-  // 🟣 STANDARD SHIFTS (7 - 12 Hours)
-  else {
+    if (h >= shiftDuration * 0.9) return "full";
+    if (h >= shiftDuration * 0.5) return "half";
+    return "full_leave";
+  } else {
     if (h >= 8.8) return "full";
     if (h >= 4.5) return "half";
     return "full_leave";
   }
 };
 
-/**
- * ✅ FIXED: Calculate Overtime
- * - OT = Actual hours worked - Shift duration (only if positive)
- */
 const calculateShiftOT = (checkOutTime, shiftEndTimeStr, checkInTime, actualHours, shiftDuration) => {
-  // Method 1: If we have actual hours and shift duration, simple subtraction
   if (actualHours && shiftDuration) {
     const ot = Math.max(parseFloat(actualHours) - parseFloat(shiftDuration), 0);
     return Number(ot.toFixed(2));
   }
   
-  // Method 2: If we have checkout time and shift end time
   if (!checkOutTime || !shiftEndTimeStr) return 0;
 
   const checkOut = new Date(checkOutTime);
   const checkIn = new Date(checkInTime);
-
   const [endH, endM] = shiftEndTimeStr.split(":").map(Number);
 
   let shiftEnd = new Date(checkIn);
   shiftEnd.setHours(endH, endM, 0, 0);
 
-  // Handle night shifts
   if (checkIn.getHours() > 12 && endH < 12) {
     shiftEnd.setDate(shiftEnd.getDate() + 1);
   }
@@ -9457,13 +9686,13 @@ const calculateShiftOT = (checkOutTime, shiftEndTimeStr, checkInTime, actualHour
   return 0;
 };
 
-/**
- * 📌 Get All Attendance Records with Filters
- */
+// ============================================================================
+// 📌 EXPORTS
+// ============================================================================
+
 exports.getAllAttendance = async (req, res) => {
   try {
     const { fromDate, toDate, month, employeeId } = req.query;
-
     let query = {};
 
     if (fromDate && toDate) {
@@ -9477,60 +9706,29 @@ exports.getAllAttendance = async (req, res) => {
       const [year, monthNum] = month.split('-');
       const startDate = new Date(year, monthNum - 1, 1);
       const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
-
-      query.checkInTime = {
-        $gte: startDate,
-        $lte: endDate
-      };
+      query.checkInTime = { $gte: startDate, $lte: endDate };
     }
 
-    if (employeeId) {
-      query.employeeId = employeeId;
-    }
+    if (employeeId) query.employeeId = employeeId;
 
-    const records = await Attendance.find(query)
-      .sort({ checkInTime: -1 })
-      .lean();
+    const records = await Attendance.find(query).sort({ checkInTime: -1 }).lean();
 
-    res.json({
-      success: true,
-      records: records,
-      count: records.length
-    });
-
+    res.json({ success: true, records, count: records.length });
   } catch (error) {
     console.error('❌ Error fetching attendance:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching attendance records',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error fetching attendance records', error: error.message });
   }
 };
 
-/**
- * 📌 Update Attendance Record
- */
 exports.updateAttendance = async (req, res) => {
   try {
     const { attendanceId, hours, region, reason, employeeId, date, checkInTime, checkOutTime, comment } = req.body;
 
-    console.log('📝 Update request received:', { 
-      attendanceId, 
-      hours, 
-      region, 
-      reason, 
-      employeeId, 
-      date, 
-      checkInTime, 
-      checkOutTime,
-      comment
-    });
+    console.log('📝 Update request received:', { attendanceId, hours, region, reason, employeeId, date, checkInTime, checkOutTime, comment });
 
     let updatedRecord;
     let targetDate;
 
-    // ✅ CASE 1: Update Existing Record
     if (attendanceId) {
       const updateData = {};
       if (hours !== undefined) updateData.totalHours = parseFloat(hours);
@@ -9545,59 +9743,39 @@ exports.updateAttendance = async (req, res) => {
         const start = new Date(checkInTime);
         const end = new Date(checkOutTime);
         updateData.status = "checked-out";
-        
-        // Only auto-calculate if hours is NOT explicitly provided
         if (hours === undefined) {
-          const diffMs = end - start;
-          const diffHours = diffMs / (1000 * 60 * 60);
-          updateData.totalHours = parseFloat(diffHours.toFixed(2));
+          updateData.totalHours = parseFloat(((end - start) / (1000 * 60 * 60)).toFixed(2));
         }
       }
 
-      // ✅ Recalculate day type based on shift
       if (updateData.totalHours !== undefined) {
         const record = await Attendance.findById(attendanceId);
         if (record) {
           const allShifts = await Shift.find({});
           const masterShifts = allShifts.filter(s => s.isMasterShift);
           const shiftInfo = getEmployeeShift(record.employeeId, allShifts, masterShifts);
-          updateData.dayType = calculateShiftDayType(updateData.totalHours, shiftInfo.duration);
+          updateData.dayType = calculateShiftDayType(updateData.totalHours, shiftInfo?.duration || 9);
         }
       }
 
-      updatedRecord = await Attendance.findByIdAndUpdate(
-        attendanceId,
-        updateData,
-        { new: true, runValidators: true }
-      );
+      updatedRecord = await Attendance.findByIdAndUpdate(attendanceId, updateData, { new: true, runValidators: true });
 
       if (!updatedRecord) {
-        return res.status(404).json({
-          success: false,
-          message: 'Attendance record not found'
-        });
+        return res.status(404).json({ success: false, message: 'Attendance record not found' });
       }
 
       targetDate = updatedRecord.checkInTime;
-    }
-    // ✅ CASE 2: Create New Record
-    else if (employeeId && date && checkInTime) {
-      if (!checkInTime) {
-        return res.status(400).json({ success: false, message: "Check-in time is required for new record" });
-      }
-
+    } else if (employeeId && date && checkInTime) {
       const newCheckIn = new Date(checkInTime);
       const newCheckOut = checkOutTime ? new Date(checkOutTime) : null;
       let totalHours = 0;
 
       if (newCheckOut) {
-        const diffMs = newCheckOut - newCheckIn;
-        totalHours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
+        totalHours = parseFloat(((newCheckOut - newCheckIn) / (1000 * 60 * 60)).toFixed(2));
       } else if (hours) {
         totalHours = parseFloat(hours);
       }
 
-      // ✅ Get shift info for day type calculation
       const allShifts = await Shift.find({});
       const masterShifts = allShifts.filter(s => s.isMasterShift);
       const shiftInfo = getEmployeeShift(employeeId, allShifts, masterShifts);
@@ -9606,25 +9784,21 @@ exports.updateAttendance = async (req, res) => {
         employeeId,
         checkInTime: newCheckIn,
         checkOutTime: newCheckOut,
-        totalHours: totalHours,
+        totalHours,
         reason: reason || "Onsite",
         comment: comment || "Admin created",
         status: newCheckOut ? "checked-out" : "checked-in",
         onsite: reason === "Onsite",
-        dayType: calculateShiftDayType(totalHours, shiftInfo.duration)
+        dayType: calculateShiftDayType(totalHours, shiftInfo?.duration || 9)
       });
 
       targetDate = newCheckIn;
     } else {
-      return res.status(400).json({
-        success: false,
-        message: 'Attendance ID OR (Employee ID + Date + Check-In) is required'
-      });
+      return res.status(400).json({ success: false, message: 'Attendance ID OR (Employee ID + Date + Check-In) is required' });
     }
 
     console.log('✅ Attendance record saved. Comment:', updatedRecord.comment);
 
-    // 🔥 AUTO RECALCULATE SUMMARY
     const d = new Date(targetDate);
     const monthForSummary = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
@@ -9634,25 +9808,13 @@ exports.updateAttendance = async (req, res) => {
       { json: () => { } }
     );
 
-    res.json({
-      success: true,
-      message: 'Attendance record updated successfully',
-      record: updatedRecord
-    });
-
+    res.json({ success: true, message: 'Attendance record updated successfully', record: updatedRecord });
   } catch (error) {
     console.error('❌ Error updating attendance:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating attendance record',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error updating attendance record', error: error.message });
   }
 };
 
-/**
- * 📌 Calculate Summary from Raw Data (DYNAMIC VERSION - SHIFT BASED)
- */
 exports.calculateSummary = async (req, res) => {
   try {
     const { fromDate, toDate, month } = req.body;
@@ -9673,7 +9835,6 @@ exports.calculateSummary = async (req, res) => {
       const [year, m] = month.split("-");
       const start = new Date(year, m - 1, 1);
       const end = new Date(year, m, 0, 23, 59, 59, 999);
-
       const today = new Date();
       if (parseInt(year) === today.getFullYear() && parseInt(m) === (today.getMonth() + 1)) {
         end.setHours(23, 59, 59, 999);
@@ -9697,7 +9858,6 @@ exports.calculateSummary = async (req, res) => {
     const startDate = new Date(year, monthNum - 1, 1);
     const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
 
-    // Get holidays
     const holidays = await Holiday.find({
       $or: [
         { fromDate: { $regex: `^${processedMonth}` } },
@@ -9747,21 +9907,18 @@ exports.calculateSummary = async (req, res) => {
     Object.keys(employeeDateGroups).forEach(employeeId => {
       if (!summaryMap[employeeId]) {
         const emp = employees.find(e => e.employeeId === employeeId) || {};
-        const shiftInfo = getEmployeeShift(employeeId, allShifts, masterShifts);
+        const shiftInfo = getEmployeeShift(employeeId, allShifts, masterShifts) || {
+          name: 'General', isBrakeShift: false, duration: 9,
+          startTime: '10:00', endTime: '19:00'
+        };
 
         summaryMap[employeeId] = {
           employeeId,
           name: emp.name || `Employee ${employeeId}`,
           month: processedMonth,
-          presentDays: 0,
-          lateDays: 0,
-          onsiteDays: 0,
-          halfDayWorking: 0,
-          fullDayNotWorking: 0,
-          totalWorkingDays: 0,
-          overTimeHours: 0,
-          onsiteYesDays: 0,
-          onsiteNoDays: 0,
+          presentDays: 0, lateDays: 0, onsiteDays: 0, halfDayWorking: 0,
+          fullDayNotWorking: 0, totalWorkingDays: 0, overTimeHours: 0,
+          onsiteYesDays: 0, onsiteNoDays: 0,
           shiftName: shiftInfo.name,
           isBrakeShift: shiftInfo.isBrakeShift,
           shiftDuration: shiftInfo.duration,
@@ -9777,8 +9934,7 @@ exports.calculateSummary = async (req, res) => {
           ptax: emp.ptax || 0,
           gmcAmount: emp.gmcAmount || 0,
           otherDeductions: emp.otherDeductions || 0,
-          calculatedSalary: 0,
-          workingDays: 0,
+          calculatedSalary: 0, workingDays: 0,
           reasonCount: { onsite: 0, fieldWork: 0, workFromHome: 0 }
         };
       }
@@ -9788,11 +9944,10 @@ exports.calculateSummary = async (req, res) => {
       Object.keys(employeeDateGroups[employeeId]).forEach(dateKey => {
         let recordsForDay = employeeDateGroups[employeeId][dateKey];
         
-        const isBrakeShift = empSum.isBrakeShift || (empSum.shiftName && (empSum.shiftName.toLowerCase().includes("brake") || empSum.shiftName.toLowerCase().includes("break")));
+        const isBrakeShift = empSum.isBrakeShift || 
+          (empSum.shiftName && (empSum.shiftName.toLowerCase().includes("brake") || empSum.shiftName.toLowerCase().includes("break")));
         
         if (!isBrakeShift) {
-          // User requested: "baki sab jaisa hai wo waisa hi rkhna hai"
-          // Keep only the first chronological check-in for non-break shifts (the last in array due to sort)
           recordsForDay = [recordsForDay[recordsForDay.length - 1]];
         }
 
@@ -9804,31 +9959,24 @@ exports.calculateSummary = async (req, res) => {
           let h = 0;
           if (rec.totalHours !== undefined && rec.totalHours > 0) {
             h = parseFloat(rec.totalHours);
-            // Cap absurdly high historical hours
             if (h > 15) h = 10; 
           } else if (rec.checkOutTime) {
             h = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
             if (h > 15) h = 10;
           } else {
-            // Auto-checkout assumption for first half of brake shift
             if (isBrakeShift) {
               const checkInH = new Date(rec.checkInTime).getHours();
-              if (checkInH < 13) {
-                h = 6; // Assume 6 hours for morning shift if checkout missing
-              }
+              if (checkInH < 13) h = 6;
             } else {
-              h = 9; // Assume normal full day if missing checkout for regular shift
+              h = 9;
             }
           }
           totalHoursForDay += h;
-          
           if (rec.onsite) anyOnsite = true;
-          
           const cin = new Date(rec.checkInTime);
           if (cin < firstCheckInDate) firstCheckInDate = cin;
         });
 
-        // ✅ SHIFT BASED DAY TYPE CALCULATION
         const type = calculateShiftDayType(totalHoursForDay, empSum.shiftDuration);
 
         if (type === "full") {
@@ -9841,32 +9989,21 @@ exports.calculateSummary = async (req, res) => {
           empSum.fullDayNotWorking += 1;
         }
 
-        // ✅ SHIFT BASED OVERTIME CALCULATION
         const lastCheckOutTime = recordsForDay[0].checkOutTime; 
-        const ot = calculateShiftOT(
-          lastCheckOutTime, 
-          empSum.shiftEndTime, 
-          firstCheckInDate, 
-          totalHoursForDay,
-          empSum.shiftDuration
-        );
+        const ot = calculateShiftOT(lastCheckOutTime, empSum.shiftEndTime, firstCheckInDate, totalHoursForDay, empSum.shiftDuration);
         empSum.overTimeHours += ot;
 
-        // ✅ SHIFT BASED LATE CHECK CALCULATION
         if (empSum.shiftStartTime) {
           const [startH, startM] = empSum.shiftStartTime.split(":").map(Number);
           const checkInH = firstCheckInDate.getHours();
           const checkInM = firstCheckInDate.getMinutes();
-
           if (checkInH > startH || (checkInH === startH && checkInM > startM + 5)) {
             empSum.lateDays += 1;
           }
         } else {
           const h = firstCheckInDate.getHours();
           const m = firstCheckInDate.getMinutes();
-          if (h > 10 || (h === 10 && m > 5)) {
-            empSum.lateDays += 1;
-          }
+          if (h > 10 || (h === 10 && m > 5)) empSum.lateDays += 1;
         }
 
         if (anyOnsite) {
@@ -9877,23 +10014,42 @@ exports.calculateSummary = async (req, res) => {
           empSum.onsiteNoDays += 1;
           const recWithReason = recordsForDay.find(r => r.reason);
           if (recWithReason) {
-            if (recWithReason.reason === "Work From Home") {
-              empSum.reasonCount.workFromHome += 1;
-            } else if (recWithReason.reason === "Field Work") {
-              empSum.reasonCount.fieldWork += 1;
-            }
+            if (recWithReason.reason === "Work From Home") empSum.reasonCount.workFromHome += 1;
+            else if (recWithReason.reason === "Field Work") empSum.reasonCount.fieldWork += 1;
           }
         }
       });
 
-      // ✅ Calculate week-offs and holidays for the employee
+      // ✅ Calculate week-offs
       const emp = employees.find(e => e.employeeId === employeeId) || {};
       const empLeaves = allApprovedLeaves.filter(l => l.employeeId === employeeId);
       const empAttendance = attendanceRecords.filter(r => r.employeeId === employeeId);
       
       const weekOffDay = emp.weekOffDay || "Sunday";
-      const defaultWeekOffs = emp.weekOffPerMonth || 4;
       
+      // ✅✅✅ CRITICAL FIX: Consultant = HAMESHA 2
+      const deptLower = (emp.department || '').toLowerCase().trim();
+      let defaultWeekOffs;
+      if (deptLower.includes("consultant")) {
+        defaultWeekOffs = 2;
+      } else if (emp.weekOffPerMonth && emp.weekOffPerMonth > 0) {
+        defaultWeekOffs = emp.weekOffPerMonth;
+      } else {
+        defaultWeekOffs = 4;
+      }
+
+      const isDevOrMarketing = 
+        deptLower.includes("developer") || 
+        deptLower.includes("development") ||
+        deptLower.includes("digital marketing") ||
+        deptLower.includes("marketing");
+      const isFlexibleWeekOff = 
+        deptLower.includes("laboratory") || 
+        deptLower.includes("nursing") || 
+        deptLower.includes("medical") ||
+        deptLower.includes("lab") ||
+        deptLower.includes("consultant");
+
       const weekOffData = calculateEarnedWeekOffs(
         employeeId,
         year,
@@ -9902,14 +10058,19 @@ exports.calculateSummary = async (req, res) => {
         empLeaves,
         weekOffDay,
         emp.shiftHours || 8,
-        holidayDaysInMonth
+        holidayDaysInMonth,
+        defaultWeekOffs,
+        isDevOrMarketing,
+        isFlexibleWeekOff
       );
       
-      let earnedWeekOffs = weekOffData.earnedWeekOffs;
+      let earnedWeekOffs = weekOffData?.earnedWeekOffs || 0;
       let finalWeekOffs = Math.min(earnedWeekOffs, defaultWeekOffs);
       
       empSum.weekOffDays = finalWeekOffs;
-      empSum.holidays = holidayDaysInMonth;
+      empSum.holidays = isFlexibleWeekOff ? 0 : holidayDaysInMonth;
+
+      console.log(`📊 ${emp.name} (${emp.department}): holidays=${empSum.holidays}, isFlexible=${isFlexibleWeekOff}`);
     });
 
     const summaryArray = Object.values(summaryMap);
@@ -9920,7 +10081,7 @@ exports.calculateSummary = async (req, res) => {
       const summariesToSave = summaryArray.map(s => ({
         ...s,
         month: processedMonth,
-        salaryPerMonthSnapshot: s.salaryPerMonth, // Persist current salary for historical tracking
+        salaryPerMonthSnapshot: s.salaryPerMonth,
         basicPaySnapshot: s.basicPay,
         hraSnapshot: s.hra,
         conveyanceAllowanceSnapshot: s.conveyanceAllowance,
@@ -9937,36 +10098,24 @@ exports.calculateSummary = async (req, res) => {
       await AttendanceSummary.insertMany(summariesToSave);
     }
 
-    res.json({
-      success: true,
-      summary: summaryArray,
-      month: processedMonth
-    });
-
+    res.json({ success: true, summary: summaryArray, month: processedMonth });
   } catch (err) {
     console.error("❌ Error in calculating summary:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
-/**
- * 📌 Save Attendance Summary
- */
 exports.saveSummary = async (req, res) => {
   try {
     const { summaries, fromDate, toDate, month } = req.body;
 
     if (!summaries || !Array.isArray(summaries)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid summary data"
-      });
+      return res.status(400).json({ success: false, message: "Invalid summary data" });
     }
 
     let deleteQuery = {};
-    if (month) {
-      deleteQuery.month = month;
-    } else if (fromDate && toDate) {
+    if (month) deleteQuery.month = month;
+    else if (fromDate && toDate) {
       deleteQuery.fromDate = fromDate;
       deleteQuery.toDate = toDate;
     }
@@ -9992,18 +10141,8 @@ exports.saveSummary = async (req, res) => {
       overTimeHours: summary.overTimeHours || 0,
       onsiteYesDays: summary.onsiteYesDays || 0,
       onsiteNoDays: summary.onsiteNoDays || 0,
-      reasonCount: summary.reasonCount || {
-        onsite: 0,
-        fieldWork: 0,
-        workFromHome: 0
-      },
-      extraWork: summary.extraWork || {
-        extraDays: 0,
-        extraHours: 0,
-        bonus: 0,
-        deductions: 0,
-        reason: ""
-      },
+      reasonCount: summary.reasonCount || { onsite: 0, fieldWork: 0, workFromHome: 0 },
+      extraWork: summary.extraWork || { extraDays: 0, extraHours: 0, bonus: 0, deductions: 0, reason: "" },
       salaryPerMonthSnapshot: summary.salaryPerMonthSnapshot || summary.salaryPerMonth || 0,
       basicPaySnapshot: summary.basicPaySnapshot || summary.basicPay || 0,
       hraSnapshot: summary.hraSnapshot || summary.hra || 0,
@@ -10019,57 +10158,29 @@ exports.saveSummary = async (req, res) => {
 
     const result = await AttendanceSummary.insertMany(insertData);
 
-    res.json({
-      success: true,
-      message: "Summary saved successfully",
-      count: result.length,
-      data: result
-    });
-
+    res.json({ success: true, message: "Summary saved successfully", count: result.length, data: result });
   } catch (err) {
     console.error('❌ Error saving summary:', err);
-    res.status(500).json({
-      success: false,
-      message: err.message
-    });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-/**
- * 📌 Get Saved Summary
- */
 exports.getSummary = async (req, res) => {
   try {
     const { month, fromDate, toDate, employeeId } = req.query;
-
     let filter = {};
 
     if (fromDate && toDate) {
-      filter.createdAt = {
-        $gte: new Date(fromDate),
-        $lte: new Date(toDate + "T23:59:59.999Z")
-      };
+      filter.createdAt = { $gte: new Date(fromDate), $lte: new Date(toDate + "T23:59:59.999Z") };
     }
+    if (month) filter.month = month;
+    if (employeeId) filter.employeeId = employeeId;
 
-    if (month) {
-      filter.month = month;
-    }
+    let data = await AttendanceSummary.find(filter).sort({ createdAt: -1 });
 
-    if (employeeId) {
-      filter.employeeId = employeeId;
-    }
-
-    let data = await AttendanceSummary.find(filter)
-      .sort({ createdAt: -1 });
-
-    // ✅ Add role & weekOffPerMonth field from Employee schema
     const updatedData = await Promise.all(
       data.map(async (item) => {
-        const employee = await Employee.findOne(
-          { employeeId: item.employeeId },
-          { role: 1, weekOffPerMonth: 1 }
-        );
-
+        const employee = await Employee.findOne({ employeeId: item.employeeId }, { role: 1, weekOffPerMonth: 1 });
         return {
           ...item.toObject(),
           role: employee?.role || "",
@@ -10078,103 +10189,53 @@ exports.getSummary = async (req, res) => {
       })
     );
 
-    res.json({
-      success: true,
-      count: updatedData.length,
-      summary: updatedData,
-      note: "Data from DB (Manual edits respected)"
-    });
+    res.json({ success: true, count: updatedData.length, summary: updatedData, note: "Data from DB (Manual edits respected)" });
   } catch (err) {
     console.error('❌ Error fetching summary:', err);
-    res.status(500).json({
-      success: false,
-      message: err.message
-    });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
-/**
- * 📌 Get Employee Details for Specific Employee
- */
+
 exports.getEmployeeDetails = async (req, res) => {
   try {
     const { employeeId, fromDate, toDate, month } = req.query;
-
-    if (!employeeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Employee ID is required'
-      });
-    }
+    if (!employeeId) return res.status(400).json({ success: false, message: 'Employee ID is required' });
 
     let query = { employeeId };
-
     if (fromDate && toDate) {
-      query.checkInTime = {
-        $gte: new Date(fromDate),
-        $lte: new Date(toDate + 'T23:59:59.999Z')
-      };
+      query.checkInTime = { $gte: new Date(fromDate), $lte: new Date(toDate + 'T23:59:59.999Z') };
     }
-
     if (month) {
       const [year, monthNum] = month.split('-');
       const startDate = new Date(year, monthNum - 1, 1);
       const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
-
-      query.checkInTime = {
-        $gte: startDate,
-        $lte: endDate
-      };
+      query.checkInTime = { $gte: startDate, $lte: endDate };
     }
 
-    const details = await Attendance.find(query)
-      .sort({ checkInTime: 1 })
-      .lean();
-
+    const details = await Attendance.find(query).sort({ checkInTime: 1 }).lean();
     const employee = await Employee.findOne({ employeeId });
 
-    res.json({
-      success: true,
-      employee: employee || { employeeId, name: 'Unknown' },
-      details: details,
-      count: details.length
-    });
-
+    res.json({ success: true, employee: employee || { employeeId, name: 'Unknown' }, details, count: details.length });
   } catch (error) {
     console.error('❌ Error fetching employee details:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching employee details',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error fetching employee details', error: error.message });
   }
 };
 
-/**
- * 📌 Fix Wrong Summary Data
- */
 exports.fixSummaryData = async (req, res) => {
   try {
     const { month } = req.body;
-
-    if (!month) {
-      return res.status(400).json({
-        success: false,
-        message: "Month is required (e.g., 2025-12)"
-      });
-    }
+    if (!month) return res.status(400).json({ success: false, message: "Month is required (e.g., 2025-12)" });
 
     const today = new Date();
     const currentYear = today.getFullYear();
     const currentMonth = today.getMonth() + 1;
     const currentDay = today.getDate();
-
     const [year, monthNum] = month.split('-').map(Number);
-
     let updateCount = 0;
 
     if (year === currentYear && monthNum === currentMonth) {
       const summaries = await AttendanceSummary.find({ month });
-
       for (const summary of summaries) {
         const correctedPresent = Math.min(summary.presentDays, currentDay);
         const correctedLate = Math.min(summary.lateDays, currentDay);
@@ -10183,422 +10244,23 @@ exports.fixSummaryData = async (req, res) => {
         const correctedFullLeave = Math.min(summary.fullDayNotWorking, currentDay);
         const correctedTotal = correctedPresent + (correctedHalf * 0.5);
 
-        if (summary.presentDays !== correctedPresent ||
-          summary.lateDays !== correctedLate ||
-          summary.totalWorkingDays !== correctedTotal) {
-
-          await AttendanceSummary.findByIdAndUpdate(
-            summary._id,
-            {
-              presentDays: correctedPresent,
-              lateDays: correctedLate,
-              onsiteDays: correctedOnsite,
-              halfDayWorking: correctedHalf,
-              fullDayNotWorking: correctedFullLeave,
-              totalWorkingDays: correctedTotal
-            }
-          );
-
+        if (summary.presentDays !== correctedPresent || summary.lateDays !== correctedLate || summary.totalWorkingDays !== correctedTotal) {
+          await AttendanceSummary.findByIdAndUpdate(summary._id, {
+            presentDays: correctedPresent, lateDays: correctedLate, onsiteDays: correctedOnsite,
+            halfDayWorking: correctedHalf, fullDayNotWorking: correctedFullLeave, totalWorkingDays: correctedTotal
+          });
           updateCount++;
         }
       }
     }
 
-    res.json({
-      success: true,
-      message: `Fixed ${updateCount} summary records for ${month}`,
-      fixedCount: updateCount
-    });
-
+    res.json({ success: true, message: `Fixed ${updateCount} summary records for ${month}`, fixedCount: updateCount });
   } catch (error) {
     console.error('❌ Error fixing summary:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fixing summary data',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error fixing summary data', error: error.message });
   }
 };
 
-/**
- * 📌 Get Salaries - WITH SUBIR FIX (15 working days max)
- */
-// exports.getSalaries = async (req, res) => {
-//   try {
-//     let { month } = req.query;
-
-//     if (!month || month.trim() === "") {
-//       const today = new Date();
-//       month = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-//     }
-
-//     month = month.trim();
-
-//     const [year, monthNum] = month.split("-").map(Number);
-
-//     if (isNaN(year) || isNaN(monthNum)) {
-//       return res.status(400).json({ success: false, message: "Invalid month" });
-//     }
-
-//     const start = new Date(year, monthNum - 1, 1);
-//     const end = new Date(year, monthNum, 0, 23, 59, 59, 999);
-//     const daysInMonth = new Date(year, monthNum, 0).getDate();
-
-//     const employees = await Employee.find({});
-//     const attendanceSummaries = await AttendanceSummary.find({ month });
-
-//     const allApprovedLeaves = await Leave.find({
-//       status: "approved",
-//       $or: [
-//         { startDate: { $regex: `^${month}` } },
-//         { endDate: { $regex: `^${month}` } }
-//       ]
-//     });
-
-//     const attendanceMap = {};
-//     attendanceSummaries.forEach(a => {
-//       attendanceMap[a.employeeId] = a;
-//     });
-
-//     const sundaysInMonth = calculateWeekOffsForDay(year, monthNum, 0);
-
-//     const salaryMap = {};
-
-//     employees.forEach(emp => {
-//       let weekOffDay = emp.weekOffDay || "Sunday";
-//       const dayMap = {
-//         Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
-//         Thursday: 4, Friday: 5, Saturday: 6
-//       };
-//       const weekOffDayNum = dayMap[weekOffDay] ?? 0;
-
-//       let weekOffs = 0;
-//       let weekOffSource = "default";
-
-//       if (emp.weekOffType === '0+2') {
-//         weekOffs = 2;
-//         weekOffSource = "0+2_fixed";
-//       }
-//       else if (emp.weekOffType === '0+4') {
-//         weekOffs = 4;
-//         weekOffSource = "0+4_fixed";
-//       }
-//       else if (emp.weekOffType === 'manual') {
-//         weekOffs = emp.weekOffPerMonth || 4;
-//         weekOffSource = "manual";
-//       }
-//       else if (emp.weekOffPerMonth === 4 && weekOffDay === "Sunday") {
-//         weekOffs = sundaysInMonth === 5 ? 5 : 4;
-//         weekOffSource = "0+4_sunday_auto";
-//       }
-//       else if (emp.weekOffPerMonth === 2) {
-//         weekOffs = 2;
-//         weekOffSource = "0+2_fixed_no_increment";
-//       }
-//       else if (typeof emp.weekOffPerMonth === "number") {
-//         weekOffs = emp.weekOffPerMonth;
-//         weekOffSource = "fixed_from_db";
-//       }
-//       else {
-//         weekOffs = calculateWeekOffsForDay(year, monthNum, weekOffDayNum);
-//         weekOffSource = "dynamic";
-//       }
-
-//       const empAttendance = attendanceMap[emp.employeeId];
-//       const presentDays = empAttendance?.presentDays || 0;
-//       const halfDays = empAttendance?.halfDayWorking || 0;
-//       let effectiveWorkingDays = presentDays + (halfDays * 0.5);
-
-//       // ✅ SUBIR FIX: Maximum 15 working days per month
-//       if (emp.employeeId === 'EMP020' && effectiveWorkingDays > 15) {
-//         console.log(`⚠️ Subir working days capped: ${effectiveWorkingDays} → 15`);
-//         effectiveWorkingDays = 15;
-//       }
-
-//       const salaryPerMonth = emp.salaryPerMonth || 0;
-//       const dailyRate = salaryPerMonth / daysInMonth;
-
-//       const empLeaves = allApprovedLeaves.filter(l => l.employeeId === emp.employeeId);
-
-//       let paidLeaveDays = 0;
-//       empLeaves.forEach(leave => {
-//         const leaveStart = new Date(leave.startDate);
-//         const leaveEnd = new Date(leave.endDate);
-
-//         const overlapStart = new Date(Math.max(leaveStart, start));
-//         const overlapEnd = new Date(Math.min(leaveEnd, end));
-
-//         if (overlapStart <= overlapEnd) {
-//           const diffTime = Math.abs(overlapEnd - overlapStart);
-//           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-
-//           if (["CL", "EL", "COFF", "Casual Leave", "Earned Leave", "Comp Off"].includes(leave.leaveType)) {
-//             paidLeaveDays += diffDays;
-//           }
-//         }
-//       });
-
-//       const paidDays = effectiveWorkingDays + weekOffs + paidLeaveDays;
-
-//       const storedExtraWork = empAttendance?.extraWork || {
-//         extraDays: 0,
-//         extraHours: 0,
-//         bonus: 0,
-//         deductions: 0,
-//         reason: ""
-//       };
-
-//       let calculatedSalary = Math.round(paidDays * dailyRate);
-
-//       if (storedExtraWork) {
-//         const extraDaysAmount = (storedExtraWork.extraDays || 0) * dailyRate;
-//         const bonus = storedExtraWork.bonus || 0;
-//         const deductions = storedExtraWork.deductions || 0;
-
-//         calculatedSalary = Math.round(calculatedSalary + extraDaysAmount + bonus - deductions);
-//       }
-
-//       if (empAttendance?.calculatedSalary) {
-//         calculatedSalary = empAttendance.calculatedSalary;
-//       }
-
-//       salaryMap[emp.employeeId] = {
-//         employeeId: emp.employeeId,
-//         name: emp.name,
-//         month,
-//         presentDays,
-//         extraWork: storedExtraWork,
-//         halfDayWorking: halfDays,
-//         totalWorkingDays: effectiveWorkingDays,
-//         weekOffs,
-//         weekOffDay,
-//         weekOffType: emp.weekOffType || (emp.weekOffPerMonth === 2 ? '0+2' : '0+4'),
-//         weekOffSource,
-//         salaryPerMonth,
-//         salaryPerDay: Number(dailyRate.toFixed(2)),
-//         paidDays,
-//         calculatedSalary,
-//         calculatedSalaryDisplay: `₹${calculatedSalary}`,
-//         monthDays: daysInMonth,
-//         // ✅ Subir specific note
-//         note: emp.employeeId === 'EMP020' ? 'Capped at 15 working days (3 days/week)' : undefined
-//       };
-//     });
-
-//     res.json({
-//       success: true,
-//       month,
-//       salaries: Object.values(salaryMap),
-//       count: Object.values(salaryMap).length,
-//       monthDays: daysInMonth,
-//       note: "0+2: 2 days | 0+4: 4 days | Manual: user defined | Subir: 15 days max"
-//     });
-
-//   } catch (error) {
-//     console.error("❌ Error in getSalaries:", error);
-//     res.status(500).json({ success: false, error: error.message });
-//   }
-// };
-
-/**
- * 📌 Get Salaries - ONLY SUBIR FIX, BAKI SAB NORMAL
- */
-/**
- * 📌 Get Salaries - WITH MONTH-WISE SALARY HISTORY SUPPORT
- */
-
-
-const formatDateLocal = (date) => {
-  const d = new Date(date);
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
-
-const calculateEarnedWeekOffs = (employeeId, year, monthNum, dailyAttendance, empLeaves, weekOffDay, shiftHours = 8, holidayDaysInMonth = 0) => {
-  const weekOffDayNum = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].indexOf(weekOffDay);
-  const firstDay = new Date(year, monthNum - 1, 1);
-  const lastDay = new Date(year, monthNum, 0);
-  
-  // 📊 COUNT TOTAL WEEKOFF DAYS IN MONTH
-  let totalWeekOffDays = 0;
-  const weekOffDates = [];
-  for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
-    if (d.getDay() === weekOffDayNum) {
-      totalWeekOffDays++;
-      weekOffDates.push(new Date(d));
-    }
-  }
-  
-  // 📊 COUNT TOTAL WORKING DAYS (present + half)
-  let totalWorkingDays = 0;
-  const attendanceMap = new Map();
-  dailyAttendance.forEach(record => {
-    if (record.checkInTime) {
-      const dateKey = formatDateLocal(record.checkInTime);
-      let hours = 0;
-      if (record.totalHours) {
-        hours = parseFloat(record.totalHours);
-      } else if (record.workingHours) {
-        hours = parseFloat(record.workingHours);
-      } else if (record.checkOutTime) {
-        const cin = new Date(record.checkInTime);
-        const cout = new Date(record.checkOutTime);
-        hours = (cout - cin) / (1000 * 60 * 60);
-      }
-      const existing = attendanceMap.get(dateKey) || 0;
-      attendanceMap.set(dateKey, existing + hours);
-    }
-  });
-
-  const isLeaveDay = (date) => {
-    if (!date || !employeeId) return false;
-    const dateStr = formatDateLocal(date);
-    return empLeaves.some(leave => {
-      const startStr = formatDateLocal(leave.startDate);
-      const endStr = formatDateLocal(leave.endDate);
-      return dateStr >= startStr && dateStr <= endStr;
-    });
-  };
-
-  let weeklyBreakdown = [];
-  let eligibleWeeks = 0;
-  let totalLeaves = 0;
-  
-  // Week start from Monday
-  let currentWeekStart = new Date(firstDay);
-  while (currentWeekStart.getDay() !== 1) {
-    currentWeekStart.setDate(currentWeekStart.getDate() - 1);
-  }
-
-  let weekNumber = 1;
-
-  while (currentWeekStart <= lastDay) {
-    const weekEnd = new Date(currentWeekStart);
-    weekEnd.setDate(weekEnd.getDate() + 6);
-    
-    let presentDays = 0;
-    let halfDays = 0;
-    let leavesCount = 0;
-    let weekOffDays = 0;
-    let daysInMonthInThisWeek = 0;
-    let attendedDays = 0;
-    let actualWorkingDaysInWeek = 0;
-
-    // FIRST PASS: Count days
-    for (let d = new Date(currentWeekStart); d <= weekEnd; d.setDate(d.getDate() + 1)) {
-      if (d < firstDay || d > lastDay) continue;
-      
-      daysInMonthInThisWeek++;
-      const dayOfWeek = d.getDay();
-      const isWeekOff = (dayOfWeek === weekOffDayNum);
-      
-      if (!isWeekOff) {
-        actualWorkingDaysInWeek++;
-      }
-    }
-
-    // SECOND PASS: Check attendance
-    for (let d = new Date(currentWeekStart); d <= weekEnd; d.setDate(d.getDate() + 1)) {
-      if (d < firstDay || d > lastDay) continue;
-      
-      const dateKey = formatDateLocal(d);
-      const dayOfWeek = d.getDay();
-      const isWeekOff = (dayOfWeek === weekOffDayNum);
-      
-      if (isWeekOff) {
-        weekOffDays++;
-        continue;
-      }
-
-      if (isLeaveDay(d)) {
-        leavesCount++;
-        totalLeaves++;
-        continue;
-      }
-
-      const hoursWorked = attendanceMap.get(dateKey);
-      if (hoursWorked !== undefined) {
-        if (hoursWorked >= shiftHours * 0.8) {
-          presentDays++;
-          attendedDays++;
-          totalWorkingDays++;
-        } else {
-          halfDays += 0.5;
-          attendedDays += 0.5;
-          totalWorkingDays += 0.5;
-        }
-      }
-    }
-
-    const effectiveWorkingDays = presentDays + halfDays + leavesCount;
-    
-    // 🔥🔥🔥 SIMPLE ELIGIBILITY LOGIC
-    let isEligibleForWeekoff = false;
-    
-    if (daysInMonthInThisWeek === 7) {
-      // Complete week: 5+ working days required
-      isEligibleForWeekoff = effectiveWorkingDays >= 5;
-    } else {
-      // 🔥 Partial week: Employee must attend ALL working days
-      const employeeAttendedDays = presentDays + halfDays;
-      isEligibleForWeekoff = (employeeAttendedDays >= actualWorkingDaysInWeek) && (actualWorkingDaysInWeek >= 3);
-    }
-
-    if (daysInMonthInThisWeek > 0) {
-      weeklyBreakdown.push({
-        weekNumber: weekNumber,
-        daysInMonthInThisWeek: daysInMonthInThisWeek,
-        actualWorkingDaysInWeek: actualWorkingDaysInWeek,
-        presentDays: presentDays,
-        halfDays: halfDays,
-        leaves: leavesCount,
-        weekOffDays: weekOffDays,
-        attendedDays: attendedDays,
-        effectiveWorkingDays: Math.round(effectiveWorkingDays * 10) / 10,
-        isEligibleForWeekoff: isEligibleForWeekoff,
-        isPartialWeek: daysInMonthInThisWeek < 7
-      });
-      
-      if (isEligibleForWeekoff) {
-        eligibleWeeks++;
-      }
-    }
-
-    currentWeekStart.setDate(currentWeekStart.getDate() + 7);
-    weekNumber++;
-  }
-
-  // 🔥🔥🔥 ULTIMATE FIX: Working days, leaves, and holidays ke hisaab se weekoffs calculate karo
-  const totalActiveDays = totalWorkingDays + totalLeaves + holidayDaysInMonth;
-  
-  // Calculate earned weekoffs based on 5-day ratio (5 active days = 1 week-off) or weekly eligible weeks
-  let earnedWeekOffs = Math.max(eligibleWeeks, Math.floor(totalActiveDays / 5));
-  
-  // Capped by calendar's total week-off days for this month
-  earnedWeekOffs = Math.min(earnedWeekOffs, totalWeekOffDays);
-
-  console.log(`📊 ${year}-${monthNum} ${weekOffDay}:`);
-  console.log(`   Total Working Days: ${totalWorkingDays}`);
-  console.log(`   Total Leaves: ${totalLeaves}`);
-  console.log(`   Holiday Days in Month: ${holidayDaysInMonth}`);
-  console.log(`   Total Active Days: ${totalActiveDays}`);
-  console.log(`   Total Weekoff Days: ${totalWeekOffDays}`);
-  console.log(`   FINAL EARNED: ${earnedWeekOffs}`);
-
-  return {
-    weeklyBreakdown: weeklyBreakdown,
-    earnedWeekOffs: earnedWeekOffs,
-    totalWeekOffDays: totalWeekOffDays,
-    totalWorkingDaysInMonth: totalWorkingDays,
-    weekOffDates: weekOffDates.map(d => formatDateLocal(d))
-  };
-};
-
-// ============================================
-// 📅 DIRECT ATTENDANCE SE COUNT KARO
-// ============================================
 const getAttendanceCount = async (employeeId, year, monthNum) => {
   const startDate = new Date(year, monthNum - 1, 1);
   const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
@@ -10614,17 +10276,14 @@ const getAttendanceCount = async (employeeId, year, monthNum) => {
   const emp = await Employee.findOne({ employeeId });
   const shiftHours = emp ? (emp.shiftHours || 8) : 8;
 
-  // Group by date to sum hours per day
   const dailyHours = {};
   records.forEach(r => {
     if (r.checkInTime) {
       const dateKey = formatDateLocal(r.checkInTime);
       let hours = 0;
-      if (r.totalHours) {
-        hours = parseFloat(r.totalHours);
-      } else if (r.workingHours) {
-        hours = parseFloat(r.workingHours);
-      } else if (r.checkOutTime) {
+      if (r.totalHours) hours = parseFloat(r.totalHours);
+      else if (r.workingHours) hours = parseFloat(r.workingHours);
+      else if (r.checkOutTime) {
         hours = (new Date(r.checkOutTime) - new Date(r.checkInTime)) / (1000 * 60 * 60);
       }
       dailyHours[dateKey] = (dailyHours[dateKey] || 0) + hours;
@@ -10632,19 +10291,13 @@ const getAttendanceCount = async (employeeId, year, monthNum) => {
   });
 
   Object.values(dailyHours).forEach(hours => {
-    if (hours >= shiftHours * 0.8) {
-      present++;
-    } else if (hours >= shiftHours * 0.4) {
-      half += 0.5;
-    }
+    if (hours >= shiftHours * 0.8) present++;
+    else if (hours >= shiftHours * 0.4) half += 0.5;
   });
   
   return { present, half, effective: present + half, records };
 };
 
-// ============================================
-// 🎯 MAIN CONTROLLER - getSalaries
-// ============================================
 exports.getSalaries = async (req, res) => {
   try {
     let { month } = req.query;
@@ -10655,21 +10308,16 @@ exports.getSalaries = async (req, res) => {
     }
 
     month = month.trim();
-    
     let [year, monthNum] = month.split("-").map(Number);
     
     if (isNaN(year) || isNaN(monthNum)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Invalid month format. Use YYYY-MM" 
-      });
+      return res.status(400).json({ success: false, message: "Invalid month format. Use YYYY-MM" });
     }
 
     const startDate = new Date(year, monthNum - 1, 1);
     const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
     const daysInMonth = new Date(year, monthNum, 0).getDate();
 
-    // Get holidays
     const holidays = await Holiday.find({
       $or: [
         { fromDate: { $regex: `^${month}` } },
@@ -10702,9 +10350,6 @@ exports.getSalaries = async (req, res) => {
     const salaryResults = [];
 
     for (const emp of employees) {
-      // ============================================
-      // STEP 1: GET SALARY
-      // ============================================
       const requestedDate = new Date(year, monthNum - 1, 1);
       requestedDate.setHours(0, 0, 0, 0);
       
@@ -10725,43 +10370,79 @@ exports.getSalaries = async (req, res) => {
         };
       }
 
-      // ============================================
-      // STEP 2: DIRECT ATTENDANCE SE DATA LO
-      // ============================================
       const attData = await getAttendanceCount(emp.employeeId, year, monthNum);
-      
-      const presentDays = attData.present;
-      const halfDays = attData.half;
-      const effectiveWorkingDays = attData.effective;
       const attendanceRecords = attData.records || [];
 
-      // ============================================
-      // STEP 3: WEEKOFF CALCULATION
-      // ============================================
+      const deptLower = (emp.department || '').toLowerCase().trim();
+      
+      const isDevOrMarketing = 
+        deptLower.includes("developer") || 
+        deptLower.includes("development") ||
+        deptLower.includes("digital marketing") ||
+        deptLower.includes("marketing");
+
+      // ✅ CONSULTANT + MEDICAL/NURSING/LAB = flexible
+      const isFlexibleWeekOff = 
+        deptLower.includes("laboratory") || 
+        deptLower.includes("nursing") || 
+        deptLower.includes("medical") ||
+        deptLower.includes("lab") ||
+        deptLower.includes("consultant");
+
       const weekOffDay = emp.weekOffDay || "Sunday";
-      const defaultWeekOffs = emp.weekOffPerMonth || 4;
+
+      // ✅ weekOffPerMonth = emp se lo (2 for consultant)
+      let weekOffPerMonth = emp.weekOffPerMonth;
+      
+      if (!weekOffPerMonth || weekOffPerMonth === 0) {
+        if (isFlexibleWeekOff) {
+          weekOffPerMonth = 2;
+        } else {
+          weekOffPerMonth = 4;
+        }
+      }
+      
+      console.log(`🔍 ${emp.name} (${emp.department}): weekOffPerMonth = ${weekOffPerMonth}, isFlexible = ${isFlexibleWeekOff}`);
       
       const empLeaves = allApprovedLeaves.filter(l => l.employeeId === emp.employeeId);
       
       const weekOffData = calculateEarnedWeekOffs(
-        emp.employeeId,
-        year,
-        monthNum,
-        attendanceRecords,
-        empLeaves,
-        weekOffDay,
-        emp.shiftHours || 8,
-        holidayDaysInMonth
+        emp.employeeId, year, monthNum, attendanceRecords, empLeaves,
+        weekOffDay, emp.shiftHours || 8, holidayDaysInMonth,
+        weekOffPerMonth, isDevOrMarketing, isFlexibleWeekOff
       );
       
-      let earnedWeekOffs = weekOffData.earnedWeekOffs;
-      let finalWeekOffs = Math.min(earnedWeekOffs, defaultWeekOffs);
+      let presentDays, halfDays, earnedWeekOffs, extraAbsentDays;
       
-      console.log(`✅ ${emp.name}: Working Days=${weekOffData.totalWorkingDaysInMonth}, Earned=${earnedWeekOffs}, Default=${defaultWeekOffs}, Final=${finalWeekOffs}`);
+      if (isFlexibleWeekOff) {
+        presentDays = weekOffData.presentDays || 0;
+        halfDays = weekOffData.halfDays || 0;
+        earnedWeekOffs = weekOffData.earnedWeekOffs;
+        extraAbsentDays = weekOffData.extraEarnedWeekOffs;
+      } else {
+        presentDays = attData.present;
+        halfDays = attData.half;
+        earnedWeekOffs = weekOffData.earnedWeekOffs;
+        extraAbsentDays = weekOffData.extraEarnedWeekOffs;
+      }
+      
+      // ✅ finalWeekOffs cap karo weekOffPerMonth se
+      const finalWeekOffs = Math.min(earnedWeekOffs, weekOffPerMonth);
+      
+      // ✅ Extra absent = jo weekOffPerMonth se zyada absent hain
+      const extraAbsentFromWeekOff = Math.max(0, earnedWeekOffs - weekOffPerMonth);
+      const totalExtraAbsent = extraAbsentDays + extraAbsentFromWeekOff;
+      
+      // ✅ CRITICAL: presentDays ko minus NAHI karo
+      // Bas presentDays waise hi use karo jo attendance mein hai
+      const adjustedPresentDays = presentDays;
+      
+      console.log(`✅ ${emp.name} (${isFlexibleWeekOff ? 'FLEXIBLE' : isDevOrMarketing ? 'DEV/MKT' : 'FIXED'}):`);
+      console.log(`   Present: ${presentDays}, Half: ${halfDays}`);
+      console.log(`   EarnedWeekOffs: ${earnedWeekOffs}, Capped FinalWeekOffs: ${finalWeekOffs}`);
+      console.log(`   ExtraAbsent: ${totalExtraAbsent}`);
+      console.log(`   AdjustedPresent: ${adjustedPresentDays}`);
 
-      // ============================================
-      // STEP 4: LEAVE CALCULATION
-      // ============================================
       let totalCL = 0, totalSL = 0, totalEL = 0, totalCOFF = 0;
       
       empLeaves.forEach(leave => {
@@ -10785,36 +10466,38 @@ exports.getSalaries = async (req, res) => {
       const paidLeaveDays = Math.min(totalCL, emp.maxCL || 1) + Math.min(totalSL, emp.maxSL || 1) + 
                            Math.min(totalEL, emp.maxEL || 12) + Math.min(totalCOFF, emp.maxCompOff || 0);
 
-      // ============================================
-      // STEP 5: SALARY CALCULATION
-      // ============================================
       const monthlySalary = salaryData.salaryPerMonth;
       const dailyRate = monthlySalary / daysInMonth;
       
-      let weekOffs = finalWeekOffs;
+      // ✅ CONSULTANT + MEDICAL + NURSING + LAB = holiday 0
+      const holidayAddition = isFlexibleWeekOff ? 0 : holidayDaysInMonth;
       
-      let paidDays = effectiveWorkingDays + weekOffs + paidLeaveDays + holidayDaysInMonth;
+      // ✅ paidDays = present + half + weekOff + leaves + holiday
+      let paidDays = adjustedPresentDays + halfDays + finalWeekOffs + paidLeaveDays + holidayAddition;
       paidDays = Math.min(paidDays, daysInMonth);
       
       let calculatedSalary = Math.round(paidDays * dailyRate);
 
-      // ============================================
-      // STEP 6: BUILD RESULT
-      // ============================================
+      console.log(`   Holiday Addition: ${holidayAddition}, Paid Days: ${paidDays}, Salary: ₹${calculatedSalary}`);
+
       salaryResults.push({
         employeeId: emp.employeeId,
         name: emp.name,
         department: emp.department,
         month: month,
         presentDays: presentDays,
+        adjustedPresentDays: adjustedPresentDays,
+        extraAbsentDays: totalExtraAbsent,
         halfDayWorking: halfDays,
-        totalWorkingDays: Number(effectiveWorkingDays.toFixed(1)),
+        totalWorkingDays: Number((adjustedPresentDays + (halfDays * 0.5)).toFixed(1)),
         weekOffs: finalWeekOffs,
         earnedWeekOffs: earnedWeekOffs,
-        defaultWeekOffs: defaultWeekOffs,
+        defaultWeekOffs: weekOffPerMonth,
         totalWeekOffDays: weekOffData.totalWeekOffDays,
-        totalWorkingDaysInMonth: weekOffData.totalWorkingDaysInMonth,
+        maxAllowedWeekOffs: weekOffData.maxAllowedWeekOffs,
+        isFlexibleWeekOff: isFlexibleWeekOff,
         weekOffDay: weekOffDay,
+        weekOffType: emp.weekOffType || '0+4',
         salaryPerMonth: monthlySalary,
         currentSalary: emp.salaryPerMonth,
         basicPay: salaryData.basicPay,
@@ -10825,13 +10508,17 @@ exports.getSalaries = async (req, res) => {
         specialAllowance: salaryData.specialAllowance,
         salaryPerDay: Number(dailyRate.toFixed(2)),
         paidDays: Number(paidDays.toFixed(1)),
-        holidays: holidayDaysInMonth,
+        holidays: isFlexibleWeekOff ? 0 : holidayDaysInMonth,
         paidLeaveDays: paidLeaveDays,
         calculatedSalary: calculatedSalary,
         calculatedSalaryDisplay: `₹${calculatedSalary.toLocaleString()}`,
         monthDays: daysInMonth,
         weeklyBreakdown: weekOffData.weeklyBreakdown,
-        weekOffDates: weekOffData.weekOffDates
+        weekOffDates: weekOffData.weekOffDates,
+        presentDates: weekOffData.presentDates || [],
+        halfDayDates: weekOffData.halfDayDates || [],
+        leaveDates: weekOffData.leaveDates || [],
+        extraAbsentDates: weekOffData.extraAbsentDates || []
       });
     }
     
@@ -10852,50 +10539,33 @@ exports.getSalaries = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-/**
- * 📌 Update Employee WeekOff Configuration
- */
+
 exports.updateWeekOffConfig = async (req, res) => {
   try {
     const { employeeId, weekOffDay, weekOffPerMonth, weekOffType } = req.body;
 
     if (!employeeId || !weekOffDay) {
-      return res.status(400).json({
-        success: false,
-        message: "Employee ID and WeekOff Day are required"
-      });
+      return res.status(400).json({ success: false, message: "Employee ID and WeekOff Day are required" });
     }
 
     const dayMap = {
-      'Sunday': 0,
-      'Monday': 1,
-      'Tuesday': 2,
-      'Wednesday': 3,
-      'Thursday': 4,
-      'Friday': 5,
-      'Saturday': 6
+      'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
+      'Thursday': 4, 'Friday': 5, 'Saturday': 6
     };
 
     if (!dayMap.hasOwnProperty(weekOffDay)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid weekoff day. Use: Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday"
-      });
+      return res.status(400).json({ success: false, message: "Invalid weekoff day." });
     }
 
-    const updateData = {
-      weekOffDay
-    };
+    const updateData = { weekOffDay };
 
     if (weekOffType === '0+2') {
       updateData.weekOffPerMonth = 2;
       updateData.weekOffType = '0+2';
-    }
-    else if (weekOffType === '0+4') {
+    } else if (weekOffType === '0+4') {
       updateData.weekOffPerMonth = 4;
       updateData.weekOffType = '0+4';
-    }
-    else if (weekOffType === 'manual') {
+    } else if (weekOffType === 'manual') {
       if (typeof weekOffPerMonth === "number" && weekOffPerMonth > 0) {
         updateData.weekOffPerMonth = weekOffPerMonth;
         updateData.weekOffType = 'manual';
@@ -10903,12 +10573,10 @@ exports.updateWeekOffConfig = async (req, res) => {
         updateData.weekOffPerMonth = 4;
         updateData.weekOffType = '0+4';
       }
-    }
-    else if (typeof weekOffPerMonth === "number" && weekOffPerMonth > 0) {
+    } else if (typeof weekOffPerMonth === "number" && weekOffPerMonth > 0) {
       updateData.weekOffPerMonth = weekOffPerMonth;
       updateData.weekOffType = weekOffPerMonth === 2 ? '0+2' : '0+4';
-    }
-    else {
+    } else {
       updateData.weekOffPerMonth = 4;
       updateData.weekOffType = '0+4';
     }
@@ -10920,17 +10588,10 @@ exports.updateWeekOffConfig = async (req, res) => {
       weekOffType: updateData.weekOffType
     };
 
-    const updatedEmp = await Employee.findOneAndUpdate(
-      { employeeId },
-      updateData,
-      { new: true }
-    );
+    const updatedEmp = await Employee.findOneAndUpdate({ employeeId }, updateData, { new: true });
 
     if (!updatedEmp) {
-      return res.status(404).json({
-        success: false,
-        message: "Employee not found"
-      });
+      return res.status(404).json({ success: false, message: "Employee not found" });
     }
 
     res.json({
@@ -10939,41 +10600,21 @@ exports.updateWeekOffConfig = async (req, res) => {
       config: EMPLOYEE_WEEKOFF_MAP[employeeId],
       updatedEmp: updatedEmp
     });
-
   } catch (error) {
     console.error('❌ Error updating weekoff config:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating weekoff configuration',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error updating weekoff configuration', error: error.message });
   }
 };
 
-/**
- * 📌 Get WeekOff Configuration
- */
 exports.getWeekOffConfig = async (req, res) => {
   try {
-    res.json({
-      success: true,
-      config: EMPLOYEE_WEEKOFF_MAP,
-      count: Object.keys(EMPLOYEE_WEEKOFF_MAP).length,
-      note: "Current employee weekoff configuration"
-    });
+    res.json({ success: true, config: EMPLOYEE_WEEKOFF_MAP, count: Object.keys(EMPLOYEE_WEEKOFF_MAP).length, note: "Current employee weekoff configuration" });
   } catch (error) {
     console.error('❌ Error getting weekoff config:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching weekoff configuration',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error fetching weekoff configuration', error: error.message });
   }
 };
 
-/**
- * 📌 Check Month Data - Diagnostic Function
- */
 exports.checkMonthData = async (req, res) => {
   try {
     const { month1, month2 } = req.query;
@@ -10994,12 +10635,7 @@ exports.checkMonthData = async (req, res) => {
       $or: [
         { startDate: { $gte: start1, $lte: end1 } },
         { endDate: { $gte: start1, $lte: end1 } },
-        {
-          $and: [
-            { startDate: { $lte: start1 } },
-            { endDate: { $gte: end1 } }
-          ]
-        }
+        { $and: [{ startDate: { $lte: start1 } }, { endDate: { $gte: end1 } }] }
       ]
     });
 
@@ -11008,12 +10644,7 @@ exports.checkMonthData = async (req, res) => {
       $or: [
         { startDate: { $gte: start2, $lte: end2 } },
         { endDate: { $gte: start2, $lte: end2 } },
-        {
-          $and: [
-            { startDate: { $lte: start2 } },
-            { endDate: { $gte: end2 } }
-          ]
-        }
+        { $and: [{ startDate: { $lte: start2 } }, { endDate: { $gte: end2 } }] }
       ]
     });
 
@@ -11030,16 +10661,8 @@ exports.checkMonthData = async (req, res) => {
         crossMonthEmployees.push({
           employeeId: emp.employeeId,
           name: emp.name,
-          [month1]: {
-            presentDays: inMonth1.presentDays,
-            totalWorkingDays: inMonth1.totalWorkingDays,
-            leaves: leavesIn1.length
-          },
-          [month2]: {
-            presentDays: inMonth2.presentDays,
-            totalWorkingDays: inMonth2.totalWorkingDays,
-            leaves: leavesIn2.length
-          }
+          [month1]: { presentDays: inMonth1.presentDays, totalWorkingDays: inMonth1.totalWorkingDays, leaves: leavesIn1.length },
+          [month2]: { presentDays: inMonth2.presentDays, totalWorkingDays: inMonth2.totalWorkingDays, leaves: leavesIn2.length }
         });
       }
     });
@@ -11047,31 +10670,20 @@ exports.checkMonthData = async (req, res) => {
     res.json({
       success: true,
       months: { month1, month2 },
-      summaries: {
-        [month1]: summaries1.length,
-        [month2]: summaries2.length
-      },
-      leaves: {
-        [month1]: leaves1.length,
-        [month2]: leaves2.length
-      },
+      summaries: { [month1]: summaries1.length, [month2]: summaries2.length },
+      leaves: { [month1]: leaves1.length, [month2]: leaves2.length },
       crossMonthEmployees: crossMonthEmployees.length > 0 ? crossMonthEmployees : "No cross-month data found",
       note: "This is diagnostic only - no data changed"
     });
-
   } catch (error) {
     console.error('❌ Check error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-/**
- * 📌 Update Attendance Record (Dynamic Update)
- */
 exports.updateAttendanceDynamic = async (req, res) => {
   try {
     const { attendanceId, hours, region, reason, comment } = req.body;
-
     if (!attendanceId) return res.status(400).json({ success: false, message: "ID required" });
 
     const updateData = {};
@@ -11086,35 +10698,23 @@ exports.updateAttendanceDynamic = async (req, res) => {
         const allShifts = await Shift.find({});
         const masterShifts = allShifts.filter(s => s.isMasterShift);
         const shiftInfo = getEmployeeShift(record.employeeId, allShifts, masterShifts);
-
-        updateData.dayType = calculateShiftDayType(parseFloat(hours), shiftInfo.duration);
+        updateData.dayType = calculateShiftDayType(parseFloat(hours), shiftInfo?.duration || 9);
       }
     }
 
     const updatedRecord = await Attendance.findByIdAndUpdate(attendanceId, updateData, { new: true });
-
-    res.json({
-      success: true,
-      message: "Updated successfully",
-      record: updatedRecord
-    });
+    res.json({ success: true, message: "Updated successfully", record: updatedRecord });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-/**
- * 📌 Update Payroll Details
- */
 exports.updatePayrollDetails = async (req, res) => {
   try {
     const { employeeId, month, calculatedSalary, extraWork, presentDays, workingDays, halfDayWorking, fullDayNotWorking, weekOffDays, holidays, paymentStatus } = req.body;
 
     if (!employeeId || !month) {
-      return res.status(400).json({
-        success: false,
-        message: "Employee ID and Month are required"
-      });
+      return res.status(400).json({ success: false, message: "Employee ID and Month are required" });
     }
 
     const summaries = await AttendanceSummary.find({ employeeId, month });
@@ -11122,8 +10722,7 @@ exports.updatePayrollDetails = async (req, res) => {
 
     if (summaries.length === 0) {
       summary = new AttendanceSummary({
-        employeeId,
-        month,
+        employeeId, month,
         presentDays: presentDays || 0,
         totalWorkingDays: workingDays || 0,
         calculatedSalary: calculatedSalary || 0
@@ -11138,10 +10737,7 @@ exports.updatePayrollDetails = async (req, res) => {
     }
 
     if (calculatedSalary !== undefined) summary.calculatedSalary = calculatedSalary;
-    if (extraWork) {
-      summary.extraWork = extraWork;
-    }
-
+    if (extraWork) summary.extraWork = extraWork;
     if (presentDays !== undefined) summary.presentDays = presentDays;
     if (workingDays !== undefined) summary.workingDays = workingDays;
     if (workingDays !== undefined) summary.totalWorkingDays = workingDays;
@@ -11152,43 +10748,28 @@ exports.updatePayrollDetails = async (req, res) => {
     if (paymentStatus !== undefined) summary.paymentStatus = paymentStatus;
 
     const savedSummary = await summary.save();
-
-    res.json({
-      success: true,
-      message: "Payroll details updated successfully",
-      summary: savedSummary
-    });
-
+    res.json({ success: true, message: "Payroll details updated successfully", summary: savedSummary });
   } catch (error) {
     console.error("❌ Error updating payroll:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error updating payroll details",
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: "Error updating payroll details", error: error.message });
   }
 };
 
-/**
- * 📌 Get Edited Attendance Records (Regularized)
- */
 exports.getEditedAttendanceRecords = async (req, res) => {
   try {
     const { month, date } = req.query;
     let query = {
       $and: [
-          { $or: [
-            { comment: { $exists: true, $ne: "" } }, 
-            { reason: { $exists: true, $nin: ["Onsite", "Work From Home", "No reason provided", "checked-in", ""] } }
-          ]}
+        { $or: [
+          { comment: { $exists: true, $ne: "" } }, 
+          { reason: { $exists: true, $nin: ["Onsite", "Work From Home", "No reason provided", "checked-in", ""] } }
+        ]}
       ]
     };
 
     if (date) {
-      const start = new Date(date);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(date);
-      end.setHours(23, 59, 59, 999);
+      const start = new Date(date); start.setHours(0, 0, 0, 0);
+      const end = new Date(date); end.setHours(23, 59, 59, 999);
       query.checkInTime = { $gte: start, $lte: end };
     } else if (month) {
       const [year, monthNum] = month.split('-').map(Number);
@@ -11198,18 +10779,9 @@ exports.getEditedAttendanceRecords = async (req, res) => {
     }
 
     const records = await Attendance.find(query).sort({ checkInTime: -1 });
-    
-    res.json({
-      success: true,
-      data: records,
-      count: records.length
-    });
+    res.json({ success: true, data: records, count: records.length });
   } catch (error) {
     console.error('❌ Error fetching edited records:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching edited records',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error fetching edited records', error: error.message });
   }
 };

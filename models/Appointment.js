@@ -39,13 +39,19 @@ const appointmentSchema = new mongoose.Schema(
       type: String,
       enum: ["Male", "Female", "Other"]
     },
-    // ✅ ADD THESE TWO — otherwise Mongoose strips them out
     patientTitle: { type: String, default: "Mr." },
     patientDob: { type: String, default: "" },
-    // ✅
     patientPhone: { type: String },
     patientEmail: { type: String, default: "" },
     patientAddress: { type: String, default: "" },
+    patientCity: { type: String, default: "" },
+    patientPincode: { type: String, default: "" },
+
+    // Vitals
+    vitalsTemp: { type: String, default: "" },
+    vitalsBp: { type: String, default: "" },
+    vitalsPr: { type: String, default: "" },
+    vitalsWeight: { type: String, default: "" },
 
     // =============================================
     // MEDICAL INFO
@@ -76,36 +82,29 @@ const appointmentSchema = new mongoose.Schema(
     },
 
     // =============================================
-    // ===== REFERRAL FIELDS (UPDATED WITH REF) =====
+    // REFERRAL FIELDS
     // =============================================
-    referredBy: { type: String, default: "" }, // Display name (denormalized)
+    referredBy: { type: String, default: "" },
 
-    // ✅ Main referral contact reference
     referralContactId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ReferralContact",
       default: null
     },
-
-    // ✅ Customer referral reference
     referralCustomerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ReferralContact",
       default: null
     },
-
-    // ✅ Doctor referral reference
     referralDoctorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ReferralContact",
       default: null
     },
 
-    // ✅ Denormalized names for display
     referredByCustomer: { type: String, default: "" },
     referredByDoctor: { type: String, default: "" },
 
-    // Commission details
     referralCommission: { type: String, default: "" },
     referralCommissionType: {
       type: String,
@@ -113,14 +112,17 @@ const appointmentSchema = new mongoose.Schema(
       default: ""
     },
 
-    // ===== PARTNER PAYMENT STATUS =====
+    // ✅ Active/Inactive Flag (REAL FIELD — no virtual allowed)
+    isActive: { type: Boolean, default: true },
+
+    // =============================================
+    // PARTNER PAYMENT
+    // =============================================
     partnerPaymentStatus: {
       type: String,
       enum: ["Due", "Pending", "Paid"],
       default: "Due"
     },
-
-    // ===== Partner Payment Updated Timestamp =====
     partnerPaymentUpdatedAt: {
       type: Date,
       default: null
@@ -146,39 +148,43 @@ const appointmentSchema = new mongoose.Schema(
       default: "Pending"
     },
 
-    // models/Appointment.js
-doctorPaymentStatus: {
-  type: String,
-  enum: ["Pending", "Paid"],
-  default: "Pending"
-},
-
-
- // ✅ ADD THESE NEW FIELDS
-    medicines: [
-      {
-        name: {
-          type: String,
-          trim: true,
-        },
-        price: {
-          type: Number,
-          default: 0,
-          min: 0,
-        },
-      },
-    ],
-    medicineTotal: {
-      type: Number,
-      default: 0,
-      min: 0,
+    doctorPaymentStatus: {
+      type: String,
+      enum: ["Pending", "Paid"],
+      default: "Pending"
+    },
+    doctorPaymentUpdatedAt: {
+      type: Date,
+      default: null
     },
 
-  customerPaymentStatus: { type: String, default: "Pending" }, // ✅ Add this
-    // ✅ ADD THIS — otherwise Mongoose strips it
+    customerPaymentStatus: {
+      type: String,
+      enum: ["Pending", "Paid", "Partial", "Due"],
+      default: "Pending"
+    },
+
+    // =============================================
+    // MEDICINES (Pharmacy items)
+    // =============================================
+    medicines: [
+      {
+        name: { type: String, trim: true },
+        price: { type: Number, default: 0, min: 0 },
+      },
+    ],
+
+    // =============================================
+    // ✅ EXTRA CHARGES
+    // =============================================
+    medicineTotal: { type: Number, default: 0, min: 0 },
+    labTotal: { type: Number, default: 0, min: 0 },
+
+    // =============================================
+    // PAYMENT FIELDS
+    // =============================================
     partialAmount: { type: Number, default: 0 },
     paymentTransactionId: { type: String, default: "" },
-    totalAmount: { type: Number, default: 0 },
     amountPaid: { type: Number, default: 0 },
     balanceAmount: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
@@ -206,11 +212,18 @@ doctorPaymentStatus: {
     },
 
     // =============================================
-    // CALCULATED FIELDS
+    // ✅ CALCULATED FIELDS
     // =============================================
+    servicesTotal: { type: Number, default: 0 },
     subtotal: { type: Number, default: 0 },
+    totalFee: { type: Number, default: 0 },
+    totalAmount: { type: Number, default: 0 },
+    grandTotal: { type: Number, default: 0 },
     commissionAmount: { type: Number, default: 0 },
+    discount: { type: Number, default: 0 },      // ✅ ADD THIS
     finalPayable: { type: Number, default: 0 },
+    finalPayableAmount: { type: Number, default: 0 },
+
     isOP: { type: Boolean, default: false },
 
     // =============================================
@@ -272,12 +285,7 @@ doctorPaymentStatus: {
     // =============================================
     // FEEDBACK
     // =============================================
-    patientRating: {
-      type: Number,
-      min: 1,
-      max: 5,
-      default: null
-    },
+    patientRating: { type: Number, min: 1, max: 5, default: null },
     patientFeedback: { type: String, default: "" },
 
     // =============================================
@@ -302,34 +310,13 @@ appointmentSchema.index({ paymentStatus: 1 });
 appointmentSchema.index({ createdAt: -1 });
 appointmentSchema.index({ appointmentDate: 1 });
 appointmentSchema.index({ referralContactId: 1 });
-appointmentSchema.index({ referralCustomerId: 1 }); // ✅ NEW
-appointmentSchema.index({ referralDoctorId: 1 });   // ✅ NEW
+appointmentSchema.index({ referralCustomerId: 1 });
+appointmentSchema.index({ referralDoctorId: 1 });
+appointmentSchema.index({ isActive: 1 });
 
 // =============================================
-// VIRTUAL FIELDS
+// ✅ VIRTUALS — Only Safe Ones (NO conflict with real fields)
 // =============================================
-
-appointmentSchema.virtual('totalFee').get(function () {
-  const consultationFee = this.consultationFee || 0;
-  const servicesTotal = this.services.reduce((sum, service) => sum + (service.price || 0), 0);
-  return consultationFee + servicesTotal;
-});
-
-appointmentSchema.virtual('servicesTotal').get(function () {
-  return this.services.reduce((sum, service) => sum + (service.price || 0), 0);
-});
-
-appointmentSchema.virtual('grandTotal').get(function () {
-  return (this.consultationFee || 0) + this.servicesTotal;
-});
-
-appointmentSchema.virtual('finalPayableAmount').get(function () {
-  const subtotal = this.subtotal || this.grandTotal;
-  const commissionPercent = parseFloat(this.referralCommission) || 0;
-  const commissionAmount = (subtotal * commissionPercent) / 100;
-  return subtotal - commissionAmount;
-});
-
 appointmentSchema.virtual('isCompleted').get(function () {
   return this.status === 'completed';
 });
@@ -338,9 +325,10 @@ appointmentSchema.virtual('isCancelled').get(function () {
   return this.status === 'cancelled';
 });
 
-appointmentSchema.virtual('isActive').get(function () {
-  return this.status !== 'cancelled' && this.status !== 'completed';
-});
+// ❌ REMOVED — conflicts with real `isActive` field:
+// appointmentSchema.virtual('isActive').get(function () {
+//   return this.status !== 'cancelled' && this.status !== 'completed';
+// });
 
 // =============================================
 // METHODS
@@ -391,22 +379,16 @@ appointmentSchema.methods.addService = function (serviceData) {
     paymentStatus: serviceData.paymentStatus || "Pending",
     addedAt: new Date()
   });
-  this.totalAmount = this.grandTotal;
-  this.subtotal = this.grandTotal;
-  this.finalPayable = this.finalPayableAmount;
   return this.save();
 };
 
 appointmentSchema.methods.removeService = function (serviceId) {
   this.services = this.services.filter(s => s.serviceId !== serviceId);
-  this.totalAmount = this.grandTotal;
-  this.subtotal = this.grandTotal;
-  this.finalPayable = this.finalPayableAmount;
   return this.save();
 };
 
 appointmentSchema.methods.markAsPaid = function (amount = null) {
-  const amountToPay = amount || this.finalPayable || this.grandTotal;
+  const amountToPay = amount || this.finalPayable || this.totalAmount;
   this.paymentStatus = 'Paid';
   this.amountPaid = amountToPay;
   this.balanceAmount = 0;
@@ -424,13 +406,38 @@ appointmentSchema.methods.updateServicePaymentStatus = function (serviceId, paym
 };
 
 appointmentSchema.methods.recalculateTotals = function () {
-  const consultationFee = this.consultationFee || 0;
-  const servicesTotal = this.services.reduce((sum, s) => sum + (s.price || 0), 0);
-  this.subtotal = consultationFee + servicesTotal;
+  const servicesTotal = this.services.reduce(
+    (sum, s) => sum + (Number(s.price) || 0),
+    0
+  );
+  const medTotal = Number(this.medicineTotal) || 0;
+  const labT = Number(this.labTotal) || 0;
   const commissionPercent = parseFloat(this.referralCommission) || 0;
-  this.commissionAmount = (this.subtotal * commissionPercent) / 100;
-  this.finalPayable = this.subtotal - this.commissionAmount;
-  this.totalAmount = this.subtotal;
+  const commissionAmount = (servicesTotal * commissionPercent) / 100;
+  const grandTotal = servicesTotal + medTotal + labT - commissionAmount;
+
+  this.servicesTotal = servicesTotal;
+  this.subtotal = servicesTotal;
+  this.totalFee = servicesTotal;
+  this.totalAmount = grandTotal;
+  this.grandTotal = grandTotal;
+  this.commissionAmount = commissionAmount;
+  this.finalPayable = grandTotal;
+  this.finalPayableAmount = grandTotal;
+
+  const amountPaid = Number(this.amountPaid) || 0;
+  this.balanceAmount = Math.max(0, grandTotal - amountPaid);
+
+  if (this.balanceAmount === 0 && amountPaid > 0) {
+    this.paymentStatus = "Paid";
+  } else if (amountPaid > 0 && this.balanceAmount > 0) {
+    this.paymentStatus = "Partial";
+  } else if (amountPaid === 0 && grandTotal > 0) {
+    if (this.paymentStatus !== "Due") {
+      this.paymentStatus = "Pending";
+    }
+  }
+
   return this.save();
 };
 
@@ -439,13 +446,11 @@ appointmentSchema.methods.recalculateTotals = function () {
 // =============================================
 
 appointmentSchema.statics.getByPatientPhone = function (phone) {
-  return this.find({ patientPhone: phone })
-    .sort({ createdAt: -1 });
+  return this.find({ patientPhone: phone }).sort({ createdAt: -1 });
 };
 
 appointmentSchema.statics.getByPatientId = function (patientId) {
-  return this.find({ patientId: patientId })
-    .sort({ createdAt: -1 });
+  return this.find({ patientId: patientId }).sort({ createdAt: -1 });
 };
 
 appointmentSchema.statics.getBySlotId = function (slotId) {
@@ -463,23 +468,19 @@ appointmentSchema.statics.getTodayAppointments = function () {
 };
 
 appointmentSchema.statics.getPendingAppointments = function () {
-  return this.find({ status: 'pending' })
-    .sort({ createdAt: -1 });
+  return this.find({ status: 'pending' }).sort({ createdAt: -1 });
 };
 
 appointmentSchema.statics.getConfirmedAppointments = function () {
-  return this.find({ status: 'confirmed' })
-    .sort({ createdAt: -1 });
+  return this.find({ status: 'confirmed' }).sort({ createdAt: -1 });
 };
 
 appointmentSchema.statics.getCompletedAppointments = function () {
-  return this.find({ status: 'completed' })
-    .sort({ createdAt: -1 });
+  return this.find({ status: 'completed' }).sort({ createdAt: -1 });
 };
 
 appointmentSchema.statics.getCancelledAppointments = function () {
-  return this.find({ status: 'cancelled' })
-    .sort({ createdAt: -1 });
+  return this.find({ status: 'cancelled' }).sort({ createdAt: -1 });
 };
 
 appointmentSchema.statics.getByDateRange = function (startDate, endDate) {
@@ -502,8 +503,7 @@ appointmentSchema.statics.getPaymentSummary = function () {
 };
 
 appointmentSchema.statics.getByAppointmentDate = function (date) {
-  return this.find({ appointmentDate: date })
-    .sort({ startTime: 1 });
+  return this.find({ appointmentDate: date }).sort({ startTime: 1 });
 };
 
 appointmentSchema.statics.getByAppointmentDateRange = function (startDate, endDate) {
@@ -512,37 +512,66 @@ appointmentSchema.statics.getByAppointmentDateRange = function (startDate, endDa
   }).sort({ appointmentDate: 1, startTime: 1 });
 };
 
-// ✅ NEW: Get appointments by referral contact
 appointmentSchema.statics.getByReferralContactId = function (referralContactId) {
-  return this.find({ referralContactId: referralContactId })
-    .sort({ createdAt: -1 });
+  return this.find({ referralContactId: referralContactId }).sort({ createdAt: -1 });
 };
 
-// ✅ NEW: Get appointments by customer referral
 appointmentSchema.statics.getByReferralCustomerId = function (referralCustomerId) {
-  return this.find({ referralCustomerId: referralCustomerId })
-    .sort({ createdAt: -1 });
+  return this.find({ referralCustomerId: referralCustomerId }).sort({ createdAt: -1 });
 };
 
-// ✅ NEW: Get appointments by doctor referral
 appointmentSchema.statics.getByReferralDoctorId = function (referralDoctorId) {
-  return this.find({ referralDoctorId: referralDoctorId })
-    .sort({ createdAt: -1 });
+  return this.find({ referralDoctorId: referralDoctorId }).sort({ createdAt: -1 });
+};
+
+// ✅ NEW: Get active / inactive appointments
+appointmentSchema.statics.getActiveAppointments = function () {
+  return this.find({ isActive: true }).sort({ createdAt: -1 });
+};
+
+appointmentSchema.statics.getInactiveAppointments = function () {
+  return this.find({ isActive: false }).sort({ createdAt: -1 });
 };
 
 // =============================================
-// MIDDLEWARE
+// ✅ PRE-SAVE MIDDLEWARE — CENTRAL CALCULATION
 // =============================================
-
 appointmentSchema.pre('save', function (next) {
-  const consultationFee = this.consultationFee || 0;
-  const servicesTotal = this.services.reduce((sum, service) => sum + (service.price || 0), 0);
-  this.subtotal = consultationFee + servicesTotal;
+  const servicesTotal = (this.services || []).reduce(
+    (sum, service) => sum + (Number(service.price) || 0),
+    0
+  );
+
+  const medTotal = Number(this.medicineTotal) || 0;
+  const labT = Number(this.labTotal) || 0;
+
   const commissionPercent = parseFloat(this.referralCommission) || 0;
-  this.commissionAmount = (this.subtotal * commissionPercent) / 100;
-  this.finalPayable = this.subtotal - this.commissionAmount;
-  this.totalAmount = this.subtotal;
-  this.balanceAmount = this.finalPayable - (this.amountPaid || 0);
+  const commissionAmount = (servicesTotal * commissionPercent) / 100;
+
+  const grandTotal = servicesTotal + medTotal + labT - commissionAmount;
+
+  this.servicesTotal = servicesTotal;
+  this.subtotal = servicesTotal;
+  this.totalFee = servicesTotal;
+  this.totalAmount = grandTotal;
+  this.grandTotal = grandTotal;
+  this.commissionAmount = commissionAmount;
+  this.finalPayable = grandTotal;
+  this.finalPayableAmount = grandTotal;
+
+  const amountPaid = Number(this.amountPaid) || 0;
+  this.balanceAmount = Math.max(0, grandTotal - amountPaid);
+
+  if (this.balanceAmount === 0 && amountPaid > 0) {
+    this.paymentStatus = "Paid";
+  } else if (amountPaid > 0 && this.balanceAmount > 0) {
+    this.paymentStatus = "Partial";
+  } else if (amountPaid === 0 && grandTotal > 0) {
+    if (this.paymentStatus !== "Due") {
+      this.paymentStatus = "Pending";
+    }
+  }
+
   next();
 });
 
