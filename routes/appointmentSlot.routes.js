@@ -301,512 +301,171 @@ router.get("/", async (req, res) => {
 });
 
 
-// ============================================================
-// POST /appointment-slots/book  — Book Appointment
-// ============================================================
-router.post("/book", async (req, res) => {
+router.put("/updatecharges/:id", async (req, res) => {
   try {
-    const {
-      slotId,
-      _id,
-      dayOfWeek,
-      date,
-      appointmentDate,
-      startTime,
-      endTime,
-      startTime24,
-      endTime24,
-      doctorId,
-      doctorName,
-      doctorSpecialization,
-      patientId,
-      patientName,
-      patientAge,
-      patientGender,
-      patientDob,
-      patientTitle,
-      patientAddress,
-      patientCity,
-      patientPincode,
-      patientPhone,
-      patientEmail,
-      purpose,
-      symptoms,
-      paymentType,
-      paymentStatus,
-      partialAmount,
-      appointmentType,
-      priority,
-      // ===== REFERRAL FIELDS =====
-      referredByCustomer,
-      referredByDoctor,
-      referralCustomerId,
-      referralDoctorId,
-      referralContactId,
-      referredBy,
-      referralCommission,
-      referralCommissionType,
-      // ===== DISCOUNT =====
-      discount,                // ✅ NEW
-      insuranceProvider,
-      insurancePolicyNumber,
-      patientBloodGroup,
-      patientMedicalHistory,
-      patientAllergies,
-      patientMedications,
-      notes,
-      isOP,
-      serviceItems,
-      services
-    } = req.body;
+    const { id } = req.params;
+    const { medicineTotal, labTotal } = req.body;
 
-    console.log("📥 Booking request received:", req.body);
-
-    let slot = null;
-    let bookedAppointment = null;
-
-    const finalDate = appointmentDate || date || new Date().toISOString().split('T')[0];
-
-    // ===== FIND SLOT =====
-    if (_id && mongoose.Types.ObjectId.isValid(_id)) {
-      slot = await AppointmentSlot.findById(_id);
-    }
-
-    if (!slot && slotId) {
-      if (mongoose.Types.ObjectId.isValid(slotId)) {
-        slot = await AppointmentSlot.findById(slotId);
-      } else {
-        slot = await AppointmentSlot.findOne({ slotId: slotId });
-      }
-    }
-
-    if (!slot && dayOfWeek && startTime && doctorId) {
-      slot = await AppointmentSlot.findOne({
-        doctorId: doctorId,
-        dayOfWeek: new RegExp(`^${dayOfWeek}$`, "i"),
-        startTime: startTime,
-        status: 'available'
-      });
-    }
-
-    if (!slot && finalDate && startTime && doctorId) {
-      slot = await AppointmentSlot.findOne({
-        doctorId: doctorId,
-        date: finalDate,
-        startTime: startTime,
-        status: 'available'
-      });
-    }
-
-    if (!slot && doctorId && startTime) {
-      slot = await AppointmentSlot.findOne({
-        doctorId: doctorId,
-        startTime: startTime,
-        status: 'available'
-      });
-    }
-
-    if (!slot) {
-      return res.status(404).json({
-        success: false,
-        message: "Slot not found. Please select a valid available slot."
-      });
-    }
-
-    if (slot.status !== 'available') {
+    if (medicineTotal === undefined && labTotal === undefined) {
       return res.status(400).json({
         success: false,
-        message: `Slot is not available. Current status: ${slot.status}`
+        message: "At least one of medicineTotal or labTotal is required",
       });
     }
 
-    // Update slot status
-    slot.status = 'booked';
-    if (finalDate) slot.date = finalDate;
-    await slot.save();
-
-    // ===== NORMALIZE REFERRAL FIELDS =====
-    let finalReferralContactId = null;
-    let finalReferralCustomerId = null;
-    let finalReferralDoctorId = null;
-    let finalReferredBy = "";
-
-    if (referralDoctorId && mongoose.Types.ObjectId.isValid(referralDoctorId)) {
-      finalReferralDoctorId = referralDoctorId;
-      finalReferralContactId = referralDoctorId;
-    }
-
-    if (referralCustomerId && mongoose.Types.ObjectId.isValid(referralCustomerId)) {
-      finalReferralCustomerId = referralCustomerId;
-      if (!finalReferralContactId) {
-        finalReferralContactId = referralCustomerId;
+    // Validate
+    let newMedicineTotal;
+    if (medicineTotal !== undefined && medicineTotal !== null) {
+      newMedicineTotal = Number(medicineTotal);
+      if (isNaN(newMedicineTotal) || newMedicineTotal < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "medicineTotal must be a valid non-negative number",
+        });
       }
     }
 
-    if (!finalReferralContactId && referralContactId && mongoose.Types.ObjectId.isValid(referralContactId)) {
-      finalReferralContactId = referralContactId;
-    }
-
-    finalReferredBy = referredByDoctor || referredByCustomer || referredBy || "";
-
-    if (finalReferralContactId) {
-      try {
-        const referralContact = await ReferralContact.findById(finalReferralContactId);
-        if (referralContact) {
-          console.log("✅ Referral contact found:", referralContact.referralType);
-        }
-      } catch (err) {
-        console.warn("⚠️ Error fetching referral contact:", err.message);
+    let newLabTotal;
+    if (labTotal !== undefined && labTotal !== null) {
+      newLabTotal = Number(labTotal);
+      if (isNaN(newLabTotal) || newLabTotal < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "labTotal must be a valid non-negative number",
+        });
       }
     }
 
-    // ===== TOTALS — ONLY FROM SERVICES =====
-    const finalServices = serviceItems || services || [];
-    const servicesTotal = finalServices.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
-    const subtotal = servicesTotal;
-    const commissionPercent = parseFloat(referralCommission) || 0;
+    const booking = await Appointment.findById(id);
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    // Final lab/medicine values (new or existing)
+    const finalMedicineTotal =
+      newMedicineTotal !== undefined
+        ? newMedicineTotal
+        : Number(booking.medicineTotal) || 0;
+
+    const finalLabTotal =
+      newLabTotal !== undefined
+        ? newLabTotal
+        : Number(booking.labTotal) || 0;
+
+    // ============================================================
+    // ✅ CALCULATE EVERYTHING HERE (bypass middleware)
+    // ============================================================
+    const servicesTotal = Array.isArray(booking.services)
+      ? booking.services.reduce((sum, s) => sum + (Number(s.price) || 0), 0)
+      : 0;
+
+    // ✅ Subtotal = services + lab + medicine
+    const subtotal = servicesTotal + finalLabTotal + finalMedicineTotal;
+
+    // ✅ Commission on subtotal
+    const commissionPercent = parseFloat(booking.referralCommission) || 0;
     const commissionAmount = (subtotal * commissionPercent) / 100;
-    const discountAmount = Number(discount) || 0;                       // ✅ NEW
-    const finalPayable = subtotal - commissionAmount - discountAmount;  // ✅ discount minus
 
-    console.log("💰 Totals:", { servicesTotal, subtotal, commissionAmount, discountAmount, finalPayable });
+    // ✅ Discount
+    const discountAmount = Number(booking.discount) || 0;
 
-    // ===== ✅ PARTIAL PAYMENT HANDLING =====
-    const parsedPartial = Number(partialAmount) || 0;
-    let finalPaymentStatus = paymentStatus || "Pending";
-    let finalAmountPaid = 0;
-    let finalBalanceAmount = finalPayable;
+    // ✅ Final = subtotal - commission - discount
+    const finalPayable = Math.max(
+      0,
+      subtotal - commissionAmount - discountAmount
+    );
 
-    if (paymentStatus === "Paid") {
-      finalAmountPaid = finalPayable;
-      finalBalanceAmount = 0;
+    // ✅ Payment status
+    const currentPaid = Number(booking.amountPaid) || 0;
+    let finalAmountPaid = currentPaid;
+    let finalBalanceAmount = Math.max(0, finalPayable - currentPaid);
+    let finalPaymentStatus = "Pending";
+
+    if (finalBalanceAmount <= 0 && finalAmountPaid > 0) {
       finalPaymentStatus = "Paid";
-    } else if (paymentStatus === "Partial") {
-      if (parsedPartial > 0) {
-        finalAmountPaid = parsedPartial;
-        finalBalanceAmount = finalPayable - parsedPartial;
-
-        if (finalBalanceAmount <= 0) {
-          finalPaymentStatus = "Paid";
-          finalAmountPaid = finalPayable;
-          finalBalanceAmount = 0;
-        } else {
-          finalPaymentStatus = "Partial";
-        }
-      } else {
-        finalPaymentStatus = "Pending";
-        finalAmountPaid = 0;
-        finalBalanceAmount = finalPayable;
-      }
-    } else if (paymentStatus === "Due") {
-      finalAmountPaid = 0;
-      finalBalanceAmount = finalPayable;
-      finalPaymentStatus = "Due";
-    } else {
-      finalAmountPaid = 0;
-      finalBalanceAmount = finalPayable;
-      finalPaymentStatus = "Pending";
-    }
-
-    console.log("💳 Payment:", { finalPaymentStatus, finalAmountPaid, finalBalanceAmount });
-
-    // ===== CREATE APPOINTMENT =====
-    const appointmentData = {
-      slotId: slot._id,
-      appointmentDate: finalDate,
-      slotDetails: {
-        dayOfWeek: slot.dayOfWeek || dayOfWeek,
-        date: finalDate,
-        startTime: slot.startTime || startTime,
-        endTime: slot.endTime || endTime,
-        startTime24: slot.startTime24 || startTime24,
-        endTime24: slot.endTime24 || endTime24,
-        doctorId: slot.doctorId || doctorId,
-        doctorName: slot.doctorName || doctorName,
-        doctorSpecialization: slot.doctorSpecialization || doctorSpecialization
-      },
-      patientId: patientId || undefined,
-      patientName: patientName,
-      patientTitle: patientTitle || "Mr.",
-      patientDob: patientDob || "",
-      patientAge: patientAge,
-      patientGender: patientGender,
-      patientPhone: patientPhone,
-      patientEmail: patientEmail || "",
-      patientAddress: patientAddress || "",
-      patientCity: patientCity || "",
-      patientPincode: patientPincode || "",
-      patientBloodGroup: patientBloodGroup || "",
-      patientMedicalHistory: patientMedicalHistory || "",
-      patientAllergies: patientAllergies || "",
-      patientMedications: patientMedications || "",
-      purpose: purpose || "",
-      symptoms: symptoms || "",
-
-      paymentType: paymentType || "cash",
-      paymentStatus: finalPaymentStatus,
-      partialAmount: parsedPartial,
-      amountPaid: finalAmountPaid,
-      balanceAmount: finalBalanceAmount,
-      appointmentType: appointmentType || "Consultation",
-      priority: priority || "Normal",
-
-      // ===== REFERRAL FIELDS =====
-      referredBy: finalReferredBy,
-      referralContactId: finalReferralContactId,
-      referralCustomerId: finalReferralCustomerId,
-      referralDoctorId: finalReferralDoctorId,
-      referredByCustomer: referredByCustomer || "",
-      referredByDoctor: referredByDoctor || "",
-      referralCommission: referralCommission || "",
-      referralCommissionType: referralCommissionType || "",
-
-      // ===== SERVICES =====
-      services: finalServices.map(s => ({
-        serviceId: s.serviceId || s._id,
-        name: s.name,
-        price: Number(s.price) || 0,
-        description: s.description || "",
-        paymentStatus: s.paymentStatus || "Pending"
-      })),
-
-      // ===== CALCULATED FIELDS =====
-      subtotal: subtotal,
-      commissionAmount: commissionAmount,
-      discount: discountAmount,             // ✅ NEW
-      finalPayable: finalPayable,
-      totalAmount: finalPayable,
-
-      insuranceProvider: insuranceProvider || "",
-      insurancePolicyNumber: insurancePolicyNumber || "",
-      notes: notes || "",
-      status: "confirmed",
-      bookedAt: new Date(),
-      isOP: isOP || false,
-      partnerPaymentStatus: "Due"
-    };
-
-    bookedAppointment = new Appointment(appointmentData);
-    await bookedAppointment.save();
-
-    const populatedAppointment = await Appointment.findById(bookedAppointment._id)
-      .populate('referralContactId')
-      .populate('referralCustomerId')
-      .populate('referralDoctorId');
-
-    return res.status(200).json({
-      success: true,
-      message: `✅ Appointment booked successfully for ${patientName}!`,
-      appointment: populatedAppointment || bookedAppointment,
-      slot: slot
-    });
-
-  } catch (error) {
-    console.error("❌ Error booking appointment:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-});
-
-
-// ============================================================
-// PUT /appointment-slots/updateop/:bookingId — Update Appointment
-// ============================================================
-router.put("/updateop/:bookingId", async (req, res) => {
-  try {
-    const { bookingId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(bookingId)) {
-      return res.status(400).json({ success: false, message: "Invalid booking ID" });
-    }
-
-    const existing = await Appointment.findById(bookingId);
-    if (!existing) {
-      return res.status(404).json({ success: false, message: "Booking not found" });
-    }
-
-    const {
-      slotId,
-      appointmentDate,
-      patientTitle,
-      patientName,
-      patientAge,
-      patientDob,
-      patientGender,
-      patientPhone,
-      patientEmail,
-      patientAddress,
-      patientCity,
-      patientPincode,
-      purpose,
-      symptoms,
-      paymentType,
-      paymentStatus,
-      partialAmount,
-      amountPaid,
-      balanceAmount,
-      referredByCustomer,
-      referredByDoctor,
-      referralCustomerId,
-      referralDoctorId,
-      referralContactId,
-      referredBy,
-      referralCommission,
-      referralCommissionType,
-      discount,
-      serviceItems,
-      services,
-      status,
-    } = req.body;
-
-    // ===== NORMALIZE REFERRALS =====
-    let finalReferralContactId = existing.referralContactId || null;
-    let finalReferralCustomerId = existing.referralCustomerId || null;
-    let finalReferralDoctorId = existing.referralDoctorId || null;
-
-    if (referralDoctorId && mongoose.Types.ObjectId.isValid(referralDoctorId)) {
-      finalReferralDoctorId = referralDoctorId;
-      finalReferralContactId = referralDoctorId;
-    }
-    if (referralCustomerId && mongoose.Types.ObjectId.isValid(referralCustomerId)) {
-      finalReferralCustomerId = referralCustomerId;
-      if (!finalReferralContactId) finalReferralContactId = referralCustomerId;
-    }
-    if (!finalReferralContactId && referralContactId && mongoose.Types.ObjectId.isValid(referralContactId)) {
-      finalReferralContactId = referralContactId;
-    }
-
-    const finalReferredBy = referredByDoctor || referredByCustomer || referredBy || "";
-
-    // ===== NORMALIZE SERVICES =====
-    const finalServices =
-      (Array.isArray(serviceItems) && serviceItems.length > 0 && serviceItems) ||
-      (Array.isArray(services) && services.length > 0 && services) ||
-      [];
-
-    const normalizedServices = finalServices.map((s) => ({
-      serviceId: s.serviceId || s._id || "",
-      name: s.name || "Service",
-      price: Number(s.price) || 0,
-      description: s.description || "",
-      paymentStatus: s.paymentStatus || "Pending",
-      addedAt: s.addedAt || new Date(),
-    }));
-
-    // ===== ✅ CALCULATE TOTALS (same as /updatecharges logic) =====
-    const servicesTotal = normalizedServices.reduce((sum, s) => sum + (s.price || 0), 0);
-
-    // ✅ Use NEW labTotal/medicineTotal if provided, else keep existing
-    const medicineTotal = (req.body.medicineTotal !== undefined && req.body.medicineTotal !== null)
-      ? Number(req.body.medicineTotal)
-      : Number(existing.medicineTotal) || 0;
-
-    const labTotal = (req.body.labTotal !== undefined && req.body.labTotal !== null)
-      ? Number(req.body.labTotal)
-      : Number(existing.labTotal) || 0;
-
-    // ✅ Grand subtotal = services + lab + medicine
-    const subtotal = servicesTotal + medicineTotal + labTotal;
-
-    const commissionPercent = parseFloat(referralCommission) || 0;
-    const commissionAmount = (subtotal * commissionPercent) / 100;
-    const discountAmount = Number(discount) || 0;
-
-    // ✅ Final = subtotal − commission − discount
-    const finalPayable = subtotal - commissionAmount - discountAmount;
-
-    // ===== ✅ PAYMENT HANDLING =====
-    let finalPaymentStatus = paymentStatus || "Pending";
-    let finalAmountPaid = Number(amountPaid) || 0;
-    let finalBalanceAmount = Number(balanceAmount);
-    if (isNaN(finalBalanceAmount)) finalBalanceAmount = finalPayable;
-
-    if (paymentStatus === "Paid") {
       finalAmountPaid = finalPayable;
       finalBalanceAmount = 0;
-    } else if (paymentStatus === "Partial" && partialAmount) {
-      finalAmountPaid = parseFloat(partialAmount) || 0;
-      finalBalanceAmount = finalPayable - finalAmountPaid;
-      if (finalBalanceAmount <= 0) {
-        finalPaymentStatus = "Paid";
-        finalAmountPaid = finalPayable;
-        finalBalanceAmount = 0;
-      }
-    } else if (paymentStatus === "Due") {
-      finalAmountPaid = 0;
-      finalBalanceAmount = finalPayable;
+    } else if (finalAmountPaid > 0 && finalBalanceAmount > 0) {
+      finalPaymentStatus = "Partial";
+    } else if (finalAmountPaid === 0) {
+      finalPaymentStatus = booking.paymentStatus === "Due" ? "Due" : "Pending";
     }
 
-    // ===== UPDATE DATA =====
-    const updateData = {
-      patientTitle: patientTitle || "Mr.",
-      patientName: patientName || existing.patientName,
-      patientAge: patientAge ?? existing.patientAge,
-      patientDob: patientDob || "",
-      patientGender: patientGender || existing.patientGender,
-      patientPhone: patientPhone || existing.patientPhone,
-      patientEmail: patientEmail || "",
-      patientAddress: patientAddress || "",
-      patientCity: patientCity || existing.patientCity || "",
-      patientPincode: patientPincode || existing.patientPincode || "",
-      purpose: purpose || "",
-      symptoms: symptoms || "",
-      paymentType: paymentType || "cash",
-      paymentStatus: finalPaymentStatus,
-      partialAmount: parseFloat(partialAmount) || 0,
-      amountPaid: finalAmountPaid,
-      balanceAmount: finalBalanceAmount,
-      referredBy: finalReferredBy,
-      referralContactId: finalReferralContactId,
-      referralCustomerId: finalReferralCustomerId,
-      referralDoctorId: finalReferralDoctorId,
-      referredByCustomer: referredByCustomer || "",
-      referredByDoctor: referredByDoctor || "",
-      referralCommission: referralCommission || "",
-      referralCommissionType: referralCommissionType || "",
+    // ============================================================
+    // ✅ FORCE OVERRIDE — bypass pre-save middleware
+    // ============================================================
+    await Appointment.updateOne(
+      { _id: id },
+      {
+        $set: {
+          medicineTotal: finalMedicineTotal,
+          labTotal: finalLabTotal,
+          servicesTotal,
+          subtotal,
+          commissionAmount,
+          discount: discountAmount,
+          finalPayable,
+          finalPayableAmount: finalPayable,
+          grandTotal: finalPayable,
+          totalAmount: finalPayable,
+          totalFee: finalPayable,
+          amountPaid: finalAmountPaid,
+          balanceAmount: finalBalanceAmount,
+          partialAmount: finalAmountPaid,
+          paymentStatus: finalPaymentStatus,
+        },
+      }
+    );
 
-      // ✅ Services
-      services: normalizedServices,
+    // ============================================================
+    // ✅ FETCH FRESH DOCUMENT
+    // ============================================================
+    const updated = await Appointment.findById(id);
 
-      // ✅ Totals (updated properly)
+    console.log("✅ Charges updated:", {
       servicesTotal,
-      medicineTotal,
-      labTotal,
+      labTotal: finalLabTotal,
+      medicineTotal: finalMedicineTotal,
       subtotal,
-      commissionAmount,
       discount: discountAmount,
       finalPayable,
-      totalAmount: finalPayable,
-      grandTotal: finalPayable,
-      finalPayableAmount: finalPayable,
-
-      status: status || existing.status,
-    };
-
-    if (appointmentDate) updateData.appointmentDate = appointmentDate;
-    if (slotId && mongoose.Types.ObjectId.isValid(slotId)) updateData.slotId = slotId;
-
-    const updated = await Appointment.findByIdAndUpdate(bookingId, updateData, {
-      new: true,
-      runValidators: false,
-    })
-      .populate("referralContactId")
-      .populate("referralCustomerId")
-      .populate("referralDoctorId");
+      amountPaid: finalAmountPaid,
+      balanceAmount: finalBalanceAmount,
+      paymentStatus: finalPaymentStatus,
+    });
 
     return res.status(200).json({
       success: true,
-      message: "✅ Appointment updated successfully!",
-      appointment: updated,
+      message: `Charges updated. New total: ₹${updated.grandTotal}`,
+      data: {
+        _id: updated._id,
+        medicineTotal: updated.medicineTotal,
+        labTotal: updated.labTotal,
+        servicesTotal: updated.servicesTotal,
+        subtotal: updated.subtotal,
+        totalAmount: updated.totalAmount,
+        grandTotal: updated.grandTotal,
+        commissionAmount: updated.commissionAmount,
+        discount: updated.discount,
+        finalPayable: updated.finalPayable,
+        finalPayableAmount: updated.finalPayableAmount,
+        amountPaid: updated.amountPaid,
+        balanceAmount: updated.balanceAmount,
+        paymentStatus: updated.paymentStatus,
+        patientName: updated.patientName,
+      },
     });
   } catch (error) {
-    console.error("❌ Error updating appointment:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("❌ Error updating charges:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update charges",
+    });
   }
 });
-
 
 
 // ✅ GET ALL BOOKINGS
@@ -1550,6 +1209,777 @@ router.put("/updatelabtotal/:id", async (req, res) => {
 });
 
 
+// ============================================================
+// POST /appointment-slots/book  — Book Appointment (FULLY FIXED)
+// Trusts frontend financials + Force-overrides after save
+// ============================================================
+router.post("/book", async (req, res) => {
+  try {
+    const {
+      slotId,
+      _id,
+      dayOfWeek,
+      date,
+      appointmentDate,
+      startTime,
+      endTime,
+      startTime24,
+      endTime24,
+      doctorId,
+      doctorName,
+      doctorSpecialization,
+      patientId,
+      patientName,
+      patientAge,
+      patientGender,
+      patientDob,
+      patientTitle,
+      patientAddress,
+      patientCity,
+      patientPincode,
+      patientPhone,
+      patientEmail,
+      purpose,
+      symptoms,
+      paymentType,
+      paymentStatus,
+      partialAmount,
+      appointmentType,
+      priority,
+
+      // ===== REFERRAL =====
+      referredByCustomer,
+      referredByDoctor,
+      referralCustomerId,
+      referralDoctorId,
+      referralContactId,
+      referredBy,
+      referralCommission,
+      referralCommissionType,
+
+      // ===== DISCOUNT =====
+      discount,
+      discountType,
+
+      // ===== FRONTEND-COMPUTED (TRUST THESE) =====
+      subtotal: clientSubtotal,
+      commissionAmount: clientCommissionAmount,
+      finalPayable: clientFinalPayable,
+      finalPayableAmount: clientFinalPayableAmount,
+      grandTotal: clientGrandTotal,
+      totalAmount: clientTotalAmount,
+      amountPaid: clientAmountPaid,
+      balanceAmount: clientBalanceAmount,
+
+      // ===== OTHER =====
+      insuranceProvider,
+      insurancePolicyNumber,
+      patientBloodGroup,
+      patientMedicalHistory,
+      patientAllergies,
+      patientMedications,
+      notes,
+      isOP,
+      serviceItems,
+      services
+    } = req.body;
+
+    console.log("📥 Booking request received");
+    console.log("🔍 Frontend financials:", {
+      clientSubtotal,
+      clientCommissionAmount,
+      discount,
+      clientFinalPayable,
+      clientAmountPaid,
+      clientBalanceAmount,
+      paymentStatus,
+    });
+
+    let slot = null;
+    const finalDate =
+      appointmentDate || date || new Date().toISOString().split("T")[0];
+
+    // ===== FIND SLOT =====
+    if (_id && mongoose.Types.ObjectId.isValid(_id)) {
+      slot = await AppointmentSlot.findById(_id);
+    }
+    if (!slot && slotId) {
+      if (mongoose.Types.ObjectId.isValid(slotId)) {
+        slot = await AppointmentSlot.findById(slotId);
+      } else {
+        slot = await AppointmentSlot.findOne({ slotId: slotId });
+      }
+    }
+    if (!slot && dayOfWeek && startTime && doctorId) {
+      slot = await AppointmentSlot.findOne({
+        doctorId: doctorId,
+        dayOfWeek: new RegExp(`^${dayOfWeek}$`, "i"),
+        startTime: startTime,
+        status: "available",
+      });
+    }
+    if (!slot && finalDate && startTime && doctorId) {
+      slot = await AppointmentSlot.findOne({
+        doctorId: doctorId,
+        date: finalDate,
+        startTime: startTime,
+        status: "available",
+      });
+    }
+    if (!slot && doctorId && startTime) {
+      slot = await AppointmentSlot.findOne({
+        doctorId: doctorId,
+        startTime: startTime,
+        status: "available",
+      });
+    }
+
+    if (!slot) {
+      return res.status(404).json({
+        success: false,
+        message: "Slot not found. Please select a valid available slot.",
+      });
+    }
+
+    if (slot.status !== "available") {
+      return res.status(400).json({
+        success: false,
+        message: `Slot is not available. Current status: ${slot.status}`,
+      });
+    }
+
+    // Update slot status
+    slot.status = "booked";
+    if (finalDate) slot.date = finalDate;
+    await slot.save();
+
+    // ===== NORMALIZE REFERRAL =====
+    let finalReferralContactId = null;
+    let finalReferralCustomerId = null;
+    let finalReferralDoctorId = null;
+    let finalReferredBy = "";
+
+    if (referralDoctorId && mongoose.Types.ObjectId.isValid(referralDoctorId)) {
+      finalReferralDoctorId = referralDoctorId;
+      finalReferralContactId = referralDoctorId;
+    }
+    if (referralCustomerId && mongoose.Types.ObjectId.isValid(referralCustomerId)) {
+      finalReferralCustomerId = referralCustomerId;
+      if (!finalReferralContactId) {
+        finalReferralContactId = referralCustomerId;
+      }
+    }
+    if (
+      !finalReferralContactId &&
+      referralContactId &&
+      mongoose.Types.ObjectId.isValid(referralContactId)
+    ) {
+      finalReferralContactId = referralContactId;
+    }
+    finalReferredBy = referredByDoctor || referredByCustomer || referredBy || "";
+
+    // ===== ✅ COMPUTE FINANCIALS — TRUST FRONTEND FIRST =====
+    const finalServices = serviceItems || services || [];
+    const servicesTotal = finalServices.reduce(
+      (sum, s) => sum + (Number(s.price) || 0),
+      0
+    );
+
+    // Server-side fallback calc
+    const commissionPercent = parseFloat(referralCommission) || 0;
+    const serverSubtotal = servicesTotal;
+    const serverCommissionAmount = (serverSubtotal * commissionPercent) / 100;
+    const serverDiscountAmount = Number(discount) || 0;
+    const serverFinalPayable =
+      serverSubtotal - serverCommissionAmount - serverDiscountAmount;
+
+    // ✅ Trust frontend if provided, else fallback
+    const subtotal =
+      Number.isFinite(Number(clientSubtotal)) && Number(clientSubtotal) > 0
+        ? Number(clientSubtotal)
+        : serverSubtotal;
+
+    const commissionAmount =
+      Number.isFinite(Number(clientCommissionAmount))
+        ? Number(clientCommissionAmount)
+        : serverCommissionAmount;
+
+    const discountAmount = Number(discount) || 0;
+
+    const finalPayableFromClient =
+      Number(clientFinalPayable) ||
+      Number(clientFinalPayableAmount) ||
+      Number(clientGrandTotal) ||
+      Number(clientTotalAmount) ||
+      0;
+
+    const finalPayable =
+      finalPayableFromClient > 0 ? finalPayableFromClient : serverFinalPayable;
+
+    // ✅ AMOUNT PAID / BALANCE — trust frontend explicitly
+    const parsedPartial = Number(partialAmount) || 0;
+    const clientSentAmountPaid = Number(clientAmountPaid);
+    const clientSentBalance = Number(clientBalanceAmount);
+    const frontendTrusted =
+      Number.isFinite(clientSentAmountPaid) &&
+      Number.isFinite(clientSentBalance) &&
+      (clientSentAmountPaid > 0 || clientSentBalance > 0);
+
+    let finalPaymentStatus = paymentStatus || "Pending";
+    let finalAmountPaid = 0;
+    let finalBalanceAmount = finalPayable;
+
+    if (frontendTrusted) {
+      // ✅ Trust frontend numbers
+      finalAmountPaid = Math.max(
+        0,
+        Math.min(clientSentAmountPaid, finalPayable)
+      );
+      finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
+
+      if (finalBalanceAmount <= 0 && finalAmountPaid > 0) {
+        finalPaymentStatus = "Paid";
+        finalAmountPaid = finalPayable;
+        finalBalanceAmount = 0;
+      } else if (finalAmountPaid > 0 && finalBalanceAmount > 0) {
+        finalPaymentStatus = "Partial";
+      } else if (finalAmountPaid <= 0) {
+        finalPaymentStatus = paymentStatus === "Due" ? "Due" : "Pending";
+      }
+    } else {
+      // Fallback logic
+      if (paymentStatus === "Paid") {
+        finalAmountPaid = finalPayable;
+        finalBalanceAmount = 0;
+        finalPaymentStatus = "Paid";
+      } else if (paymentStatus === "Partial" && parsedPartial > 0) {
+        finalAmountPaid = Math.min(parsedPartial, finalPayable);
+        finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
+        finalPaymentStatus = finalBalanceAmount === 0 ? "Paid" : "Partial";
+        if (finalPaymentStatus === "Paid") {
+          finalAmountPaid = finalPayable;
+          finalBalanceAmount = 0;
+        }
+      } else if (paymentStatus === "Due") {
+        finalAmountPaid = 0;
+        finalBalanceAmount = finalPayable;
+        finalPaymentStatus = "Due";
+      } else {
+        // Pending or unknown
+        if (parsedPartial > 0) {
+          if (parsedPartial >= finalPayable) {
+            finalPaymentStatus = "Paid";
+            finalAmountPaid = finalPayable;
+            finalBalanceAmount = 0;
+          } else {
+            finalPaymentStatus = "Partial";
+            finalAmountPaid = parsedPartial;
+            finalBalanceAmount = finalPayable - parsedPartial;
+          }
+        } else {
+          finalPaymentStatus = "Pending";
+          finalAmountPaid = 0;
+          finalBalanceAmount = finalPayable;
+        }
+      }
+    }
+
+    console.log("💰 Computed FINAL:", {
+      subtotal,
+      commissionAmount,
+      discountAmount,
+      finalPayable,
+      finalAmountPaid,
+      finalBalanceAmount,
+      finalPaymentStatus,
+    });
+
+    // ===== CREATE APPOINTMENT =====
+    const appointmentData = {
+      slotId: slot._id,
+      appointmentDate: finalDate,
+      slotDetails: {
+        dayOfWeek: slot.dayOfWeek || dayOfWeek,
+        date: finalDate,
+        startTime: slot.startTime || startTime,
+        endTime: slot.endTime || endTime,
+        startTime24: slot.startTime24 || startTime24,
+        endTime24: slot.endTime24 || endTime24,
+        doctorId: slot.doctorId || doctorId,
+        doctorName: slot.doctorName || doctorName,
+        doctorSpecialization:
+          slot.doctorSpecialization || doctorSpecialization,
+      },
+      patientId: patientId || undefined,
+      patientName,
+      patientTitle: patientTitle || "Mr.",
+      patientDob: patientDob || "",
+      patientAge,
+      patientGender,
+      patientPhone,
+      patientEmail: patientEmail || "",
+      patientAddress: patientAddress || "",
+      patientCity: patientCity || "",
+      patientPincode: patientPincode || "",
+      patientBloodGroup: patientBloodGroup || "",
+      patientMedicalHistory: patientMedicalHistory || "",
+      patientAllergies: patientAllergies || "",
+      patientMedications: patientMedications || "",
+      purpose: purpose || "",
+      symptoms: symptoms || "",
+
+      paymentType: paymentType || "cash",
+      paymentStatus: finalPaymentStatus,
+      partialAmount: finalAmountPaid,
+      amountPaid: finalAmountPaid,
+      balanceAmount: finalBalanceAmount,
+      appointmentType: appointmentType || "Consultation",
+      priority: priority || "Normal",
+
+      // Referral
+      referredBy: finalReferredBy,
+      referralContactId: finalReferralContactId,
+      referralCustomerId: finalReferralCustomerId,
+      referralDoctorId: finalReferralDoctorId,
+      referredByCustomer: referredByCustomer || "",
+      referredByDoctor: referredByDoctor || "",
+      referralCommission: referralCommission || "",
+      referralCommissionType: referralCommissionType || "",
+
+      // Services
+      services: finalServices.map((s) => ({
+        serviceId: s.serviceId || s._id,
+        name: s.name,
+        price: Number(s.price) || 0,
+        description: s.description || "",
+        paymentStatus: s.paymentStatus || "Pending",
+      })),
+
+      // ✅ Financials — all synced to same value
+      servicesTotal,
+      subtotal,
+      commissionAmount,
+      discount: discountAmount,
+      discountType: discountType || "₹",
+      finalPayable,
+      finalPayableAmount: finalPayable,
+      grandTotal: finalPayable,
+      totalAmount: finalPayable,
+      totalFee: finalPayable,
+
+      insuranceProvider: insuranceProvider || "",
+      insurancePolicyNumber: insurancePolicyNumber || "",
+      notes: notes || "",
+      status: "confirmed",
+      bookedAt: new Date(),
+      isOP: isOP || false,
+      partnerPaymentStatus: "Due",
+    };
+
+    const bookedAppointment = new Appointment(appointmentData);
+    await bookedAppointment.save();
+
+    // ============================================================
+    // ✅ CRITICAL FIX: FORCE OVERRIDE after save
+    // This bypasses any pre-save hook that recalculates finalPayable
+    // ============================================================
+    await Appointment.updateOne(
+      { _id: bookedAppointment._id },
+      {
+        $set: {
+          servicesTotal,
+          subtotal,
+          commissionAmount,
+          discount: discountAmount,
+          discountType: discountType || "₹",
+          finalPayable,
+          finalPayableAmount: finalPayable,
+          grandTotal: finalPayable,
+          totalAmount: finalPayable,
+          totalFee: finalPayable,
+          amountPaid: finalAmountPaid,
+          balanceAmount: finalBalanceAmount,
+          partialAmount: finalAmountPaid,
+          paymentStatus: finalPaymentStatus,
+        },
+      }
+    );
+
+    console.log("✅ Force override applied to DB");
+
+    // ===== FETCH FRESH DOCUMENT =====
+    const populatedAppointment = await Appointment.findById(
+      bookedAppointment._id
+    )
+      .populate("referralContactId")
+      .populate("referralCustomerId")
+      .populate("referralDoctorId");
+
+    console.log("🎯 Final DB values:", {
+      finalPayable: populatedAppointment.finalPayable,
+      amountPaid: populatedAppointment.amountPaid,
+      balanceAmount: populatedAppointment.balanceAmount,
+      paymentStatus: populatedAppointment.paymentStatus,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Appointment booked successfully for ${patientName}!`,
+      appointment: populatedAppointment,
+      slot: slot,
+    });
+  } catch (error) {
+    console.error("❌ Error booking appointment:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+
+
+// ============================================================
+// PUT /appointment-slots/updateop/:bookingId — Update Appointment
+// Trusts frontend financials + Force-overrides after save
+// ============================================================
+router.put("/updateop/:bookingId", async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+      return res.status(400).json({ success: false, message: "Invalid booking ID" });
+    }
+
+    const existing = await Appointment.findById(bookingId);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    const {
+      slotId,
+      appointmentDate,
+      patientTitle,
+      patientName,
+      patientAge,
+      patientDob,
+      patientGender,
+      patientPhone,
+      patientEmail,
+      patientAddress,
+      patientCity,
+      patientPincode,
+      purpose,
+      symptoms,
+      paymentType,
+      paymentStatus,
+      partialAmount,
+
+      // ===== REFERRAL =====
+      referredByCustomer,
+      referredByDoctor,
+      referralCustomerId,
+      referralDoctorId,
+      referralContactId,
+      referredBy,
+      referralCommission,
+      referralCommissionType,
+
+      // ===== DISCOUNT =====
+      discount,
+      discountType,
+
+      // ===== FRONTEND-COMPUTED (TRUST THESE) =====
+      subtotal: clientSubtotal,
+      commissionAmount: clientCommissionAmount,
+      finalPayable: clientFinalPayable,
+      finalPayableAmount: clientFinalPayableAmount,
+      grandTotal: clientGrandTotal,
+      totalAmount: clientTotalAmount,
+      amountPaid: clientAmountPaid,
+      balanceAmount: clientBalanceAmount,
+
+      // ===== OTHER =====
+      serviceItems,
+      services,
+      status,
+      medicineTotal: reqMedicineTotal,
+      labTotal: reqLabTotal,
+    } = req.body;
+
+    console.log("📥 Update request received");
+    console.log("🔍 Frontend financials:", {
+      clientSubtotal,
+      clientCommissionAmount,
+      discount,
+      clientFinalPayable,
+      clientAmountPaid,
+      clientBalanceAmount,
+      paymentStatus,
+    });
+
+    // ===== NORMALIZE REFERRALS =====
+    let finalReferralContactId = existing.referralContactId || null;
+    let finalReferralCustomerId = existing.referralCustomerId || null;
+    let finalReferralDoctorId = existing.referralDoctorId || null;
+
+    if (referralDoctorId && mongoose.Types.ObjectId.isValid(referralDoctorId)) {
+      finalReferralDoctorId = referralDoctorId;
+      finalReferralContactId = referralDoctorId;
+    }
+    if (referralCustomerId && mongoose.Types.ObjectId.isValid(referralCustomerId)) {
+      finalReferralCustomerId = referralCustomerId;
+      if (!finalReferralContactId) finalReferralContactId = referralCustomerId;
+    }
+    if (!finalReferralContactId && referralContactId && mongoose.Types.ObjectId.isValid(referralContactId)) {
+      finalReferralContactId = referralContactId;
+    }
+
+    const finalReferredBy = referredByDoctor || referredByCustomer || referredBy || "";
+
+    // ===== NORMALIZE SERVICES =====
+    const finalServices =
+      (Array.isArray(serviceItems) && serviceItems.length > 0 && serviceItems) ||
+      (Array.isArray(services) && services.length > 0 && services) ||
+      [];
+
+    const normalizedServices = finalServices.map((s) => ({
+      serviceId: s.serviceId || s._id || "",
+      name: s.name || "Service",
+      price: Number(s.price) || 0,
+      description: s.description || "",
+      paymentStatus: s.paymentStatus || "Pending",
+      addedAt: s.addedAt || new Date(),
+    }));
+
+    // ===== ✅ COMPUTE FINANCIALS — TRUST FRONTEND FIRST =====
+    const servicesTotal = normalizedServices.reduce((sum, s) => sum + (s.price || 0), 0);
+
+    // ✅ Use NEW labTotal/medicineTotal if provided, else keep existing
+    const medicineTotal =
+      reqMedicineTotal !== undefined && reqMedicineTotal !== null
+        ? Number(reqMedicineTotal)
+        : Number(existing.medicineTotal) || 0;
+
+    const labTotal =
+      reqLabTotal !== undefined && reqLabTotal !== null
+        ? Number(reqLabTotal)
+        : Number(existing.labTotal) || 0;
+
+    // ===== Server-side fallback calc =====
+    const commissionPercent = parseFloat(referralCommission) || 0;
+    const serverSubtotal = servicesTotal + medicineTotal + labTotal;
+    const serverCommissionAmount = (serverSubtotal * commissionPercent) / 100;
+    const serverDiscountAmount = Number(discount) || 0;
+    const serverFinalPayable =
+      serverSubtotal - serverCommissionAmount - serverDiscountAmount;
+
+    // ✅ Trust frontend if provided, else fallback
+    const subtotal =
+      Number.isFinite(Number(clientSubtotal)) && Number(clientSubtotal) > 0
+        ? Number(clientSubtotal)
+        : serverSubtotal;
+
+    const commissionAmount =
+      Number.isFinite(Number(clientCommissionAmount))
+        ? Number(clientCommissionAmount)
+        : serverCommissionAmount;
+
+    const discountAmount = Number(discount) || 0;
+
+    const finalPayableFromClient =
+      Number(clientFinalPayable) ||
+      Number(clientFinalPayableAmount) ||
+      Number(clientGrandTotal) ||
+      Number(clientTotalAmount) ||
+      0;
+
+    const finalPayable =
+      finalPayableFromClient > 0 ? finalPayableFromClient : serverFinalPayable;
+
+    // ✅ AMOUNT PAID / BALANCE — trust frontend explicitly
+    const parsedPartial = Number(partialAmount) || 0;
+    const clientSentAmountPaid = Number(clientAmountPaid);
+    const clientSentBalance = Number(clientBalanceAmount);
+    const frontendTrusted =
+      Number.isFinite(clientSentAmountPaid) &&
+      Number.isFinite(clientSentBalance) &&
+      (clientSentAmountPaid > 0 || clientSentBalance > 0);
+
+    let finalPaymentStatus = paymentStatus || "Pending";
+    let finalAmountPaid = 0;
+    let finalBalanceAmount = finalPayable;
+
+    if (frontendTrusted) {
+      finalAmountPaid = Math.max(0, Math.min(clientSentAmountPaid, finalPayable));
+      finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
+
+      if (finalBalanceAmount <= 0 && finalAmountPaid > 0) {
+        finalPaymentStatus = "Paid";
+        finalAmountPaid = finalPayable;
+        finalBalanceAmount = 0;
+      } else if (finalAmountPaid > 0 && finalBalanceAmount > 0) {
+        finalPaymentStatus = "Partial";
+      } else if (finalAmountPaid <= 0) {
+        finalPaymentStatus = paymentStatus === "Due" ? "Due" : "Pending";
+      }
+    } else {
+      // Fallback logic
+      if (paymentStatus === "Paid") {
+        finalAmountPaid = finalPayable;
+        finalBalanceAmount = 0;
+        finalPaymentStatus = "Paid";
+      } else if (paymentStatus === "Partial" && parsedPartial > 0) {
+        finalAmountPaid = Math.min(parsedPartial, finalPayable);
+        finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
+        finalPaymentStatus = finalBalanceAmount === 0 ? "Paid" : "Partial";
+        if (finalPaymentStatus === "Paid") {
+          finalAmountPaid = finalPayable;
+          finalBalanceAmount = 0;
+        }
+      } else if (paymentStatus === "Due") {
+        finalAmountPaid = 0;
+        finalBalanceAmount = finalPayable;
+        finalPaymentStatus = "Due";
+      } else {
+        if (parsedPartial > 0) {
+          if (parsedPartial >= finalPayable) {
+            finalPaymentStatus = "Paid";
+            finalAmountPaid = finalPayable;
+            finalBalanceAmount = 0;
+          } else {
+            finalPaymentStatus = "Partial";
+            finalAmountPaid = parsedPartial;
+            finalBalanceAmount = finalPayable - parsedPartial;
+          }
+        } else {
+          finalPaymentStatus = "Pending";
+          finalAmountPaid = 0;
+          finalBalanceAmount = finalPayable;
+        }
+      }
+    }
+
+    console.log("💰 Computed FINAL:", {
+      subtotal,
+      commissionAmount,
+      discountAmount,
+      finalPayable,
+      finalAmountPaid,
+      finalBalanceAmount,
+      finalPaymentStatus,
+    });
+
+    // ===== UPDATE DATA =====
+    const updateData = {
+      patientTitle: patientTitle || "Mr.",
+      patientName: patientName || existing.patientName,
+      patientAge: patientAge ?? existing.patientAge,
+      patientDob: patientDob || "",
+      patientGender: patientGender || existing.patientGender,
+      patientPhone: patientPhone || existing.patientPhone,
+      patientEmail: patientEmail || "",
+      patientAddress: patientAddress || "",
+      patientCity: patientCity || existing.patientCity || "",
+      patientPincode: patientPincode || existing.patientPincode || "",
+      purpose: purpose || "",
+      symptoms: symptoms || "",
+      paymentType: paymentType || "cash",
+      paymentStatus: finalPaymentStatus,
+      partialAmount: finalAmountPaid,
+      amountPaid: finalAmountPaid,
+      balanceAmount: finalBalanceAmount,
+      referredBy: finalReferredBy,
+      referralContactId: finalReferralContactId,
+      referralCustomerId: finalReferralCustomerId,
+      referralDoctorId: finalReferralDoctorId,
+      referredByCustomer: referredByCustomer || "",
+      referredByDoctor: referredByDoctor || "",
+      referralCommission: referralCommission || "",
+      referralCommissionType: referralCommissionType || "",
+
+      // ✅ Services
+      services: normalizedServices,
+
+      // ✅ Totals — all synced
+      servicesTotal,
+      medicineTotal,
+      labTotal,
+      subtotal,
+      commissionAmount,
+      discount: discountAmount,
+      discountType: discountType || "₹",
+      finalPayable,
+      finalPayableAmount: finalPayable,
+      grandTotal: finalPayable,
+      totalAmount: finalPayable,
+      totalFee: finalPayable,
+
+      status: status || existing.status,
+    };
+
+    if (appointmentDate) updateData.appointmentDate = appointmentDate;
+    if (slotId && mongoose.Types.ObjectId.isValid(slotId)) updateData.slotId = slotId;
+
+    const updated = await Appointment.findByIdAndUpdate(bookingId, updateData, {
+      new: true,
+      runValidators: false,
+    });
+
+    // ============================================================
+    // ✅ CRITICAL FIX: FORCE OVERRIDE after update
+    // This bypasses any pre-save hook that recalculates finalPayable
+    // ============================================================
+    await Appointment.updateOne(
+      { _id: bookingId },
+      {
+        $set: {
+          servicesTotal,
+          medicineTotal,
+          labTotal,
+          subtotal,
+          commissionAmount,
+          discount: discountAmount,
+          discountType: discountType || "₹",
+          finalPayable,
+          finalPayableAmount: finalPayable,
+          grandTotal: finalPayable,
+          totalAmount: finalPayable,
+          totalFee: finalPayable,
+          amountPaid: finalAmountPaid,
+          balanceAmount: finalBalanceAmount,
+          partialAmount: finalAmountPaid,
+          paymentStatus: finalPaymentStatus,
+        },
+      }
+    );
+
+    console.log("✅ Force override applied to DB");
+
+    // ===== FETCH FRESH DOCUMENT =====
+    const populatedAppointment = await Appointment.findById(bookingId)
+      .populate("referralContactId")
+      .populate("referralCustomerId")
+      .populate("referralDoctorId");
+
+    console.log("🎯 Final DB values:", {
+      finalPayable: populatedAppointment.finalPayable,
+      amountPaid: populatedAppointment.amountPaid,
+      balanceAmount: populatedAppointment.balanceAmount,
+      paymentStatus: populatedAppointment.paymentStatus,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "✅ Appointment updated successfully!",
+      appointment: populatedAppointment,
+    });
+  } catch (error) {
+    console.error("❌ Error updating appointment:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 
 
 router.put("/updatecharges/:id", async (req, res) => {
@@ -1557,7 +1987,6 @@ router.put("/updatecharges/:id", async (req, res) => {
     const { id } = req.params;
     const { medicineTotal, labTotal } = req.body;
 
-    // ✅ At least one required
     if (medicineTotal === undefined && labTotal === undefined) {
       return res.status(400).json({
         success: false,
@@ -1565,7 +1994,7 @@ router.put("/updatecharges/:id", async (req, res) => {
       });
     }
 
-    // ✅ Validate medicineTotal
+    // Validate
     let newMedicineTotal;
     if (medicineTotal !== undefined && medicineTotal !== null) {
       newMedicineTotal = Number(medicineTotal);
@@ -1577,7 +2006,6 @@ router.put("/updatecharges/:id", async (req, res) => {
       }
     }
 
-    // ✅ Validate labTotal
     let newLabTotal;
     if (labTotal !== undefined && labTotal !== null) {
       newLabTotal = Number(labTotal);
@@ -1589,7 +2017,6 @@ router.put("/updatecharges/:id", async (req, res) => {
       }
     }
 
-    // ✅ Find booking
     const booking = await Appointment.findById(id);
     if (!booking) {
       return res.status(404).json({
@@ -1598,31 +2025,118 @@ router.put("/updatecharges/:id", async (req, res) => {
       });
     }
 
-    // ✅ Just set the raw values — middleware will handle the math
-    if (newMedicineTotal !== undefined) booking.medicineTotal = newMedicineTotal;
-    if (newLabTotal !== undefined) booking.labTotal = newLabTotal;
+    // Final lab/medicine values (new or existing)
+    const finalMedicineTotal =
+      newMedicineTotal !== undefined
+        ? newMedicineTotal
+        : Number(booking.medicineTotal) || 0;
 
-    // ✅ Save — pre-save middleware recalculates everything automatically
-    await booking.save();
+    const finalLabTotal =
+      newLabTotal !== undefined
+        ? newLabTotal
+        : Number(booking.labTotal) || 0;
+
+    // ============================================================
+    // ✅ CALCULATE EVERYTHING HERE (bypass middleware)
+    // ============================================================
+    const servicesTotal = Array.isArray(booking.services)
+      ? booking.services.reduce((sum, s) => sum + (Number(s.price) || 0), 0)
+      : 0;
+
+    // ✅ Subtotal = services + lab + medicine
+    const subtotal = servicesTotal + finalLabTotal + finalMedicineTotal;
+
+    // ✅ Commission on subtotal
+    const commissionPercent = parseFloat(booking.referralCommission) || 0;
+    const commissionAmount = (subtotal * commissionPercent) / 100;
+
+    // ✅ Discount
+    const discountAmount = Number(booking.discount) || 0;
+
+    // ✅ Final = subtotal - commission - discount
+    const finalPayable = Math.max(
+      0,
+      subtotal - commissionAmount - discountAmount
+    );
+
+    // ✅ Payment status
+    const currentPaid = Number(booking.amountPaid) || 0;
+    let finalAmountPaid = currentPaid;
+    let finalBalanceAmount = Math.max(0, finalPayable - currentPaid);
+    let finalPaymentStatus = "Pending";
+
+    if (finalBalanceAmount <= 0 && finalAmountPaid > 0) {
+      finalPaymentStatus = "Paid";
+      finalAmountPaid = finalPayable;
+      finalBalanceAmount = 0;
+    } else if (finalAmountPaid > 0 && finalBalanceAmount > 0) {
+      finalPaymentStatus = "Partial";
+    } else if (finalAmountPaid === 0) {
+      finalPaymentStatus = booking.paymentStatus === "Due" ? "Due" : "Pending";
+    }
+
+    // ============================================================
+    // ✅ FORCE OVERRIDE — bypass pre-save middleware
+    // ============================================================
+    await Appointment.updateOne(
+      { _id: id },
+      {
+        $set: {
+          medicineTotal: finalMedicineTotal,
+          labTotal: finalLabTotal,
+          servicesTotal,
+          subtotal,
+          commissionAmount,
+          discount: discountAmount,
+          finalPayable,
+          finalPayableAmount: finalPayable,
+          grandTotal: finalPayable,
+          totalAmount: finalPayable,
+          totalFee: finalPayable,
+          amountPaid: finalAmountPaid,
+          balanceAmount: finalBalanceAmount,
+          partialAmount: finalAmountPaid,
+          paymentStatus: finalPaymentStatus,
+        },
+      }
+    );
+
+    // ============================================================
+    // ✅ FETCH FRESH DOCUMENT
+    // ============================================================
+    const updated = await Appointment.findById(id);
+
+    console.log("✅ Charges updated:", {
+      servicesTotal,
+      labTotal: finalLabTotal,
+      medicineTotal: finalMedicineTotal,
+      subtotal,
+      discount: discountAmount,
+      finalPayable,
+      amountPaid: finalAmountPaid,
+      balanceAmount: finalBalanceAmount,
+      paymentStatus: finalPaymentStatus,
+    });
 
     return res.status(200).json({
       success: true,
-      message: `Charges updated. New total: ₹${booking.grandTotal}`,
+      message: `Charges updated. New total: ₹${updated.grandTotal}`,
       data: {
-        _id: booking._id,
-        medicineTotal: booking.medicineTotal,
-        labTotal: booking.labTotal,
-        servicesTotal: booking.servicesTotal,
-        subtotal: booking.subtotal,
-        totalAmount: booking.totalAmount,
-        grandTotal: booking.grandTotal,
-        commissionAmount: booking.commissionAmount,
-        finalPayable: booking.finalPayable,
-        finalPayableAmount: booking.finalPayableAmount,
-        amountPaid: booking.amountPaid,
-        balanceAmount: booking.balanceAmount,
-        paymentStatus: booking.paymentStatus,
-        patientName: booking.patientName,
+        _id: updated._id,
+        medicineTotal: updated.medicineTotal,
+        labTotal: updated.labTotal,
+        servicesTotal: updated.servicesTotal,
+        subtotal: updated.subtotal,
+        totalAmount: updated.totalAmount,
+        grandTotal: updated.grandTotal,
+        commissionAmount: updated.commissionAmount,
+        discount: updated.discount,
+        finalPayable: updated.finalPayable,
+        finalPayableAmount: updated.finalPayableAmount,
+        amountPaid: updated.amountPaid,
+        balanceAmount: updated.balanceAmount,
+        paymentStatus: updated.paymentStatus,
+        patientName: updated.patientName,
       },
     });
   } catch (error) {
@@ -1633,7 +2147,6 @@ router.put("/updatecharges/:id", async (req, res) => {
     });
   }
 });
-
 
 
 // ✅ NEW: Vitals update API
@@ -1727,6 +2240,101 @@ router.put("/toggle-active/:id", async (req, res) => {
   } catch (error) {
     console.error("Error toggling active status:", error);
     return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+
+
+router.put("/review/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isReviewed, reviewDate } = req.body;
+
+    // Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid booking ID",
+      });
+    }
+
+    // Validate payload
+    if (typeof isReviewed !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "isReviewed must be a boolean value",
+      });
+    }
+
+    // Find the booking
+    const booking = await Appointment.findById(id);
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    // ✅ Business rule — 3-day review window check (only when marking as reviewed)
+    if (isReviewed === true && !booking.isReviewed) {
+      const appointmentDateStr = booking.appointmentDate || booking.date;
+      if (appointmentDateStr) {
+        const appointmentDate = new Date(appointmentDateStr);
+        if (!isNaN(appointmentDate.getTime())) {
+          appointmentDate.setHours(23, 59, 59, 999);
+
+          const today = new Date();
+          const diffMs = today - appointmentDate;
+          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+          // Allow 0 to 3 days AFTER appointment
+          if (diffDays < 0) {
+            return res.status(400).json({
+              success: false,
+              message: "Review will be available on appointment date.",
+            });
+          }
+
+          if (diffDays > 3) {
+            return res.status(400).json({
+              success: false,
+              message: "Review window expired (3 days limit).",
+            });
+          }
+        }
+      }
+    }
+
+    // Update fields
+    booking.isReviewed = isReviewed;
+    booking.reviewDate = isReviewed
+      ? reviewDate
+        ? new Date(reviewDate)
+        : new Date()
+      : null;
+    booking.updatedAt = new Date();
+
+    await booking.save();
+
+    return res.status(200).json({
+      success: true,
+      message: isReviewed
+        ? "Booking marked as reviewed successfully"
+        : "Review status cleared successfully",
+      data: {
+        _id: booking._id,
+        isReviewed: booking.isReviewed,
+        reviewDate: booking.reviewDate,
+        patientName: booking.patientName,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error updating review:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update review",
+      error: error.message,
+    });
   }
 });
 

@@ -158,6 +158,17 @@ const appointmentSchema = new mongoose.Schema(
       default: null
     },
 
+
+     // ✅ NEW — Review fields
+    isReviewed: {
+      type: Boolean,
+      default: false,
+    },
+    reviewDate: {
+      type: Date,
+      default: null,
+    },
+
     customerPaymentStatus: {
       type: String,
       enum: ["Pending", "Paid", "Partial", "Due"],
