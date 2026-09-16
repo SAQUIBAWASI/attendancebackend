@@ -6,6 +6,44 @@ const AppointmentSlot = require("../models/AppointmentSlot");
 const Appointment = require("../models/Appointment");
 
 
+
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+
+// ---------- Multer storage config ----------
+const onlineUploadDir = path.join(__dirname, "..", "uploads", "online-reports");
+if (!fs.existsSync(onlineUploadDir)) {
+  fs.mkdirSync(onlineUploadDir, { recursive: true });
+}
+
+const onlineStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, onlineUploadDir),
+  filename: (req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    const ext = path.extname(file.originalname);
+    cb(null, `${file.fieldname}-${unique}${ext}`);
+  },
+});
+
+const onlineUpload = multer({
+  storage: onlineStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB per file
+  fileFilter: (req, file, cb) => {
+    const allowed = [
+      "application/pdf",
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/webp",
+    ];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error(`Invalid file type: ${file.mimetype}`));
+  },
+});
+
+
+
 // Helper function to format minutes to 12-hour AM/PM string
 function minutesTo12Hour(mins) {
   let h = Math.floor(mins / 60);
@@ -1636,6 +1674,496 @@ router.post("/book", async (req, res) => {
     });
   }
 });
+
+
+
+
+
+
+// ---------- The route ----------
+router.post(
+  "/book-online",
+  onlineUpload.fields([
+    { name: "reports", maxCount: 10 },
+    { name: "prescriptions", maxCount: 10 },
+  ]),
+  async (req, res) => {
+    try {
+      // ============ PARSE FORM-DATA ============
+      const {
+        slotId,
+        _id,
+        dayOfWeek,
+        date,
+        appointmentDate,
+        startTime,
+        endTime,
+        startTime24,
+        endTime24,
+        doctorId,
+        doctorName,
+        doctorSpecialization,
+
+        clinicId,
+        clinicName,
+
+        patientId,
+        patientName,
+        patientAge,
+        patientGender,
+        patientDob,
+        patientTitle,
+        patientAddress,
+        patientCity,
+        patientPincode,
+        patientPhone,
+        patientEmail,
+        purpose,
+        symptoms,
+
+        paymentType,
+        paymentStatus,
+        partialAmount,
+        appointmentType,
+        priority,
+
+        // Referral
+        referredByCustomer,
+        referredByDoctor,
+        referralCustomerId,
+        referralDoctorId,
+        referralContactId,
+        referredBy,
+        referralCommission,
+        referralCommissionType,
+
+        // Discount
+        discount,
+        discountType,
+
+        // Frontend-computed
+        subtotal: clientSubtotal,
+        commissionAmount: clientCommissionAmount,
+        finalPayable: clientFinalPayable,
+        finalPayableAmount: clientFinalPayableAmount,
+        grandTotal: clientGrandTotal,
+        totalAmount: clientTotalAmount,
+        amountPaid: clientAmountPaid,
+        balanceAmount: clientBalanceAmount,
+
+        // Other
+        insuranceProvider,
+        insurancePolicyNumber,
+        patientBloodGroup,
+        patientMedicalHistory,
+        patientAllergies,
+        patientMedications,
+        notes,
+        isOP,
+      } = req.body;
+
+      // Services come as JSON strings in multipart
+      const serviceItems = JSON.parse(req.body.serviceItems || "[]");
+      const services = JSON.parse(req.body.services || "[]");
+
+      // Uploaded file metadata (optional, kept for reference)
+      const uploadedReportsMeta = JSON.parse(req.body.uploadedReports || "[]");
+      const uploadedPrescriptionsMeta = JSON.parse(
+        req.body.uploadedPrescriptions || "[]"
+      );
+
+      // ============ ATTACHED FILES ============
+      const reportFiles = (req.files?.reports || []).map((f) => ({
+        originalName: f.originalname,
+        filename: f.filename,
+        mimetype: f.mimetype,
+        size: f.size,
+        path: f.path,
+        url: `/uploads/online-reports/${f.filename}`,
+        uploadedAt: new Date(),
+      }));
+
+      const prescriptionFiles = (req.files?.prescriptions || []).map((f) => ({
+        originalName: f.originalname,
+        filename: f.filename,
+        mimetype: f.mimetype,
+        size: f.size,
+        path: f.path,
+        url: `/uploads/online-reports/${f.filename}`,
+        uploadedAt: new Date(),
+      }));
+
+      console.log("📥 ONLINE Booking request received");
+      console.log("📎 Files:", {
+        reports: reportFiles.length,
+        prescriptions: prescriptionFiles.length,
+      });
+      console.log("🔍 Frontend financials:", {
+        clientSubtotal,
+        clientCommissionAmount,
+        discount,
+        clientFinalPayable,
+        clientAmountPaid,
+        clientBalanceAmount,
+        paymentStatus,
+      });
+
+      // ============ FIND SLOT ============
+      let slot = null;
+      const finalDate =
+        appointmentDate || date || new Date().toISOString().split("T")[0];
+
+      if (_id && mongoose.Types.ObjectId.isValid(_id)) {
+        slot = await AppointmentSlot.findById(_id);
+      }
+      if (!slot && slotId) {
+        if (mongoose.Types.ObjectId.isValid(slotId)) {
+          slot = await AppointmentSlot.findById(slotId);
+        } else {
+          slot = await AppointmentSlot.findOne({ slotId: slotId });
+        }
+      }
+      if (!slot && dayOfWeek && startTime && doctorId) {
+        slot = await AppointmentSlot.findOne({
+          doctorId: doctorId,
+          dayOfWeek: new RegExp(`^${dayOfWeek}$`, "i"),
+          startTime: startTime,
+          status: "available",
+        });
+      }
+      if (!slot && finalDate && startTime && doctorId) {
+        slot = await AppointmentSlot.findOne({
+          doctorId: doctorId,
+          date: finalDate,
+          startTime: startTime,
+          status: "available",
+        });
+      }
+      if (!slot && doctorId && startTime) {
+        slot = await AppointmentSlot.findOne({
+          doctorId: doctorId,
+          startTime: startTime,
+          status: "available",
+        });
+      }
+
+      if (!slot) {
+        return res.status(404).json({
+          success: false,
+          message: "Slot not found. Please select a valid available slot.",
+        });
+      }
+
+      if (slot.status !== "available") {
+        return res.status(400).json({
+          success: false,
+          message: `Slot is not available. Current status: ${slot.status}`,
+        });
+      }
+
+      // Update slot status
+      slot.status = "booked";
+      if (finalDate) slot.date = finalDate;
+      await slot.save();
+
+      // ============ NORMALIZE REFERRAL ============
+      let finalReferralContactId = null;
+      let finalReferralCustomerId = null;
+      let finalReferralDoctorId = null;
+      let finalReferredBy = "";
+
+      if (referralDoctorId && mongoose.Types.ObjectId.isValid(referralDoctorId)) {
+        finalReferralDoctorId = referralDoctorId;
+        finalReferralContactId = referralDoctorId;
+      }
+      if (referralCustomerId && mongoose.Types.ObjectId.isValid(referralCustomerId)) {
+        finalReferralCustomerId = referralCustomerId;
+        if (!finalReferralContactId) {
+          finalReferralContactId = referralCustomerId;
+        }
+      }
+      if (
+        !finalReferralContactId &&
+        referralContactId &&
+        mongoose.Types.ObjectId.isValid(referralContactId)
+      ) {
+        finalReferralContactId = referralContactId;
+      }
+      finalReferredBy = referredByDoctor || referredByCustomer || referredBy || "";
+
+      // ============ COMPUTE FINANCIALS — TRUST FRONTEND ============
+      const finalServices = serviceItems.length ? serviceItems : services || [];
+      const servicesTotal = finalServices.reduce(
+        (sum, s) => sum + (Number(s.price) || 0),
+        0
+      );
+
+      const commissionPercent = parseFloat(referralCommission) || 0;
+      const serverSubtotal = servicesTotal;
+      const serverCommissionAmount = (serverSubtotal * commissionPercent) / 100;
+      const serverDiscountAmount = Number(discount) || 0;
+      const serverFinalPayable =
+        serverSubtotal - serverCommissionAmount - serverDiscountAmount;
+
+      const subtotal =
+        Number.isFinite(Number(clientSubtotal)) && Number(clientSubtotal) > 0
+          ? Number(clientSubtotal)
+          : serverSubtotal;
+
+      const commissionAmount = Number.isFinite(Number(clientCommissionAmount))
+        ? Number(clientCommissionAmount)
+        : serverCommissionAmount;
+
+      const discountAmount = Number(discount) || 0;
+
+      const finalPayableFromClient =
+        Number(clientFinalPayable) ||
+        Number(clientFinalPayableAmount) ||
+        Number(clientGrandTotal) ||
+        Number(clientTotalAmount) ||
+        0;
+
+      const finalPayable =
+        finalPayableFromClient > 0 ? finalPayableFromClient : serverFinalPayable;
+
+      const parsedPartial = Number(partialAmount) || 0;
+      const clientSentAmountPaid = Number(clientAmountPaid);
+      const clientSentBalance = Number(clientBalanceAmount);
+      const frontendTrusted =
+        Number.isFinite(clientSentAmountPaid) &&
+        Number.isFinite(clientSentBalance) &&
+        (clientSentAmountPaid > 0 || clientSentBalance > 0);
+
+      let finalPaymentStatus = paymentStatus || "Pending";
+      let finalAmountPaid = 0;
+      let finalBalanceAmount = finalPayable;
+
+      if (frontendTrusted) {
+        finalAmountPaid = Math.max(0, Math.min(clientSentAmountPaid, finalPayable));
+        finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
+
+        if (finalBalanceAmount <= 0 && finalAmountPaid > 0) {
+          finalPaymentStatus = "Paid";
+          finalAmountPaid = finalPayable;
+          finalBalanceAmount = 0;
+        } else if (finalAmountPaid > 0 && finalBalanceAmount > 0) {
+          finalPaymentStatus = "Partial";
+        } else if (finalAmountPaid <= 0) {
+          finalPaymentStatus = paymentStatus === "Due" ? "Due" : "Pending";
+        }
+      } else {
+        if (paymentStatus === "Paid") {
+          finalAmountPaid = finalPayable;
+          finalBalanceAmount = 0;
+          finalPaymentStatus = "Paid";
+        } else if (paymentStatus === "Partial" && parsedPartial > 0) {
+          finalAmountPaid = Math.min(parsedPartial, finalPayable);
+          finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
+          finalPaymentStatus = finalBalanceAmount === 0 ? "Paid" : "Partial";
+          if (finalPaymentStatus === "Paid") {
+            finalAmountPaid = finalPayable;
+            finalBalanceAmount = 0;
+          }
+        } else if (paymentStatus === "Due") {
+          finalAmountPaid = 0;
+          finalBalanceAmount = finalPayable;
+          finalPaymentStatus = "Due";
+        } else {
+          if (parsedPartial > 0) {
+            if (parsedPartial >= finalPayable) {
+              finalPaymentStatus = "Paid";
+              finalAmountPaid = finalPayable;
+              finalBalanceAmount = 0;
+            } else {
+              finalPaymentStatus = "Partial";
+              finalAmountPaid = parsedPartial;
+              finalBalanceAmount = finalPayable - parsedPartial;
+            }
+          } else {
+            finalPaymentStatus = "Pending";
+            finalAmountPaid = 0;
+            finalBalanceAmount = finalPayable;
+          }
+        }
+      }
+
+      console.log("💰 Computed FINAL:", {
+        subtotal,
+        commissionAmount,
+        discountAmount,
+        finalPayable,
+        finalAmountPaid,
+        finalBalanceAmount,
+        finalPaymentStatus,
+      });
+
+      // ============ CREATE APPOINTMENT ============
+      const appointmentData = {
+        slotId: slot._id,
+        appointmentDate: finalDate,
+        slotDetails: {
+          dayOfWeek: slot.dayOfWeek || dayOfWeek,
+          date: finalDate,
+          startTime: slot.startTime || startTime,
+          endTime: slot.endTime || endTime,
+          startTime24: slot.startTime24 || startTime24,
+          endTime24: slot.endTime24 || endTime24,
+          doctorId: slot.doctorId || doctorId,
+          doctorName: slot.doctorName || doctorName,
+          doctorSpecialization:
+            slot.doctorSpecialization || doctorSpecialization,
+        },
+
+        patientId: patientId || undefined,
+        patientName,
+        patientTitle: patientTitle || "Mr.",
+        patientDob: patientDob || "",
+        patientAge,
+        patientGender,
+        patientPhone,
+        patientEmail: patientEmail || "",
+        patientAddress: patientAddress || "",
+        patientCity: patientCity || "",
+        patientPincode: patientPincode || "",
+        patientBloodGroup: patientBloodGroup || "",
+        patientMedicalHistory: patientMedicalHistory || "",
+        patientAllergies: patientAllergies || "",
+        patientMedications: patientMedications || "",
+        purpose: purpose || "Doctor Consultation",
+        symptoms: symptoms || "",
+
+        paymentType: paymentType || "cash",
+        paymentStatus: finalPaymentStatus,
+        partialAmount: finalAmountPaid,
+        amountPaid: finalAmountPaid,
+        balanceAmount: finalBalanceAmount,
+        appointmentType: appointmentType || "Online Consultation",
+        priority: priority || "Normal",
+
+        // ============ ONLINE-SPECIFIC ============
+        isOP: false,                       // 🔵 Force OP = false for online
+        bookingType: "Online",             // 🔵 Explicit marker
+        isOnline: true,                    // 🔵 Explicit boolean
+        clinicId: clinicId || "",
+        clinicName: clinicName || "",
+
+        // 🔵 Uploaded reports (actual files + metadata)
+        uploadedReports: reportFiles,
+        uploadedReportsMeta: uploadedReportsMeta,
+        reportsCount: reportFiles.length,
+
+        // 🔵 Uploaded prescriptions (actual files + metadata)
+        uploadedPrescriptions: prescriptionFiles,
+        uploadedPrescriptionsMeta: uploadedPrescriptionsMeta,
+        prescriptionsCount: prescriptionFiles.length,
+
+        // Referral
+        referredBy: finalReferredBy,
+        referralContactId: finalReferralContactId,
+        referralCustomerId: finalReferralCustomerId,
+        referralDoctorId: finalReferralDoctorId,
+        referredByCustomer: referredByCustomer || "",
+        referredByDoctor: referredByDoctor || "",
+        referralCommission: referralCommission || "",
+        referralCommissionType: referralCommissionType || "",
+
+        // Services
+        services: finalServices.map((s) => ({
+          serviceId: s.serviceId || s._id,
+          name: s.name,
+          price: Number(s.price) || 0,
+          quantity: Number(s.quantity) || 1,
+          description: s.description || "",
+          paymentStatus: s.paymentStatus || "Pending",
+        })),
+
+        // Financials
+        servicesTotal,
+        subtotal,
+        commissionAmount,
+        discount: discountAmount,
+        discountType: discountType || "₹",
+        finalPayable,
+        finalPayableAmount: finalPayable,
+        grandTotal: finalPayable,
+        totalAmount: finalPayable,
+        totalFee: finalPayable,
+
+        insuranceProvider: insuranceProvider || "",
+        insurancePolicyNumber: insurancePolicyNumber || "",
+        notes: notes || "",
+        status: "confirmed",
+        bookedAt: new Date(),
+        partnerPaymentStatus: "Due",
+      };
+
+      const bookedAppointment = new Appointment(appointmentData);
+      await bookedAppointment.save();
+
+      // ============ FORCE OVERRIDE (bypass pre-save hooks) ============
+      await Appointment.updateOne(
+        { _id: bookedAppointment._id },
+        {
+          $set: {
+            servicesTotal,
+            subtotal,
+            commissionAmount,
+            discount: discountAmount,
+            discountType: discountType || "₹",
+            finalPayable,
+            finalPayableAmount: finalPayable,
+            grandTotal: finalPayable,
+            totalAmount: finalPayable,
+            totalFee: finalPayable,
+            amountPaid: finalAmountPaid,
+            balanceAmount: finalBalanceAmount,
+            partialAmount: finalAmountPaid,
+            paymentStatus: finalPaymentStatus,
+            isOP: false,
+            bookingType: "Online",
+            isOnline: true,
+          },
+        }
+      );
+
+      console.log("✅ Force override applied to DB (Online)");
+
+      // ============ FETCH FRESH DOCUMENT ============
+      const populatedAppointment = await Appointment.findById(
+        bookedAppointment._id
+      )
+        .populate("referralContactId")
+        .populate("referralCustomerId")
+        .populate("referralDoctorId");
+
+      console.log("🎯 Final DB values:", {
+        finalPayable: populatedAppointment.finalPayable,
+        amountPaid: populatedAppointment.amountPaid,
+        balanceAmount: populatedAppointment.balanceAmount,
+        paymentStatus: populatedAppointment.paymentStatus,
+        reportsCount: populatedAppointment.reportsCount,
+        prescriptionsCount: populatedAppointment.prescriptionsCount,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `✅ Online appointment booked successfully for ${patientName}!`,
+        appointment: populatedAppointment,
+        slot: slot,
+        files: {
+          reports: reportFiles.length,
+          prescriptions: prescriptionFiles.length,
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error booking ONLINE appointment:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
 
 
 

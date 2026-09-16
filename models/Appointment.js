@@ -72,7 +72,7 @@ const appointmentSchema = new mongoose.Schema(
     symptoms: { type: String, default: "" },
     appointmentType: {
       type: String,
-      enum: ["New", "Follow-up", "Consultation", "Emergency", ""],
+      enum: ["New", "Follow-up", "Consultation", "Emergency", "Online Consultation"],
       default: "Consultation"
     },
     priority: {
@@ -159,7 +159,7 @@ const appointmentSchema = new mongoose.Schema(
     },
 
 
-     // ✅ NEW — Review fields
+    // ✅ NEW — Review fields
     isReviewed: {
       type: Boolean,
       default: false,
@@ -298,6 +298,76 @@ const appointmentSchema = new mongoose.Schema(
     // =============================================
     patientRating: { type: Number, min: 1, max: 5, default: null },
     patientFeedback: { type: String, default: "" },
+
+
+    bookingType: {
+      type: String,
+      enum: ["Walk-In", "Online"],
+      default: "Walk-In",
+    },
+
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+
+    clinicId: {
+      type: String,
+      default: "",
+    },
+
+    clinicName: {
+      type: String,
+      default: "",
+    },
+
+    // ---- Online Reports (uploaded files) ----
+    uploadedReports: [
+      {
+        originalName: String,
+        filename: String,
+        mimetype: String,
+        size: Number,
+        path: String,
+        url: String,
+        uploadedAt: { type: Date, default: Date.now },
+      },
+    ],
+    uploadedReportsMeta: [
+      {
+        name: String,
+        size: Number,
+        type: String,
+      },
+    ],
+    reportsCount: {
+      type: Number,
+      default: 0,
+    },
+
+    // ---- Online Prescriptions (uploaded files) ----
+    uploadedPrescriptions: [
+      {
+        originalName: String,
+        filename: String,
+        mimetype: String,
+        size: Number,
+        path: String,
+        url: String,
+        uploadedAt: { type: Date, default: Date.now },
+      },
+    ],
+    uploadedPrescriptionsMeta: [
+      {
+        name: String,
+        size: Number,
+        type: String,
+      },
+    ],
+    prescriptionsCount: {
+      type: Number,
+      default: 0,
+    },
 
     // =============================================
     // STAFF

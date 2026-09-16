@@ -9285,7 +9285,7 @@ const Shift = require("../models/Shift");
 const Holiday = require("../models/Holiday");
 
 // ============================================
-// ✅ HELPER: Format date to YYYY-MM-DD
+// ✅ HELPER: Format date to YYYY-MM-DD (LOCAL)
 // ============================================
 const formatDateLocal = (date) => {
   if (!date) return '';
@@ -9387,10 +9387,6 @@ const calculateEarnedWeekOffs = (
     const extraAbsentDates = absentDates.slice(weekOffsCount);
     
     const totalWorkingDays = presentDays + (halfDays * 0.5);
-    
-    console.log(`🏥 FLEXIBLE (${employeeId}) - ${year}-${monthNum}:`);
-    console.log(`   Present: ${presentDays}, Half: ${halfDays}, Leaves: ${leavesCount}`);
-    console.log(`   Total Absent: ${absentCount}, WeekOffs: ${weekOffsCount}, ExtraAbsent: ${extraAbsentCount}`);
     
     return {
       weeklyBreakdown: [],
@@ -9535,11 +9531,6 @@ const calculateEarnedWeekOffs = (
     ? 0 
     : Math.max(0, eligibleWeeks - maxAllowedWeekOffs);
 
-  console.log(`📊 ${year}-${monthNum} ${weekOffDay}:`);
-  console.log(`   Working Days: ${totalWorkingDays}, Leaves: ${totalLeaves}, Holidays: ${holidayDaysInMonth}`);
-  console.log(`   Eligible Weeks: ${eligibleWeeks}, Max Allowed: ${maxAllowedWeekOffs}`);
-  console.log(`   FINAL EARNED: ${earnedWeekOffs}, Extra: ${extraEarnedWeekOffs}`);
-
   return {
     weeklyBreakdown,
     earnedWeekOffs,
@@ -9645,18 +9636,25 @@ const getEmployeeShift = (employeeId, shiftsData, masterShifts) => {
   };
 };
 
+// ============================================================================
+// ✅ FIXED: calculateShiftDayType
+// 8.8 hardcoded hata diya — ab shift duration ka 90% use karta hai
+// ============================================================================
 const calculateShiftDayType = (hours, shiftDuration) => {
   const h = parseFloat(hours) || 0;
+  const shift = parseFloat(shiftDuration) || 9;
 
-  if (shiftDuration >= 3 && shiftDuration <= 6) {
-    if (h >= shiftDuration * 0.9) return "full";
-    if (h >= shiftDuration * 0.5) return "half";
-    return "full_leave";
-  } else {
-    if (h >= 8.8) return "full";
-    if (h >= 4.5) return "half";
+  // Short shifts (3-6 hours)
+  if (shift >= 3 && shift <= 6) {
+    if (h >= shift * 0.9) return "full";
+    if (h >= shift * 0.5) return "half";
     return "full_leave";
   }
+
+  // Normal shifts (7+ hours) — 90% full, 50% half
+  if (h >= shift * 0.9) return "full";
+  if (h >= shift * 0.5) return "half";
+  return "full_leave";
 };
 
 const calculateShiftOT = (checkOutTime, shiftEndTimeStr, checkInTime, actualHours, shiftDuration) => {
@@ -9889,11 +9887,12 @@ exports.calculateSummary = async (req, res) => {
     const summaryMap = {};
     const employeeDateGroups = {};
 
+    // ✅ FIXED: Ab formatDateLocal use kar raha hai (same as getAttendanceCount)
     attendanceRecords.forEach((rec) => {
       if (!rec.employeeId || !rec.checkInTime) return;
       const employeeId = rec.employeeId;
       const checkInDate = new Date(rec.checkInTime);
-      const dateKey = checkInDate.toISOString().split("T")[0];
+      const dateKey = formatDateLocal(checkInDate);   // ✅ FIXED (pehle toISOString tha)
 
       const recordMonth = `${checkInDate.getFullYear()}-${String(checkInDate.getMonth() + 1).padStart(2, "0")}`;
       if (processedMonth && recordMonth !== processedMonth) return;
@@ -9963,14 +9962,14 @@ exports.calculateSummary = async (req, res) => {
           } else if (rec.checkOutTime) {
             h = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
             if (h > 15) h = 10;
-          } else {
-            if (isBrakeShift) {
-              const checkInH = new Date(rec.checkInTime).getHours();
-              if (checkInH < 13) h = 6;
-            } else {
-              h = 9;
-            }
-          }
+         } else {
+  if (isBrakeShift) {
+    const checkInH = new Date(rec.checkInTime).getHours();
+    if (checkInH < 13) h = 6;
+  } else {
+    h = 0;   // ✅ Ye line
+  }
+}
           totalHoursForDay += h;
           if (rec.onsite) anyOnsite = true;
           const cin = new Date(rec.checkInTime);
@@ -10027,7 +10026,6 @@ exports.calculateSummary = async (req, res) => {
       
       const weekOffDay = emp.weekOffDay || "Sunday";
       
-      // ✅✅✅ CRITICAL FIX: Consultant = HAMESHA 2
       const deptLower = (emp.department || '').toLowerCase().trim();
       let defaultWeekOffs;
       if (deptLower.includes("consultant")) {
@@ -10046,7 +10044,7 @@ exports.calculateSummary = async (req, res) => {
       const isFlexibleWeekOff = 
         deptLower.includes("laboratory") || 
         deptLower.includes("nursing") || 
-        deptLower.includes("medical") ||
+        deptLower.includes("medical") || 
         deptLower.includes("lab") ||
         deptLower.includes("consultant");
 
@@ -10069,8 +10067,6 @@ exports.calculateSummary = async (req, res) => {
       
       empSum.weekOffDays = finalWeekOffs;
       empSum.holidays = isFlexibleWeekOff ? 0 : holidayDaysInMonth;
-
-      console.log(`📊 ${emp.name} (${emp.department}): holidays=${empSum.holidays}, isFlexible=${isFlexibleWeekOff}`);
     });
 
     const summaryArray = Object.values(summaryMap);
@@ -10261,6 +10257,10 @@ exports.fixSummaryData = async (req, res) => {
   }
 };
 
+// ============================================================================
+// ✅ FIXED: getAttendanceCount
+// Ab EXACTLY calculateSummary jaisa logic use karta hai
+// ============================================================================
 const getAttendanceCount = async (employeeId, year, monthNum) => {
   const startDate = new Date(year, monthNum - 1, 1);
   const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
@@ -10276,23 +10276,41 @@ const getAttendanceCount = async (employeeId, year, monthNum) => {
   const emp = await Employee.findOne({ employeeId });
   const shiftHours = emp ? (emp.shiftHours || 8) : 8;
 
-  const dailyHours = {};
+  // ✅ Group by date using SAME function
+  const dailyRecords = {};
   records.forEach(r => {
     if (r.checkInTime) {
       const dateKey = formatDateLocal(r.checkInTime);
-      let hours = 0;
-      if (r.totalHours) hours = parseFloat(r.totalHours);
-      else if (r.workingHours) hours = parseFloat(r.workingHours);
-      else if (r.checkOutTime) {
-        hours = (new Date(r.checkOutTime) - new Date(r.checkInTime)) / (1000 * 60 * 60);
-      }
-      dailyHours[dateKey] = (dailyHours[dateKey] || 0) + hours;
+      if (!dailyRecords[dateKey]) dailyRecords[dateKey] = [];
+      dailyRecords[dateKey].push(r);
     }
   });
 
-  Object.values(dailyHours).forEach(hours => {
-    if (hours >= shiftHours * 0.8) present++;
-    else if (hours >= shiftHours * 0.4) half += 0.5;
+  // ✅ EXACTLY same logic as calculateSummary
+  Object.entries(dailyRecords).forEach(([dateKey, recsForDay]) => {
+    const isBrakeShift = emp?.isBrakeShift || false;
+    
+    // Regular shift: sirf LAST record | Brake: saare
+    let recordsToUse = isBrakeShift ? recsForDay : [recsForDay[recsForDay.length - 1]];
+    
+    let totalHoursForDay = 0;
+    recordsToUse.forEach(rec => {
+      let h = 0;
+      if (rec.totalHours !== undefined && rec.totalHours > 0) {
+        h = parseFloat(rec.totalHours);
+        if (h > 15) h = 10;
+      } else if (rec.checkOutTime) {
+        h = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
+        if (h > 15) h = 10;
+      }
+      totalHoursForDay += h;
+    });
+
+    // ✅ SAME function as calculateSummary
+    const type = calculateShiftDayType(totalHoursForDay, shiftHours);
+    
+    if (type === "full") present++;
+    else if (type === "half") half += 0.5;
   });
   
   return { present, half, effective: present + half, records };
@@ -10381,7 +10399,6 @@ exports.getSalaries = async (req, res) => {
         deptLower.includes("digital marketing") ||
         deptLower.includes("marketing");
 
-      // ✅ CONSULTANT + MEDICAL/NURSING/LAB = flexible
       const isFlexibleWeekOff = 
         deptLower.includes("laboratory") || 
         deptLower.includes("nursing") || 
@@ -10391,7 +10408,6 @@ exports.getSalaries = async (req, res) => {
 
       const weekOffDay = emp.weekOffDay || "Sunday";
 
-      // ✅ weekOffPerMonth = emp se lo (2 for consultant)
       let weekOffPerMonth = emp.weekOffPerMonth;
       
       if (!weekOffPerMonth || weekOffPerMonth === 0) {
@@ -10401,8 +10417,6 @@ exports.getSalaries = async (req, res) => {
           weekOffPerMonth = 4;
         }
       }
-      
-      console.log(`🔍 ${emp.name} (${emp.department}): weekOffPerMonth = ${weekOffPerMonth}, isFlexible = ${isFlexibleWeekOff}`);
       
       const empLeaves = allApprovedLeaves.filter(l => l.employeeId === emp.employeeId);
       
@@ -10426,22 +10440,12 @@ exports.getSalaries = async (req, res) => {
         extraAbsentDays = weekOffData.extraEarnedWeekOffs;
       }
       
-      // ✅ finalWeekOffs cap karo weekOffPerMonth se
       const finalWeekOffs = Math.min(earnedWeekOffs, weekOffPerMonth);
       
-      // ✅ Extra absent = jo weekOffPerMonth se zyada absent hain
       const extraAbsentFromWeekOff = Math.max(0, earnedWeekOffs - weekOffPerMonth);
       const totalExtraAbsent = extraAbsentDays + extraAbsentFromWeekOff;
       
-      // ✅ CRITICAL: presentDays ko minus NAHI karo
-      // Bas presentDays waise hi use karo jo attendance mein hai
       const adjustedPresentDays = presentDays;
-      
-      console.log(`✅ ${emp.name} (${isFlexibleWeekOff ? 'FLEXIBLE' : isDevOrMarketing ? 'DEV/MKT' : 'FIXED'}):`);
-      console.log(`   Present: ${presentDays}, Half: ${halfDays}`);
-      console.log(`   EarnedWeekOffs: ${earnedWeekOffs}, Capped FinalWeekOffs: ${finalWeekOffs}`);
-      console.log(`   ExtraAbsent: ${totalExtraAbsent}`);
-      console.log(`   AdjustedPresent: ${adjustedPresentDays}`);
 
       let totalCL = 0, totalSL = 0, totalEL = 0, totalCOFF = 0;
       
@@ -10469,16 +10473,12 @@ exports.getSalaries = async (req, res) => {
       const monthlySalary = salaryData.salaryPerMonth;
       const dailyRate = monthlySalary / daysInMonth;
       
-      // ✅ CONSULTANT + MEDICAL + NURSING + LAB = holiday 0
       const holidayAddition = isFlexibleWeekOff ? 0 : holidayDaysInMonth;
       
-      // ✅ paidDays = present + half + weekOff + leaves + holiday
       let paidDays = adjustedPresentDays + halfDays + finalWeekOffs + paidLeaveDays + holidayAddition;
       paidDays = Math.min(paidDays, daysInMonth);
       
       let calculatedSalary = Math.round(paidDays * dailyRate);
-
-      console.log(`   Holiday Addition: ${holidayAddition}, Paid Days: ${paidDays}, Salary: ₹${calculatedSalary}`);
 
       salaryResults.push({
         employeeId: emp.employeeId,
