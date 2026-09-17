@@ -374,6 +374,7 @@ const employeeSchema = new mongoose.Schema({
   phone: { type: String, required: true, unique: true },
   alternateNumber: { type: String },
   parentsName: { type: String },
+  gender: { type: String, enum: ['Male', 'Female', 'Other', ''], default: '' },
 
     // ─── Current Location ───
   latitude: { type: Number, default: null },
@@ -435,9 +436,15 @@ const employeeSchema = new mongoose.Schema({
   branch: { type: String, default: "" },
   
   // Employment Info
-  employeeId: { type: String, unique: true, required: true },
-  joinDate: { type: Date, required: true },
-  dob: { type: Date },
+employeeId: { type: String, unique: true, required: true },
+joinDate: { type: Date, required: true },
+dob: { type: Date },
+reportingManager: { type: String, default: '' },
+employmentType: { 
+  type: String, 
+  enum: ['fulltime', 'parttime', 'contract', 'internship', ''], 
+  default: 'fulltime' 
+},
 
   // In Employee model, ensure this field exists
 isAllowedImageCapturedAttendance: {
@@ -522,20 +529,22 @@ extraDays: {
   shiftType: { type: String, default: "A" },
   shiftHours: { type: Number, default: 8 },
   
-  // Current Salary
-  salaryPerMonth: { type: Number, default: 0 },
-  ctc: { type: Number, default: 0 },
-  basicPay: { type: Number, default: 0 },
-  hra: { type: Number, default: 0 },
-  conveyanceAllowance: { type: Number, default: 0 },
-  medicalAllowance: { type: Number, default: 0 },
-  performanceAllowance: { type: Number, default: 0 },
-  specialAllowance: { type: Number, default: 0 },
-  ptax: { type: Number, default: 0 },
-  gmc: { type: String, default: "" },
-  gmcAmount: { type: Number, default: 0 },
-  otherDeductions: { type: Number, default: 0 },
-  weekOffPerMonth: { type: Number, default: 0 },
+ // Current Salary
+salaryPerMonth: { type: Number, default: 0 },
+ctc: { type: Number, default: 0 },
+basicPay: { type: Number, default: 0 },
+hra: { type: Number, default: 0 },
+conveyanceAllowance: { type: Number, default: 0 },
+medicalAllowance: { type: Number, default: 0 },
+performanceAllowance: { type: Number, default: 0 },
+specialAllowance: { type: Number, default: 0 },
+ptax: { type: Number, default: 0 },
+gmc: { type: String, default: "" },
+gmcAmount: { type: Number, default: 0 },
+otherDeductions: { type: Number, default: 0 },
+weekOffPerMonth: { type: Number, default: 0 },
+salaryEffectiveDate: { type: Date, default: null },
+
   
   // Week Off
   weekOffType: { type: String, enum: ['day', 'number', ''], default: '' },

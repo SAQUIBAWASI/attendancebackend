@@ -1830,7 +1830,15 @@ const addEmployee = async (req, res) => {
       parentsName, alternateNumber, salaryPerMonth, weekOffPerMonth,
       permissions, maxCL, maxSL, maxEL, maxCompOff,
       ctc, basicPay, hra, conveyanceAllowance, medicalAllowance,
-      performanceAllowance, specialAllowance, ptax, gmc, gmcAmount, otherDeductions
+      performanceAllowance, specialAllowance, ptax, gmc, gmcAmount, otherDeductions,
+      
+      // ✅ NEW FIELDS
+      gender,
+      reportingManager,
+      employmentType,
+      salaryEffectiveDate,
+      weekOffDay,
+      address
     } = req.body;
 
     const name = `${firstName || ''} ${lastName || ''}`.trim();
@@ -1849,36 +1857,40 @@ const addEmployee = async (req, res) => {
     const assignedWorkingDays = defaultMonthDays - weekOffPerMonthValue;
 
     const newEmployee = new Employee({
-      name, firstName, lastName, email, password, department, role,
-      dob: dob ? new Date(dob) : null,
-      addressLine1, addressLine2, city, state, pinCode, country: country || "India",
-      weekOffType, weekOffCount: weekOffCount || 0,
-      shiftType: shiftType || "A", shiftHours: shiftHours || 8,
-      joinDate: joinDate ? new Date(joinDate) : null, phone, employeeId, location: locationId,
-      parentsName, alternateNumber,
-      salaryPerMonth: Number(salaryPerMonth) || 0, ctc: Number(ctc) || 0,
-      basicPay: Number(basicPay) || 0, hra: Number(hra) || 0,
-      conveyanceAllowance: Number(conveyanceAllowance) || 0,
-      medicalAllowance: Number(medicalAllowance) || 0,
-      performanceAllowance: Number(performanceAllowance) || 0,
-      specialAllowance: Number(specialAllowance) || 0,
-      ptax: Number(ptax) || 0, gmc: gmc || "", gmcAmount: Number(gmcAmount) || 0,
-      otherDeductions: Number(otherDeductions) || 0,
-      weekOffPerMonth: weekOffPerMonthValue,
-      permissions: permissions || [],
-      maxCL: maxCL !== undefined ? Number(maxCL) : 0,
-      maxSL: maxSL !== undefined ? Number(maxSL) : 0,
-      maxEL: maxEL !== undefined ? Number(maxEL) : 0,
-      maxCompOff: maxCompOff !== undefined ? Number(maxCompOff) : 0,
-      salaryIncrements: [],
-      futureIncrements: [],
-      
-      // ============================================
-      // NEW FIELD - ASSIGNED WORKING DAYS
-      // ============================================
-      assignedWorkingDays: assignedWorkingDays > 0 ? assignedWorkingDays : 26
-    });
-
+  name, firstName, lastName, email, password, department, role,
+  dob: dob ? new Date(dob) : null,
+  addressLine1, addressLine2, city, state, pinCode, country: country || "India",
+  weekOffType, weekOffCount: weekOffCount || 0,
+  shiftType: shiftType || "A", shiftHours: shiftHours || 8,
+  joinDate: joinDate ? new Date(joinDate) : null, phone, employeeId, location: locationId,
+  parentsName, alternateNumber,
+  
+  // ✅ NEW FIELDS SAVE KARO
+  gender: gender || '',
+  reportingManager: reportingManager || '',
+  employmentType: employmentType || 'fulltime',
+  salaryEffectiveDate: salaryEffectiveDate ? new Date(salaryEffectiveDate) : null,
+  weekOffDay: weekOffDay || 'Sunday',
+  address: address || '',
+  
+  salaryPerMonth: Number(salaryPerMonth) || 0, ctc: Number(ctc) || 0,
+  basicPay: Number(basicPay) || 0, hra: Number(hra) || 0,
+  conveyanceAllowance: Number(conveyanceAllowance) || 0,
+  medicalAllowance: Number(medicalAllowance) || 0,
+  performanceAllowance: Number(performanceAllowance) || 0,
+  specialAllowance: Number(specialAllowance) || 0,
+  ptax: Number(ptax) || 0, gmc: gmc || "", gmcAmount: Number(gmcAmount) || 0,
+  otherDeductions: Number(otherDeductions) || 0,
+  weekOffPerMonth: weekOffPerMonthValue,
+  permissions: permissions || [],
+  maxCL: maxCL !== undefined ? Number(maxCL) : 0,
+  maxSL: maxSL !== undefined ? Number(maxSL) : 0,
+  maxEL: maxEL !== undefined ? Number(maxEL) : 0,
+  maxCompOff: maxCompOff !== undefined ? Number(maxCompOff) : 0,
+  salaryIncrements: [],
+  futureIncrements: [],
+  assignedWorkingDays: assignedWorkingDays > 0 ? assignedWorkingDays : 26
+});
     await newEmployee.save();
     res.status(201).json({ 
       success: true, 

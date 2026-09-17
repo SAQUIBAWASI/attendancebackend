@@ -4,14 +4,22 @@ const mongoose = require("mongoose");
 const AppointmentSlotConfig = require("../models/AppointmentSlotConfig");
 const AppointmentSlot = require("../models/AppointmentSlot");
 const Appointment = require("../models/Appointment");
+const Razorpay = require("razorpay");
 
 
+
+
+// ✅ Razorpay instance (env se lo, warna fallback)
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID || "rzp_test_TQkLWUaBkiSKBY",
+  key_secret: process.env.RAZORPAY_KEY_SECRET || "3uwm0uK0B5PpYpNDWZSIhPlf",
+});
 
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-// ---------- Multer storage config ----------
+// ---------- Multer setup ----------
 const onlineUploadDir = path.join(__dirname, "..", "uploads", "online-reports");
 if (!fs.existsSync(onlineUploadDir)) {
   fs.mkdirSync(onlineUploadDir, { recursive: true });
@@ -42,6 +50,10 @@ const onlineUpload = multer({
   },
 });
 
+const onlineUploadFields = onlineUpload.fields([
+  { name: "reports", maxCount: 20 },
+  { name: "prescriptions", maxCount: 20 },
+]);
 
 
 // Helper function to format minutes to 12-hour AM/PM string
@@ -1680,252 +1692,345 @@ router.post("/book", async (req, res) => {
 
 
 
-// ---------- The route ----------
-router.post(
-  "/book-online",
-  onlineUpload.fields([
-    { name: "reports", maxCount: 10 },
-    { name: "prescriptions", maxCount: 10 },
-  ]),
-  async (req, res) => {
+router.post("/book-online", onlineUploadFields, async (req, res) => {
+  try {
+    // ============ PARSE FORM-DATA ============
+    const {
+      slotId,
+      _id,
+      dayOfWeek,
+      date,
+      appointmentDate,
+      startTime,
+      endTime,
+      startTime24,
+      endTime24,
+      doctorId,
+      doctorName,
+      doctorSpecialization,
+
+      clinicId,
+      clinicName,
+
+      patientId,
+      patientName,
+      patientAge,
+      patientGender,
+      patientDob,
+      patientTitle,
+      patientAddress,
+      patientCity,
+      patientPincode,
+      patientPhone,
+      patientEmail,
+      purpose,
+      symptoms,
+
+      paymentType,        // "cash" | "online" | "card" | "upi"
+      paymentStatus,
+      partialAmount,
+      appointmentType,
+      priority,
+
+      // ✅ Razorpay fields
+      transactionId,      // razorpay_payment_id (after payment success)
+      razorpayOrderId,    // razorpay_order_id  (optional, from frontend)
+      razorpaySignature,  // razorpay_signature (optional, for verification)
+
+      // Referral
+      referredByCustomer,
+      referredByDoctor,
+      referralCustomerId,
+      referralDoctorId,
+      referralContactId,
+      referredBy,
+      referralCommission,
+      referralCommissionType,
+
+      // Discount
+      discount,
+      discountType,
+
+      // Frontend-computed
+      subtotal: clientSubtotal,
+      commissionAmount: clientCommissionAmount,
+      finalPayable: clientFinalPayable,
+      finalPayableAmount: clientFinalPayableAmount,
+      grandTotal: clientGrandTotal,
+      totalAmount: clientTotalAmount,
+      amountPaid: clientAmountPaid,
+      balanceAmount: clientBalanceAmount,
+
+      // Other
+      insuranceProvider,
+      insurancePolicyNumber,
+      patientBloodGroup,
+      patientMedicalHistory,
+      patientAllergies,
+      patientMedications,
+      notes,
+      isOP,
+    } = req.body;
+
+    // ---------- Parse JSON string fields safely ----------
+    let serviceItems = [];
+    let services = [];
+
     try {
-      // ============ PARSE FORM-DATA ============
-      const {
-        slotId,
-        _id,
-        dayOfWeek,
-        date,
-        appointmentDate,
-        startTime,
-        endTime,
-        startTime24,
-        endTime24,
-        doctorId,
-        doctorName,
-        doctorSpecialization,
+      serviceItems = JSON.parse(req.body.serviceItems || "[]");
+      if (!Array.isArray(serviceItems)) serviceItems = [];
+    } catch (err) {
+      console.warn("⚠️ Failed to parse serviceItems:", err.message);
+      serviceItems = [];
+    }
 
-        clinicId,
-        clinicName,
+    try {
+      services = JSON.parse(req.body.services || "[]");
+      if (!Array.isArray(services)) services = [];
+    } catch (err) {
+      console.warn("⚠️ Failed to parse services:", err.message);
+      services = [];
+    }
 
-        patientId,
-        patientName,
-        patientAge,
-        patientGender,
-        patientDob,
-        patientTitle,
-        patientAddress,
-        patientCity,
-        patientPincode,
-        patientPhone,
-        patientEmail,
-        purpose,
-        symptoms,
+    // ---------- Just file paths from Multer ----------
+    const reports = (req.files?.reports || []).map(
+      (f) => `/uploads/online-reports/${f.filename}`
+    );
+    const prescriptions = (req.files?.prescriptions || []).map(
+      (f) => `/uploads/online-reports/${f.filename}`
+    );
 
-        paymentType,
-        paymentStatus,
-        partialAmount,
-        appointmentType,
-        priority,
+    console.log("📥 ONLINE Booking request received");
+    console.log("📎 Files:", {
+      reports: reports.length,
+      prescriptions: prescriptions.length,
+    });
+    console.log("💳 Payment info:", {
+      paymentType,
+      paymentStatus,
+      transactionId: transactionId ? "✅ present" : "❌ absent",
+      razorpayOrderId: razorpayOrderId || "N/A",
+    });
 
-        // Referral
-        referredByCustomer,
-        referredByDoctor,
-        referralCustomerId,
-        referralDoctorId,
-        referralContactId,
-        referredBy,
-        referralCommission,
-        referralCommissionType,
+    // ============ FIND SLOT ============
+    let slot = null;
+    const finalDate =
+      appointmentDate || date || new Date().toISOString().split("T")[0];
 
-        // Discount
-        discount,
-        discountType,
-
-        // Frontend-computed
-        subtotal: clientSubtotal,
-        commissionAmount: clientCommissionAmount,
-        finalPayable: clientFinalPayable,
-        finalPayableAmount: clientFinalPayableAmount,
-        grandTotal: clientGrandTotal,
-        totalAmount: clientTotalAmount,
-        amountPaid: clientAmountPaid,
-        balanceAmount: clientBalanceAmount,
-
-        // Other
-        insuranceProvider,
-        insurancePolicyNumber,
-        patientBloodGroup,
-        patientMedicalHistory,
-        patientAllergies,
-        patientMedications,
-        notes,
-        isOP,
-      } = req.body;
-
-      // Services come as JSON strings in multipart
-      const serviceItems = JSON.parse(req.body.serviceItems || "[]");
-      const services = JSON.parse(req.body.services || "[]");
-
-      // Uploaded file metadata (optional, kept for reference)
-      const uploadedReportsMeta = JSON.parse(req.body.uploadedReports || "[]");
-      const uploadedPrescriptionsMeta = JSON.parse(
-        req.body.uploadedPrescriptions || "[]"
-      );
-
-      // ============ ATTACHED FILES ============
-      const reportFiles = (req.files?.reports || []).map((f) => ({
-        originalName: f.originalname,
-        filename: f.filename,
-        mimetype: f.mimetype,
-        size: f.size,
-        path: f.path,
-        url: `/uploads/online-reports/${f.filename}`,
-        uploadedAt: new Date(),
-      }));
-
-      const prescriptionFiles = (req.files?.prescriptions || []).map((f) => ({
-        originalName: f.originalname,
-        filename: f.filename,
-        mimetype: f.mimetype,
-        size: f.size,
-        path: f.path,
-        url: `/uploads/online-reports/${f.filename}`,
-        uploadedAt: new Date(),
-      }));
-
-      console.log("📥 ONLINE Booking request received");
-      console.log("📎 Files:", {
-        reports: reportFiles.length,
-        prescriptions: prescriptionFiles.length,
+    if (_id && mongoose.Types.ObjectId.isValid(_id)) {
+      slot = await AppointmentSlot.findById(_id);
+    }
+    if (!slot && slotId) {
+      if (mongoose.Types.ObjectId.isValid(slotId)) {
+        slot = await AppointmentSlot.findById(slotId);
+      } else {
+        slot = await AppointmentSlot.findOne({ slotId: slotId });
+      }
+    }
+    if (!slot && dayOfWeek && startTime && doctorId) {
+      slot = await AppointmentSlot.findOne({
+        doctorId: doctorId,
+        dayOfWeek: new RegExp(`^${dayOfWeek}$`, "i"),
+        startTime: startTime,
+        status: "available",
       });
-      console.log("🔍 Frontend financials:", {
-        clientSubtotal,
-        clientCommissionAmount,
-        discount,
-        clientFinalPayable,
-        clientAmountPaid,
-        clientBalanceAmount,
-        paymentStatus,
+    }
+    if (!slot && finalDate && startTime && doctorId) {
+      slot = await AppointmentSlot.findOne({
+        doctorId: doctorId,
+        date: finalDate,
+        startTime: startTime,
+        status: "available",
       });
+    }
+    if (!slot && doctorId && startTime) {
+      slot = await AppointmentSlot.findOne({
+        doctorId: doctorId,
+        startTime: startTime,
+        status: "available",
+      });
+    }
 
-      // ============ FIND SLOT ============
-      let slot = null;
-      const finalDate =
-        appointmentDate || date || new Date().toISOString().split("T")[0];
+    if (!slot) {
+      return res.status(404).json({
+        success: false,
+        message: "Slot not found. Please select a valid available slot.",
+      });
+    }
 
-      if (_id && mongoose.Types.ObjectId.isValid(_id)) {
-        slot = await AppointmentSlot.findById(_id);
-      }
-      if (!slot && slotId) {
-        if (mongoose.Types.ObjectId.isValid(slotId)) {
-          slot = await AppointmentSlot.findById(slotId);
-        } else {
-          slot = await AppointmentSlot.findOne({ slotId: slotId });
-        }
-      }
-      if (!slot && dayOfWeek && startTime && doctorId) {
-        slot = await AppointmentSlot.findOne({
-          doctorId: doctorId,
-          dayOfWeek: new RegExp(`^${dayOfWeek}$`, "i"),
-          startTime: startTime,
-          status: "available",
-        });
-      }
-      if (!slot && finalDate && startTime && doctorId) {
-        slot = await AppointmentSlot.findOne({
-          doctorId: doctorId,
-          date: finalDate,
-          startTime: startTime,
-          status: "available",
-        });
-      }
-      if (!slot && doctorId && startTime) {
-        slot = await AppointmentSlot.findOne({
-          doctorId: doctorId,
-          startTime: startTime,
-          status: "available",
-        });
-      }
+    if (slot.status !== "available") {
+      return res.status(400).json({
+        success: false,
+        message: `Slot is not available. Current status: ${slot.status}`,
+      });
+    }
 
-      if (!slot) {
-        return res.status(404).json({
+    // ============ NORMALIZE REFERRAL ============
+    let finalReferralContactId = null;
+    let finalReferralCustomerId = null;
+    let finalReferralDoctorId = null;
+    let finalReferredBy = "";
+
+    if (referralDoctorId && mongoose.Types.ObjectId.isValid(referralDoctorId)) {
+      finalReferralDoctorId = referralDoctorId;
+      finalReferralContactId = referralDoctorId;
+    }
+    if (referralCustomerId && mongoose.Types.ObjectId.isValid(referralCustomerId)) {
+      finalReferralCustomerId = referralCustomerId;
+      if (!finalReferralContactId) {
+        finalReferralContactId = referralCustomerId;
+      }
+    }
+    if (
+      !finalReferralContactId &&
+      referralContactId &&
+      mongoose.Types.ObjectId.isValid(referralContactId)
+    ) {
+      finalReferralContactId = referralContactId;
+    }
+    finalReferredBy = referredByDoctor || referredByCustomer || referredBy || "";
+
+    // ============ COMPUTE FINANCIALS ============
+    const finalServices = serviceItems.length ? serviceItems : services || [];
+
+    const servicesTotal = finalServices.reduce(
+      (sum, s) => sum + (Number(s.price) || 0),
+      0
+    );
+
+    const commissionPercent = parseFloat(referralCommission) || 0;
+    const serverSubtotal = servicesTotal;
+    const serverCommissionAmount = (serverSubtotal * commissionPercent) / 100;
+    const serverDiscountAmount = Number(discount) || 0;
+    const serverFinalPayable =
+      serverSubtotal - serverCommissionAmount - serverDiscountAmount;
+
+    const subtotal =
+      Number.isFinite(Number(clientSubtotal)) && Number(clientSubtotal) > 0
+        ? Number(clientSubtotal)
+        : serverSubtotal;
+
+    const commissionAmount = Number.isFinite(Number(clientCommissionAmount))
+      ? Number(clientCommissionAmount)
+      : serverCommissionAmount;
+
+    const discountAmount = Number(discount) || 0;
+
+    const finalPayableFromClient =
+      Number(clientFinalPayable) ||
+      Number(clientFinalPayableAmount) ||
+      Number(clientGrandTotal) ||
+      Number(clientTotalAmount) ||
+      0;
+
+    const finalPayable =
+      finalPayableFromClient > 0 ? finalPayableFromClient : serverFinalPayable;
+
+    // ============================================================
+    // ✅ RAZORPAY FLOW — Handle 2 cases
+    //   Case A: Online payment + NO transactionId yet
+    //           → Create Razorpay order, DON'T book slot yet
+    //   Case B: Online payment + transactionId present
+    //           → Verify payment, then book slot
+    // ============================================================
+    const isOnlinePayment =
+      paymentType === "online" ||
+      paymentType === "card" ||
+      paymentType === "upi";
+
+    // -------- Case A: Create Razorpay Order --------
+    if (isOnlinePayment && !transactionId && finalPayable > 0) {
+      try {
+        const razorpayOrder = await razorpay.orders.create({
+          amount: Math.round(finalPayable * 100), // paise
+          currency: "INR",
+          receipt: `apt_${Date.now()}`,
+          notes: {
+            patientName: patientName || "",
+            patientPhone: patientPhone || "",
+            doctorName: doctorName || "",
+            appointmentDate: finalDate || "",
+            slotId: String(slot._id),
+          },
+        });
+
+        console.log("🧾 Razorpay order created:", razorpayOrder.id);
+
+        return res.status(200).json({
+          success: true,
+          requiresPayment: true,
+          message: "Razorpay order created. Complete payment to confirm booking.",
+          razorpayOrder: {
+            id: razorpayOrder.id,
+            amount: razorpayOrder.amount,
+            currency: razorpayOrder.currency,
+            keyId: process.env.RAZORPAY_KEY_ID || "rzp_test_TQkLWUaBkiSKBY",
+          },
+          amount: finalPayable,
+        });
+      } catch (razorpayErr) {
+        console.error("❌ Razorpay order creation failed:", razorpayErr);
+        return res.status(500).json({
           success: false,
-          message: "Slot not found. Please select a valid available slot.",
+          message: "Failed to create Razorpay order",
+          error: razorpayErr.message,
         });
       }
+    }
 
-      if (slot.status !== "available") {
+    // -------- Case B: Verify Razorpay Payment (if transactionId given) --------
+    let verifiedPayment = null;
+    let finalPaymentStatus = paymentStatus || "Pending";
+    let finalAmountPaid = 0;
+    let finalBalanceAmount = finalPayable;
+
+    if (isOnlinePayment && transactionId) {
+      try {
+        const payment = await razorpay.payments.fetch(transactionId);
+
+        if (
+          payment.status === "captured" ||
+          payment.status === "authorized"
+        ) {
+          verifiedPayment = payment;
+          console.log("✅ Razorpay payment verified:", {
+            id: payment.id,
+            amount: payment.amount,
+            status: payment.status,
+          });
+        } else {
+          console.warn("⚠️ Razorpay payment not captured:", payment.status);
+          return res.status(400).json({
+            success: false,
+            message: `Payment not successful. Status: ${payment.status}`,
+          });
+        }
+      } catch (verifyErr) {
+        console.error("❌ Razorpay payment verify failed:", verifyErr);
         return res.status(400).json({
           success: false,
-          message: `Slot is not available. Current status: ${slot.status}`,
+          message: "Payment verification failed. Please try again.",
+          error: verifyErr.message,
         });
       }
+    }
 
-      // Update slot status
-      slot.status = "booked";
-      if (finalDate) slot.date = finalDate;
-      await slot.save();
+    // ============ FINAL PAYMENT STATUS CALC ============
+    if (verifiedPayment) {
+      // Online payment — trust Razorpay
+      const paidInRupees = Number(verifiedPayment.amount) / 100;
+      finalAmountPaid = Math.min(paidInRupees, finalPayable);
+      finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
 
-      // ============ NORMALIZE REFERRAL ============
-      let finalReferralContactId = null;
-      let finalReferralCustomerId = null;
-      let finalReferralDoctorId = null;
-      let finalReferredBy = "";
-
-      if (referralDoctorId && mongoose.Types.ObjectId.isValid(referralDoctorId)) {
-        finalReferralDoctorId = referralDoctorId;
-        finalReferralContactId = referralDoctorId;
+      if (finalBalanceAmount <= 0) {
+        finalPaymentStatus = "Paid";
+        finalAmountPaid = finalPayable;
+        finalBalanceAmount = 0;
+      } else if (finalAmountPaid > 0) {
+        finalPaymentStatus = "Partial";
       }
-      if (referralCustomerId && mongoose.Types.ObjectId.isValid(referralCustomerId)) {
-        finalReferralCustomerId = referralCustomerId;
-        if (!finalReferralContactId) {
-          finalReferralContactId = referralCustomerId;
-        }
-      }
-      if (
-        !finalReferralContactId &&
-        referralContactId &&
-        mongoose.Types.ObjectId.isValid(referralContactId)
-      ) {
-        finalReferralContactId = referralContactId;
-      }
-      finalReferredBy = referredByDoctor || referredByCustomer || referredBy || "";
-
-      // ============ COMPUTE FINANCIALS — TRUST FRONTEND ============
-      const finalServices = serviceItems.length ? serviceItems : services || [];
-      const servicesTotal = finalServices.reduce(
-        (sum, s) => sum + (Number(s.price) || 0),
-        0
-      );
-
-      const commissionPercent = parseFloat(referralCommission) || 0;
-      const serverSubtotal = servicesTotal;
-      const serverCommissionAmount = (serverSubtotal * commissionPercent) / 100;
-      const serverDiscountAmount = Number(discount) || 0;
-      const serverFinalPayable =
-        serverSubtotal - serverCommissionAmount - serverDiscountAmount;
-
-      const subtotal =
-        Number.isFinite(Number(clientSubtotal)) && Number(clientSubtotal) > 0
-          ? Number(clientSubtotal)
-          : serverSubtotal;
-
-      const commissionAmount = Number.isFinite(Number(clientCommissionAmount))
-        ? Number(clientCommissionAmount)
-        : serverCommissionAmount;
-
-      const discountAmount = Number(discount) || 0;
-
-      const finalPayableFromClient =
-        Number(clientFinalPayable) ||
-        Number(clientFinalPayableAmount) ||
-        Number(clientGrandTotal) ||
-        Number(clientTotalAmount) ||
-        0;
-
-      const finalPayable =
-        finalPayableFromClient > 0 ? finalPayableFromClient : serverFinalPayable;
-
+    } else {
+      // Cash/offline OR no payment provided — use original logic
       const parsedPartial = Number(partialAmount) || 0;
       const clientSentAmountPaid = Number(clientAmountPaid);
       const clientSentBalance = Number(clientBalanceAmount);
@@ -1934,12 +2039,11 @@ router.post(
         Number.isFinite(clientSentBalance) &&
         (clientSentAmountPaid > 0 || clientSentBalance > 0);
 
-      let finalPaymentStatus = paymentStatus || "Pending";
-      let finalAmountPaid = 0;
-      let finalBalanceAmount = finalPayable;
-
       if (frontendTrusted) {
-        finalAmountPaid = Math.max(0, Math.min(clientSentAmountPaid, finalPayable));
+        finalAmountPaid = Math.max(
+          0,
+          Math.min(clientSentAmountPaid, finalPayable)
+        );
         finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
 
         if (finalBalanceAmount <= 0 && finalAmountPaid > 0) {
@@ -1960,10 +2064,6 @@ router.post(
           finalAmountPaid = Math.min(parsedPartial, finalPayable);
           finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
           finalPaymentStatus = finalBalanceAmount === 0 ? "Paid" : "Partial";
-          if (finalPaymentStatus === "Paid") {
-            finalAmountPaid = finalPayable;
-            finalBalanceAmount = 0;
-          }
         } else if (paymentStatus === "Due") {
           finalAmountPaid = 0;
           finalBalanceAmount = finalPayable;
@@ -1986,186 +2086,195 @@ router.post(
           }
         }
       }
+    }
 
-      console.log("💰 Computed FINAL:", {
-        subtotal,
-        commissionAmount,
-        discountAmount,
-        finalPayable,
-        finalAmountPaid,
-        finalBalanceAmount,
-        finalPaymentStatus,
-      });
+    console.log("💰 Computed FINAL:", {
+      subtotal,
+      commissionAmount,
+      discountAmount,
+      finalPayable,
+      finalAmountPaid,
+      finalBalanceAmount,
+      finalPaymentStatus,
+    });
 
-      // ============ CREATE APPOINTMENT ============
-      const appointmentData = {
-        slotId: slot._id,
-        appointmentDate: finalDate,
-        slotDetails: {
-          dayOfWeek: slot.dayOfWeek || dayOfWeek,
-          date: finalDate,
-          startTime: slot.startTime || startTime,
-          endTime: slot.endTime || endTime,
-          startTime24: slot.startTime24 || startTime24,
-          endTime24: slot.endTime24 || endTime24,
-          doctorId: slot.doctorId || doctorId,
-          doctorName: slot.doctorName || doctorName,
-          doctorSpecialization:
-            slot.doctorSpecialization || doctorSpecialization,
+    // ============ BOOK SLOT (only after payment OK) ============
+    slot.status = "booked";
+    if (finalDate) slot.date = finalDate;
+    await slot.save();
+
+    // ============ CREATE APPOINTMENT ============
+    const appointmentData = {
+      slotId: slot._id,
+      appointmentDate: finalDate,
+      slotDetails: {
+        dayOfWeek: slot.dayOfWeek || dayOfWeek,
+        date: finalDate,
+        startTime: slot.startTime || startTime,
+        endTime: slot.endTime || endTime,
+        startTime24: slot.startTime24 || startTime24,
+        endTime24: slot.endTime24 || endTime24,
+        doctorId: slot.doctorId || doctorId,
+        doctorName: slot.doctorName || doctorName,
+        doctorSpecialization:
+          slot.doctorSpecialization || doctorSpecialization,
+      },
+
+      patientId: patientId || undefined,
+      patientName,
+      patientTitle: patientTitle || "Mr.",
+      patientDob: patientDob || "",
+      patientAge,
+      patientGender,
+      patientPhone,
+      patientEmail: patientEmail || "",
+      patientAddress: patientAddress || "",
+      patientCity: patientCity || "",
+      patientPincode: patientPincode || "",
+      patientBloodGroup: patientBloodGroup || "",
+      patientMedicalHistory: patientMedicalHistory || "",
+      patientAllergies: patientAllergies || "",
+      patientMedications: patientMedications || "",
+      purpose: purpose || "Doctor Consultation",
+      symptoms: symptoms || "",
+
+      paymentType: paymentType || "cash",
+      paymentStatus: finalPaymentStatus,
+      partialAmount: finalAmountPaid,
+      amountPaid: finalAmountPaid,
+      balanceAmount: finalBalanceAmount,
+
+      // ✅ Razorpay references
+      paymentTransactionId: transactionId || "",
+      razorpayOrderId: razorpayOrderId || "",
+      razorpayPaymentId: transactionId || "",
+
+      appointmentType: appointmentType || "Online Consultation",
+      priority: priority || "Normal",
+
+      // ONLINE-SPECIFIC
+      isOP: false,
+      bookingType: "Online",
+      isOnline: true,
+      clinicId: clinicId || "",
+      clinicName: clinicName || "",
+
+      reports: reports,
+      prescriptions: prescriptions,
+
+      // Referral
+      referredBy: finalReferredBy,
+      referralContactId: finalReferralContactId,
+      referralCustomerId: finalReferralCustomerId,
+      referralDoctorId: finalReferralDoctorId,
+      referredByCustomer: referredByCustomer || "",
+      referredByDoctor: referredByDoctor || "",
+      referralCommission: referralCommission || "",
+      referralCommissionType: referralCommissionType || "",
+
+      // Services
+      services: finalServices.map((s) => ({
+        serviceId: s.serviceId || s._id,
+        name: s.name,
+        price: Number(s.price) || 0,
+        quantity: Number(s.quantity) || 1,
+        description: s.description || "",
+        paymentStatus: s.paymentStatus || "Pending",
+      })),
+
+      // Financials
+      servicesTotal,
+      subtotal,
+      commissionAmount,
+      discount: discountAmount,
+      discountType: discountType || "₹",
+      finalPayable,
+      finalPayableAmount: finalPayable,
+      grandTotal: finalPayable,
+      totalAmount: finalPayable,
+      totalFee: finalPayable,
+
+      insuranceProvider: insuranceProvider || "",
+      insurancePolicyNumber: insurancePolicyNumber || "",
+      notes: notes || "",
+      status: "confirmed",
+      bookedAt: new Date(),
+      partnerPaymentStatus: "Due",
+    };
+
+    const bookedAppointment = new Appointment(appointmentData);
+    await bookedAppointment.save();
+
+    // ============ FORCE OVERRIDE ============
+    await Appointment.updateOne(
+      { _id: bookedAppointment._id },
+      {
+        $set: {
+          servicesTotal,
+          subtotal,
+          commissionAmount,
+          discount: discountAmount,
+          discountType: discountType || "₹",
+          finalPayable,
+          finalPayableAmount: finalPayable,
+          grandTotal: finalPayable,
+          totalAmount: finalPayable,
+          totalFee: finalPayable,
+          amountPaid: finalAmountPaid,
+          balanceAmount: finalBalanceAmount,
+          partialAmount: finalAmountPaid,
+          paymentStatus: finalPaymentStatus,
+          paymentTransactionId: transactionId || "",
+          razorpayOrderId: razorpayOrderId || "",
+          razorpayPaymentId: transactionId || "",
+          isOP: false,
+          bookingType: "Online",
+          isOnline: true,
         },
+      }
+    );
 
-        patientId: patientId || undefined,
-        patientName,
-        patientTitle: patientTitle || "Mr.",
-        patientDob: patientDob || "",
-        patientAge,
-        patientGender,
-        patientPhone,
-        patientEmail: patientEmail || "",
-        patientAddress: patientAddress || "",
-        patientCity: patientCity || "",
-        patientPincode: patientPincode || "",
-        patientBloodGroup: patientBloodGroup || "",
-        patientMedicalHistory: patientMedicalHistory || "",
-        patientAllergies: patientAllergies || "",
-        patientMedications: patientMedications || "",
-        purpose: purpose || "Doctor Consultation",
-        symptoms: symptoms || "",
+    console.log("✅ Appointment saved");
 
-        paymentType: paymentType || "cash",
-        paymentStatus: finalPaymentStatus,
-        partialAmount: finalAmountPaid,
+    const populatedAppointment = await Appointment.findById(bookedAppointment._id)
+      .populate("referralContactId")
+      .populate("referralCustomerId")
+      .populate("referralDoctorId");
+
+    console.log("🎯 Final:", {
+      finalPayable: populatedAppointment.finalPayable,
+      paymentStatus: populatedAppointment.paymentStatus,
+      transactionId: populatedAppointment.paymentTransactionId || "N/A",
+      reports: populatedAppointment.reports?.length || 0,
+      prescriptions: populatedAppointment.prescriptions?.length || 0,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Online appointment booked successfully for ${patientName}!`,
+      appointment: populatedAppointment,
+      slot: slot,
+      payment: {
+        method: isOnlinePayment ? "razorpay" : paymentType || "cash",
+        status: finalPaymentStatus,
         amountPaid: finalAmountPaid,
         balanceAmount: finalBalanceAmount,
-        appointmentType: appointmentType || "Online Consultation",
-        priority: priority || "Normal",
-
-        // ============ ONLINE-SPECIFIC ============
-        isOP: false,                       // 🔵 Force OP = false for online
-        bookingType: "Online",             // 🔵 Explicit marker
-        isOnline: true,                    // 🔵 Explicit boolean
-        clinicId: clinicId || "",
-        clinicName: clinicName || "",
-
-        // 🔵 Uploaded reports (actual files + metadata)
-        uploadedReports: reportFiles,
-        uploadedReportsMeta: uploadedReportsMeta,
-        reportsCount: reportFiles.length,
-
-        // 🔵 Uploaded prescriptions (actual files + metadata)
-        uploadedPrescriptions: prescriptionFiles,
-        uploadedPrescriptionsMeta: uploadedPrescriptionsMeta,
-        prescriptionsCount: prescriptionFiles.length,
-
-        // Referral
-        referredBy: finalReferredBy,
-        referralContactId: finalReferralContactId,
-        referralCustomerId: finalReferralCustomerId,
-        referralDoctorId: finalReferralDoctorId,
-        referredByCustomer: referredByCustomer || "",
-        referredByDoctor: referredByDoctor || "",
-        referralCommission: referralCommission || "",
-        referralCommissionType: referralCommissionType || "",
-
-        // Services
-        services: finalServices.map((s) => ({
-          serviceId: s.serviceId || s._id,
-          name: s.name,
-          price: Number(s.price) || 0,
-          quantity: Number(s.quantity) || 1,
-          description: s.description || "",
-          paymentStatus: s.paymentStatus || "Pending",
-        })),
-
-        // Financials
-        servicesTotal,
-        subtotal,
-        commissionAmount,
-        discount: discountAmount,
-        discountType: discountType || "₹",
-        finalPayable,
-        finalPayableAmount: finalPayable,
-        grandTotal: finalPayable,
-        totalAmount: finalPayable,
-        totalFee: finalPayable,
-
-        insuranceProvider: insuranceProvider || "",
-        insurancePolicyNumber: insurancePolicyNumber || "",
-        notes: notes || "",
-        status: "confirmed",
-        bookedAt: new Date(),
-        partnerPaymentStatus: "Due",
-      };
-
-      const bookedAppointment = new Appointment(appointmentData);
-      await bookedAppointment.save();
-
-      // ============ FORCE OVERRIDE (bypass pre-save hooks) ============
-      await Appointment.updateOne(
-        { _id: bookedAppointment._id },
-        {
-          $set: {
-            servicesTotal,
-            subtotal,
-            commissionAmount,
-            discount: discountAmount,
-            discountType: discountType || "₹",
-            finalPayable,
-            finalPayableAmount: finalPayable,
-            grandTotal: finalPayable,
-            totalAmount: finalPayable,
-            totalFee: finalPayable,
-            amountPaid: finalAmountPaid,
-            balanceAmount: finalBalanceAmount,
-            partialAmount: finalAmountPaid,
-            paymentStatus: finalPaymentStatus,
-            isOP: false,
-            bookingType: "Online",
-            isOnline: true,
-          },
-        }
-      );
-
-      console.log("✅ Force override applied to DB (Online)");
-
-      // ============ FETCH FRESH DOCUMENT ============
-      const populatedAppointment = await Appointment.findById(
-        bookedAppointment._id
-      )
-        .populate("referralContactId")
-        .populate("referralCustomerId")
-        .populate("referralDoctorId");
-
-      console.log("🎯 Final DB values:", {
-        finalPayable: populatedAppointment.finalPayable,
-        amountPaid: populatedAppointment.amountPaid,
-        balanceAmount: populatedAppointment.balanceAmount,
-        paymentStatus: populatedAppointment.paymentStatus,
-        reportsCount: populatedAppointment.reportsCount,
-        prescriptionsCount: populatedAppointment.prescriptionsCount,
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: `✅ Online appointment booked successfully for ${patientName}!`,
-        appointment: populatedAppointment,
-        slot: slot,
-        files: {
-          reports: reportFiles.length,
-          prescriptions: prescriptionFiles.length,
-        },
-      });
-    } catch (error) {
-      console.error("❌ Error booking ONLINE appointment:", error);
-      return res.status(500).json({
-        success: false,
-        message: error.message,
-      });
-    }
+        transactionId: transactionId || null,
+        razorpayOrderId: razorpayOrderId || null,
+      },
+      files: {
+        reports: reports.length,
+        prescriptions: prescriptions.length,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error booking ONLINE appointment:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
-);
-
-
+});
 
 // ============================================================
 // PUT /appointment-slots/updateop/:bookingId — Update Appointment

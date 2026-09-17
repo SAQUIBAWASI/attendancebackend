@@ -321,53 +321,18 @@ const appointmentSchema = new mongoose.Schema(
       default: "",
     },
 
-    // ---- Online Reports (uploaded files) ----
-    uploadedReports: [
-      {
-        originalName: String,
-        filename: String,
-        mimetype: String,
-        size: Number,
-        path: String,
-        url: String,
-        uploadedAt: { type: Date, default: Date.now },
-      },
-    ],
-    uploadedReportsMeta: [
-      {
-        name: String,
-        size: Number,
-        type: String,
-      },
-    ],
-    reportsCount: {
-      type: Number,
-      default: 0,
+
+    // ---- Online Reports + Prescriptions (simple file paths) ----
+    reports: {
+      type: [String],
+      default: [],
     },
 
-    // ---- Online Prescriptions (uploaded files) ----
-    uploadedPrescriptions: [
-      {
-        originalName: String,
-        filename: String,
-        mimetype: String,
-        size: Number,
-        path: String,
-        url: String,
-        uploadedAt: { type: Date, default: Date.now },
-      },
-    ],
-    uploadedPrescriptionsMeta: [
-      {
-        name: String,
-        size: Number,
-        type: String,
-      },
-    ],
-    prescriptionsCount: {
-      type: Number,
-      default: 0,
+    prescriptions: {
+      type: [String],
+      default: [],
     },
+
 
     // =============================================
     // STAFF
