@@ -2,6 +2,13 @@ const express = require('express');
 const router = express.Router();
 const patientController = require('../controller/patientController');
 
+
+
+router.post("/login", patientController.patientLogin);
+
+router.get("/dashboard", patientController.getPatientDashboard);
+
+
 // @route POST /api/patients
 router.post('/', patientController.createPatient);
 
@@ -16,5 +23,6 @@ router.put('/:id', patientController.updatePatient);
 
 // @route DELETE /api/patients/:id
 router.delete('/:id', patientController.deletePatient);
+
 
 module.exports = router;

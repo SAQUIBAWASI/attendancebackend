@@ -2975,4 +2975,277 @@ router.put("/review/:id", async (req, res) => {
   }
 });
 
+
+
+
+
+router.put("/reschedule/:appointmentId", async (req, res) => {
+  try {
+    const { appointmentId } = req.params;
+
+    const {
+      appointmentDate,
+      date,
+      startTime,
+      endTime,
+      startTime24,
+      endTime24,
+      slotId,
+      _id: newSlotObjectId,
+      dayOfWeek,
+      shift,
+      doctorId,
+      patientEmail,
+    } = req.body;
+
+    console.log("🔄 Reschedule request received");
+    console.log("📋 Appointment ID:", appointmentId);
+    console.log("📅 New details:", {
+      appointmentDate,
+      startTime,
+      endTime,
+      slotId,
+      dayOfWeek,
+    });
+
+    // ===== 1. VALIDATE APPOINTMENT ID =====
+    if (!appointmentId || !mongoose.Types.ObjectId.isValid(appointmentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID.",
+      });
+    }
+
+    // ===== 2. FIND EXISTING APPOINTMENT =====
+    const appointment = await Appointment.findById(appointmentId);
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found.",
+      });
+    }
+
+    // ===== 3. CHECK STATUS — only cancelled cannot be rescheduled =====
+    const currentStatus = (appointment.status || "").toLowerCase();
+    if (currentStatus === "cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: "Cancelled appointments cannot be rescheduled.",
+      });
+    }
+
+    // ❌ REMOVED: past datetime check
+    // ❌ REMOVED: completed status check
+    // ❌ REMOVED: new date past check
+
+    // ===== 4. VERIFY PATIENT (optional, if email sent) =====
+    if (
+      patientEmail &&
+      appointment.patientEmail &&
+      appointment.patientEmail.toLowerCase() !== patientEmail.toLowerCase()
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to reschedule this appointment.",
+      });
+    }
+
+    // ===== 5. VALIDATE NEW DATE/TIME =====
+    const finalDate =
+      appointmentDate || date || new Date().toISOString().split("T")[0];
+
+    if (!startTime || !endTime) {
+      return res.status(400).json({
+        success: false,
+        message: "New start time and end time are required.",
+      });
+    }
+
+    // ===== 6. FIND NEW SLOT =====
+    let newSlot = null;
+
+    if (newSlotObjectId && mongoose.Types.ObjectId.isValid(newSlotObjectId)) {
+      newSlot = await AppointmentSlot.findById(newSlotObjectId);
+    }
+
+    if (!newSlot && slotId) {
+      if (mongoose.Types.ObjectId.isValid(slotId)) {
+        newSlot = await AppointmentSlot.findById(slotId);
+      } else {
+        newSlot = await AppointmentSlot.findOne({ slotId: slotId });
+      }
+    }
+
+    const doctorIdToUse =
+      doctorId || appointment.slotDetails?.doctorId || appointment.doctorId;
+
+    if (!newSlot && doctorIdToUse && dayOfWeek && startTime) {
+      newSlot = await AppointmentSlot.findOne({
+        doctorId: doctorIdToUse,
+        dayOfWeek: new RegExp(`^${dayOfWeek}$`, "i"),
+        startTime: startTime,
+      });
+    }
+
+    if (!newSlot && doctorIdToUse && finalDate && startTime) {
+      newSlot = await AppointmentSlot.findOne({
+        doctorId: doctorIdToUse,
+        date: finalDate,
+        startTime: startTime,
+      });
+    }
+
+    if (!newSlot && doctorIdToUse && startTime) {
+      newSlot = await AppointmentSlot.findOne({
+        doctorId: doctorIdToUse,
+        startTime: startTime,
+      });
+    }
+
+    if (!newSlot) {
+      return res.status(404).json({
+        success: false,
+        message: "New slot not found. Please select a valid available slot.",
+      });
+    }
+
+    // ===== 7. CHECK IF NEW SLOT IS SAME AS OLD =====
+    if (newSlot._id.toString() === String(appointment.slotId || "")) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "You selected the same slot. Please choose a different slot to reschedule.",
+      });
+    }
+
+    // ===== 8. CHECK IF NEW SLOT IS BOOKED/BREAK =====
+    if (newSlot.status === "booked") {
+      return res.status(400).json({
+        success: false,
+        message: "This slot is already booked. Please choose another slot.",
+      });
+    }
+
+    if (newSlot.status === "break") {
+      return res.status(400).json({
+        success: false,
+        message: "This is a break slot and cannot be booked.",
+      });
+    }
+
+    // ❌ REMOVED: new slot datetime past check
+
+    // ===== 9. FREE THE OLD SLOT =====
+    const oldSlotId = appointment.slotId;
+    if (oldSlotId && mongoose.Types.ObjectId.isValid(oldSlotId)) {
+      const oldSlot = await AppointmentSlot.findById(oldSlotId);
+      if (oldSlot) {
+        oldSlot.status = "available";
+        oldSlot.patientName = "";
+        oldSlot.patientId = undefined;
+        oldSlot.paymentStatus = "Pending";
+        oldSlot.bookedAt = undefined;
+        oldSlot.appointmentId = undefined;
+        await oldSlot.save();
+        console.log("✅ Old slot freed:", oldSlot._id);
+      }
+    }
+
+    // ===== 10. BOOK THE NEW SLOT =====
+    newSlot.status = "booked";
+    newSlot.date = finalDate;
+    newSlot.patientName = appointment.patientName || "";
+    newSlot.patientId = appointment.patientId;
+    newSlot.paymentStatus = appointment.paymentStatus || "Pending";
+    newSlot.bookedAt = new Date();
+    newSlot.appointmentId = appointment._id;
+    await newSlot.save();
+    console.log("✅ New slot booked:", newSlot._id);
+
+    // ===== 11. UPDATE APPOINTMENT =====
+    const previousDate = appointment.appointmentDate;
+    const previousStartTime = appointment.slotDetails?.startTime;
+    const previousEndTime = appointment.slotDetails?.endTime;
+    const previousSlotId = appointment.slotId;
+
+    appointment.appointmentDate = finalDate;
+    appointment.slotId = newSlot._id;
+    appointment.startTime = newSlot.startTime || startTime;
+    appointment.endTime = newSlot.endTime || endTime;
+
+    if (!appointment.slotDetails) appointment.slotDetails = {};
+    appointment.slotDetails.dayOfWeek =
+      newSlot.dayOfWeek || dayOfWeek || appointment.slotDetails.dayOfWeek;
+    appointment.slotDetails.date = finalDate;
+    appointment.slotDetails.startTime = newSlot.startTime || startTime;
+    appointment.slotDetails.endTime = newSlot.endTime || endTime;
+    appointment.slotDetails.startTime24 =
+      newSlot.startTime24 || startTime24 || appointment.slotDetails.startTime24;
+    appointment.slotDetails.endTime24 =
+      newSlot.endTime24 || endTime24 || appointment.slotDetails.endTime24;
+    appointment.slotDetails.doctorId =
+      newSlot.doctorId || doctorIdToUse || appointment.slotDetails.doctorId;
+    appointment.slotDetails.doctorName =
+      newSlot.doctorName || appointment.slotDetails.doctorName;
+    appointment.slotDetails.doctorSpecialization =
+      newSlot.doctorSpecialization ||
+      appointment.slotDetails.doctorSpecialization;
+
+    // Track reschedule history
+    if (!appointment.rescheduleHistory) appointment.rescheduleHistory = [];
+    appointment.rescheduleHistory.push({
+      previousDate,
+      previousStartTime,
+      previousEndTime,
+      previousSlotId,
+      newDate: finalDate,
+      newStartTime: newSlot.startTime || startTime,
+      newEndTime: newSlot.endTime || endTime,
+      newSlotId: newSlot._id,
+      rescheduledAt: new Date(),
+      rescheduledBy: patientEmail || "patient",
+    });
+
+    appointment.rescheduledAt = new Date();
+    appointment.rescheduleCount = (appointment.rescheduleCount || 0) + 1;
+
+    // ✅ Auto-fix status if it was completed/old — bring back to confirmed
+    if (currentStatus !== "confirmed") {
+      appointment.status = "confirmed";
+    }
+
+    await appointment.save();
+
+    // ===== 12. FETCH FRESH DOCUMENT =====
+    const updatedAppointment = await Appointment.findById(appointment._id)
+      .populate("referralContactId")
+      .populate("referralCustomerId")
+      .populate("referralDoctorId");
+
+    console.log("🎯 Reschedule completed:", {
+      appointmentId: updatedAppointment._id,
+      newDate: updatedAppointment.appointmentDate,
+      newStartTime: updatedAppointment.slotDetails?.startTime,
+      newEndTime: updatedAppointment.slotDetails?.endTime,
+      rescheduleCount: updatedAppointment.rescheduleCount,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Appointment rescheduled successfully to ${finalDate} at ${newSlot.startTime} – ${newSlot.endTime}`,
+      appointment: updatedAppointment,
+      oldSlot: oldSlotId,
+      newSlot: newSlot,
+    });
+  } catch (error) {
+    console.error("❌ Error rescheduling appointment:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+
+
 module.exports = router;

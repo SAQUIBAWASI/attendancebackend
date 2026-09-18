@@ -26,6 +26,26 @@ const appointmentSchema = new mongoose.Schema(
     // =============================================
     appointmentDate: { type: String, default: "" },
 
+
+
+    // In your Appointment schema:
+    rescheduleHistory: [
+      {
+        previousDate: Date,
+        previousStartTime: String,
+        previousEndTime: String,
+        previousSlotId: { type: mongoose.Schema.Types.ObjectId, ref: "AppointmentSlot" },
+        newDate: Date,
+        newStartTime: String,
+        newEndTime: String,
+        newSlotId: { type: mongoose.Schema.Types.ObjectId, ref: "AppointmentSlot" },
+        rescheduledAt: Date,
+        rescheduledBy: String,
+      },
+    ],
+    rescheduledAt: Date,
+    rescheduleCount: { type: Number, default: 0 },
+
     // =============================================
     // PATIENT DETAILS
     // =============================================
