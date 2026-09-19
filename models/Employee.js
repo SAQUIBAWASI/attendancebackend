@@ -376,17 +376,17 @@ const employeeSchema = new mongoose.Schema({
   parentsName: { type: String },
   gender: { type: String, enum: ['Male', 'Female', 'Other', ''], default: '' },
 
-    // ─── Current Location ───
+  // ─── Current Location ───
   latitude: { type: Number, default: null },
   longitude: { type: Number, default: null },
-  address: { type: String, default: null }, // ✅ CURRENT ADDRESS
+  address: { type: String, default: null },
   
   // ─── Login Location ───
   lastLoginLocation: {
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
     timestamp: { type: Date, default: null },
-    address: { type: String, default: null } // ✅ LOGIN ADDRESS
+    address: { type: String, default: null }
   },
   
   // ─── Check-In Location ───
@@ -394,7 +394,7 @@ const employeeSchema = new mongoose.Schema({
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
     timestamp: { type: Date, default: null },
-    address: { type: String, default: null } // ✅ CHECK-IN ADDRESS
+    address: { type: String, default: null }
   },
   
   // ─── Check-Out Location ───
@@ -402,10 +402,10 @@ const employeeSchema = new mongoose.Schema({
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
     timestamp: { type: Date, default: null },
-    address: { type: String, default: null } // ✅ CHECK-OUT ADDRESS
+    address: { type: String, default: null }
   },
   
-  // ─── Location History (Optional) ───
+  // ─── Location History ───
   locationHistory: [{
     latitude: { type: Number },
     longitude: { type: Number },
@@ -416,97 +416,100 @@ const employeeSchema = new mongoose.Schema({
   
   lastLocationUpdate: { type: Date, default: null },
   lastKnownIp: { type: String, default: null },
-  profileImage: {
-    type: String,
-    default: null
-  },
-  lastFaceVerifiedAt: {
-    type: Date,
-    default: null
-  },
+  profileImage: { type: String, default: null },
+  lastFaceVerifiedAt: { type: Date, default: null },
   
   // Bank & Statutory Details
   bankName: { type: String, default: "" },
   bankAccountNo: { type: String, default: "" },
   ifscCode: { type: String, default: "" },
+  
+  // ✅ PAN Card Number
   panNumber: { type: String, default: "" },
+  // ✅ PAN Document (PDF / Image upload)
+  panDocumentUrl: { type: String, default: "" },
+  panDocumentFileName: { type: String, default: "" },
+  panDocumentFileType: { type: String, default: "" },
+  panDocumentFileSize: { type: Number, default: 0 },
+  
+  // ✅ Aadhaar Card Number
+  aadharNumber: { type: String, default: "" },
+  // ✅ Aadhaar Document (PDF / Image upload)
+  aadharDocumentUrl: { type: String, default: "" },
+  aadharDocumentFileName: { type: String, default: "" },
+  aadharDocumentFileType: { type: String, default: "" },
+  aadharDocumentFileSize: { type: Number, default: 0 },
+  
   pfNumber: { type: String, default: "" },
   uanNumber: { type: String, default: "" },
   esicNumber: { type: String, default: "" },
   branch: { type: String, default: "" },
   
   // Employment Info
-employeeId: { type: String, unique: true, required: true },
-joinDate: { type: Date, required: true },
-dob: { type: Date },
-reportingManager: { type: String, default: '' },
-employmentType: { 
-  type: String, 
-  enum: ['fulltime', 'parttime', 'contract', 'internship', ''], 
-  default: 'fulltime' 
-},
+  employeeId: { type: String, unique: true, required: true },
+  joinDate: { type: Date, required: true },
+  dob: { type: Date },
+  reportingManager: { type: String, default: '' },
+  employmentType: { 
+    type: String, 
+    enum: ['fulltime', 'parttime', 'contract', 'internship', ''], 
+    default: 'fulltime' 
+  },
 
-  // In Employee model, ensure this field exists
-isAllowedImageCapturedAttendance: {
-  type: Boolean,
-  default: false
-},
-
-
+  isAllowedImageCapturedAttendance: {
+    type: Boolean,
+    default: false
+  },
 
   assignedWorkingDays: {
     type: Number,
     default: 26,
   },
 
-salaryIncrements: {
-  type: [{
-    incrementType: { type: String, enum: ['percentage', 'amount'] },
-    incrementValue: { type: Number },
-    oldSalaryPerMonth: { type: Number, default: 0 },
-    newSalaryPerMonth: { type: Number, default: 0 },
-    effectiveFrom: { type: Date },
-    effectiveMonth: { type: Number },
-    effectiveYear: { type: Number },
-    reason: { type: String, default: "" },
-    createdAt: { type: Date, default: Date.now }
-  }],
-  default: []
-},
+  salaryIncrements: {
+    type: [{
+      incrementType: { type: String, enum: ['percentage', 'amount'] },
+      incrementValue: { type: Number },
+      oldSalaryPerMonth: { type: Number, default: 0 },
+      newSalaryPerMonth: { type: Number, default: 0 },
+      effectiveFrom: { type: Date },
+      effectiveMonth: { type: Number },
+      effectiveYear: { type: Number },
+      reason: { type: String, default: "" },
+      createdAt: { type: Date, default: Date.now }
+    }],
+    default: []
+  },
 
-// Employee schema mein ye field add karo
-extraDays: {
-  type: [{
-    date: { type: Date, required: true },
-    day: { type: String },
-    totalHours: { type: Number, default: 0 },
-    extraHours: { type: Number, default: 0 },
-    checkInTime: { type: Date },
-    checkOutTime: { type: Date },
-    isCompOffRequested: { type: Boolean, default: false },
-    compOffRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'ExtraDayCompOff', default: null },
-    month: { type: String }, // "2026-08"
-    year: { type: Number },
-    monthNumber: { type: Number },
-    // ============================================
-    // NEW FIELDS - ADD THESE
-    // ============================================
-    usedBefore: { 
-      type: Date, 
-      default: function() {
-        const date = new Date(this.date);
-        date.setMonth(date.getMonth() - 1); // Default 1 month before
-        return date;
+  extraDays: {
+    type: [{
+      date: { type: Date, required: true },
+      day: { type: String },
+      totalHours: { type: Number, default: 0 },
+      extraHours: { type: Number, default: 0 },
+      checkInTime: { type: Date },
+      checkOutTime: { type: Date },
+      isCompOffRequested: { type: Boolean, default: false },
+      compOffRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'ExtraDayCompOff', default: null },
+      month: { type: String },
+      year: { type: Number },
+      monthNumber: { type: Number },
+      usedBefore: { 
+        type: Date, 
+        default: function() {
+          const date = new Date(this.date);
+          date.setMonth(date.getMonth() - 1);
+          return date;
+        }
+      },
+      status: { 
+        type: String, 
+        enum: ['active', 'expired', 'used'], 
+        default: 'active' 
       }
-    },
-    status: { 
-      type: String, 
-      enum: ['active', 'expired', 'used'], 
-      default: 'active' 
-    }
-  }],
-  default: []
-},
+    }],
+    default: []
+  },
   
   // Department & Role
   departmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', default: null },
@@ -529,22 +532,21 @@ extraDays: {
   shiftType: { type: String, default: "A" },
   shiftHours: { type: Number, default: 8 },
   
- // Current Salary
-salaryPerMonth: { type: Number, default: 0 },
-ctc: { type: Number, default: 0 },
-basicPay: { type: Number, default: 0 },
-hra: { type: Number, default: 0 },
-conveyanceAllowance: { type: Number, default: 0 },
-medicalAllowance: { type: Number, default: 0 },
-performanceAllowance: { type: Number, default: 0 },
-specialAllowance: { type: Number, default: 0 },
-ptax: { type: Number, default: 0 },
-gmc: { type: String, default: "" },
-gmcAmount: { type: Number, default: 0 },
-otherDeductions: { type: Number, default: 0 },
-weekOffPerMonth: { type: Number, default: 0 },
-salaryEffectiveDate: { type: Date, default: null },
-
+  // Current Salary
+  salaryPerMonth: { type: Number, default: 0 },
+  ctc: { type: Number, default: 0 },
+  basicPay: { type: Number, default: 0 },
+  hra: { type: Number, default: 0 },
+  conveyanceAllowance: { type: Number, default: 0 },
+  medicalAllowance: { type: Number, default: 0 },
+  performanceAllowance: { type: Number, default: 0 },
+  specialAllowance: { type: Number, default: 0 },
+  ptax: { type: Number, default: 0 },
+  gmc: { type: String, default: "" },
+  gmcAmount: { type: Number, default: 0 },
+  otherDeductions: { type: Number, default: 0 },
+  weekOffPerMonth: { type: Number, default: 0 },
+  salaryEffectiveDate: { type: Date, default: null },
   
   // Week Off
   weekOffType: { type: String, enum: ['day', 'number', ''], default: '' },
@@ -586,16 +588,12 @@ employeeSchema.pre('save', function(next) {
 
 // ==================== SALARY INCREMENT METHODS ====================
 
-// Method to calculate and apply increment
 employeeSchema.methods.applyIncrement = async function(incrementType, incrementValue, effectiveDate, reason = "", approvedBy = null, newComponents = null) {
   const effectiveFrom = new Date(effectiveDate);
   effectiveFrom.setHours(0, 0, 0, 0);
   const effectiveMonth = effectiveFrom.getMonth() + 1;
   const effectiveYear = effectiveFrom.getFullYear();
-  const currentDate = new Date();
-  currentDate.setHours(0, 0, 0, 0);
   
-  // Store old values
   const oldValues = {
     oldSalaryPerMonth: this.salaryPerMonth,
     oldBasicPay: this.basicPay,
@@ -607,7 +605,6 @@ employeeSchema.methods.applyIncrement = async function(incrementType, incrementV
     oldCtc: this.ctc
   };
   
-  // Use newComponents as base if provided (i.e. if user modified them before applying increment)
   const baseSalaryPerMonth = newComponents ? (newComponents.salaryPerMonth || this.salaryPerMonth) : this.salaryPerMonth;
   const baseBasicPay = newComponents ? (newComponents.basicPay || this.basicPay) : this.basicPay;
   const baseHra = newComponents ? (newComponents.hra || this.hra) : this.hra;
@@ -617,7 +614,6 @@ employeeSchema.methods.applyIncrement = async function(incrementType, incrementV
   const baseSpecialAllowance = newComponents ? (newComponents.specialAllowance || this.specialAllowance) : this.specialAllowance;
   const baseCtc = newComponents ? (newComponents.ctc || this.ctc) : this.ctc;
 
-  // Calculate new values
   let newSalaryPerMonth = baseSalaryPerMonth;
   let newBasicPay = baseBasicPay;
   let newHra = baseHra;
@@ -653,7 +649,6 @@ employeeSchema.methods.applyIncrement = async function(incrementType, incrementV
     }
   }
   
-  // Create increment record
   const incrementRecord = {
     incrementType,
     incrementValue,
@@ -674,11 +669,8 @@ employeeSchema.methods.applyIncrement = async function(incrementType, incrementV
     isActive: true
   };
   
-  // Add to history
   this.salaryIncrements.push(incrementRecord);
   
-  // ✅ IMPORTANT: Always update current salary to latest increment value
-  // This ensures salaryPerMonth always reflects the most recent increment
   this.salaryPerMonth = newSalaryPerMonth;
   this.basicPay = newBasicPay;
   this.hra = newHra;
@@ -688,21 +680,15 @@ employeeSchema.methods.applyIncrement = async function(incrementType, incrementV
   this.specialAllowance = newSpecialAllowance;
   this.ctc = newCtc;
   
-  console.log(`✅ Increment applied: ${this.name} salary updated from ${oldValues.oldSalaryPerMonth} to ${newSalaryPerMonth}`);
-  
   await this.save();
   return incrementRecord;
 };
 
-// Method to get salary for a specific date
 employeeSchema.methods.getSalaryForDate = async function(date) {
   const targetDate = new Date(date);
   targetDate.setHours(0, 0, 0, 0);
   
-  // Get all active increments
   const activeIncrements = this.salaryIncrements.filter(inc => inc.isActive === true);
-  
-  // Find all increments applied strictly before the target month
   const targetMonthStr = targetDate.toISOString().slice(0, 7);
   const applicableIncrements = activeIncrements.filter(inc => {
     const incDate = new Date(inc.effectiveFrom);
@@ -710,7 +696,6 @@ employeeSchema.methods.getSalaryForDate = async function(date) {
     return incMonthStr < targetMonthStr;
   });
   
-  // Sort by effective date (latest first)
   applicableIncrements.sort((a, b) => new Date(b.effectiveFrom) - new Date(a.effectiveFrom));
   
   if (applicableIncrements.length > 0) {
@@ -728,26 +713,22 @@ employeeSchema.methods.getSalaryForDate = async function(date) {
     };
   }
   
-  // If no applicable increments but increments exist (meaning targetDate is before the first increment)
   if (activeIncrements.length > 0) {
-    // Find the increment with the earliest effective date
     const earliestIncrement = [...activeIncrements].sort((a, b) => new Date(a.effectiveFrom).getTime() - new Date(b.effectiveFrom).getTime())[0];
     
-    // Return the old salary from the earliest increment
     return {
-      salaryPerMonth: earliestIncrement.oldSalaryPerMonth || earliestIncrement.previousSalaryPerMonth || this.originalSalary || this.salaryPerMonth,
-      basicPay: earliestIncrement.oldBasicPay || earliestIncrement.previousBasicPay || this.basicPay,
-      hra: earliestIncrement.oldHra || earliestIncrement.previousHra || this.hra,
-      conveyanceAllowance: earliestIncrement.oldConveyanceAllowance || earliestIncrement.previousConveyanceAllowance || this.conveyanceAllowance,
-      medicalAllowance: earliestIncrement.oldMedicalAllowance || earliestIncrement.previousMedicalAllowance || this.medicalAllowance,
-      performanceAllowance: earliestIncrement.oldPerformanceAllowance || earliestIncrement.previousPerformanceAllowance || this.performanceAllowance,
-      specialAllowance: earliestIncrement.oldSpecialAllowance || earliestIncrement.previousSpecialAllowance || this.specialAllowance,
-      ctc: earliestIncrement.oldCtc || earliestIncrement.previousCtc || this.ctc,
+      salaryPerMonth: earliestIncrement.oldSalaryPerMonth || this.salaryPerMonth,
+      basicPay: earliestIncrement.oldBasicPay || this.basicPay,
+      hra: earliestIncrement.oldHra || this.hra,
+      conveyanceAllowance: earliestIncrement.oldConveyanceAllowance || this.conveyanceAllowance,
+      medicalAllowance: earliestIncrement.oldMedicalAllowance || this.medicalAllowance,
+      performanceAllowance: earliestIncrement.oldPerformanceAllowance || this.performanceAllowance,
+      specialAllowance: earliestIncrement.oldSpecialAllowance || this.specialAllowance,
+      ctc: earliestIncrement.oldCtc || this.ctc,
       effectiveFrom: this.joinDate
     };
   }
   
-  // Return current salary if no increments found at all
   return {
     salaryPerMonth: this.salaryPerMonth,
     basicPay: this.basicPay,
@@ -761,7 +742,6 @@ employeeSchema.methods.getSalaryForDate = async function(date) {
   };
 };
 
-// Method to get salary for a specific month
 employeeSchema.methods.getSalaryForMonth = async function(yearMonth) {
   const [year, month] = yearMonth.split('-').map(Number);
   const firstDayOfMonth = new Date(year, month - 1, 1);
@@ -769,7 +749,6 @@ employeeSchema.methods.getSalaryForMonth = async function(yearMonth) {
   return await this.getSalaryForDate(firstDayOfMonth);
 };
 
-// Method to apply future increments that are due
 employeeSchema.methods.applyDueIncrements = async function() {
   const currentDate = new Date();
   currentDate.setHours(0, 0, 0, 0);
@@ -796,7 +775,6 @@ employeeSchema.methods.applyDueIncrements = async function() {
   return appliedCount;
 };
 
-// Static method to get employee salary history
 employeeSchema.statics.getSalaryHistory = async function(employeeId, startDate, endDate) {
   const employee = await this.findById(employeeId);
   if (!employee) return null;

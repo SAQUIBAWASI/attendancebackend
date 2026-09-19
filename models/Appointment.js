@@ -27,6 +27,17 @@ const appointmentSchema = new mongoose.Schema(
     appointmentDate: { type: String, default: "" },
 
 
+    invoiceUrl: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    invoiceGeneratedAt: {
+      type: Date,
+      default: null,
+    },
+
+
 
     // In your Appointment schema:
     rescheduleHistory: [

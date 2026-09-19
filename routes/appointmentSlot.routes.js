@@ -5,7 +5,19 @@ const AppointmentSlotConfig = require("../models/AppointmentSlotConfig");
 const AppointmentSlot = require("../models/AppointmentSlot");
 const Appointment = require("../models/Appointment");
 const Razorpay = require("razorpay");
+const puppeteer = require("puppeteer");
+const axios = require("axios");
 
+
+
+
+// ===== MSG91 Config =====
+const MSG91_AUTH_KEY = "432519AzEW3EBfmb1N67482e1aP1"; // .env se lein
+const MSG91_WA_API = "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/";
+const MSG91_NAMESPACE = "dad418a7_c0d7_42c8_8f6e_1d6abee724f2";
+const INTEGRATED_NUMBER = "919010480303";
+const TEMPLATE_NAME = "invoice_link";
+const BASE_URL = "https://api.timelyhealth.in"; // PDF link banane ke liye
 
 
 
@@ -1259,8 +1271,439 @@ router.put("/updatelabtotal/:id", async (req, res) => {
 });
 
 
+// // ============================================================
+// // POST /appointment-slots/book  — Book Appointment (FULLY FIXED)
+// // Trusts frontend financials + Force-overrides after save
+// // ============================================================
+// router.post("/book", async (req, res) => {
+//   try {
+//     const {
+//       slotId,
+//       _id,
+//       dayOfWeek,
+//       date,
+//       appointmentDate,
+//       startTime,
+//       endTime,
+//       startTime24,
+//       endTime24,
+//       doctorId,
+//       doctorName,
+//       doctorSpecialization,
+//       patientId,
+//       patientName,
+//       patientAge,
+//       patientGender,
+//       patientDob,
+//       patientTitle,
+//       patientAddress,
+//       patientCity,
+//       patientPincode,
+//       patientPhone,
+//       patientEmail,
+//       purpose,
+//       symptoms,
+//       paymentType,
+//       paymentStatus,
+//       partialAmount,
+//       appointmentType,
+//       priority,
+
+//       // ===== REFERRAL =====
+//       referredByCustomer,
+//       referredByDoctor,
+//       referralCustomerId,
+//       referralDoctorId,
+//       referralContactId,
+//       referredBy,
+//       referralCommission,
+//       referralCommissionType,
+
+//       // ===== DISCOUNT =====
+//       discount,
+//       discountType,
+
+//       // ===== FRONTEND-COMPUTED (TRUST THESE) =====
+//       subtotal: clientSubtotal,
+//       commissionAmount: clientCommissionAmount,
+//       finalPayable: clientFinalPayable,
+//       finalPayableAmount: clientFinalPayableAmount,
+//       grandTotal: clientGrandTotal,
+//       totalAmount: clientTotalAmount,
+//       amountPaid: clientAmountPaid,
+//       balanceAmount: clientBalanceAmount,
+
+//       // ===== OTHER =====
+//       insuranceProvider,
+//       insurancePolicyNumber,
+//       patientBloodGroup,
+//       patientMedicalHistory,
+//       patientAllergies,
+//       patientMedications,
+//       notes,
+//       isOP,
+//       serviceItems,
+//       services
+//     } = req.body;
+
+//     console.log("📥 Booking request received");
+//     console.log("🔍 Frontend financials:", {
+//       clientSubtotal,
+//       clientCommissionAmount,
+//       discount,
+//       clientFinalPayable,
+//       clientAmountPaid,
+//       clientBalanceAmount,
+//       paymentStatus,
+//     });
+
+//     let slot = null;
+//     const finalDate =
+//       appointmentDate || date || new Date().toISOString().split("T")[0];
+
+//     // ===== FIND SLOT =====
+//     if (_id && mongoose.Types.ObjectId.isValid(_id)) {
+//       slot = await AppointmentSlot.findById(_id);
+//     }
+//     if (!slot && slotId) {
+//       if (mongoose.Types.ObjectId.isValid(slotId)) {
+//         slot = await AppointmentSlot.findById(slotId);
+//       } else {
+//         slot = await AppointmentSlot.findOne({ slotId: slotId });
+//       }
+//     }
+//     if (!slot && dayOfWeek && startTime && doctorId) {
+//       slot = await AppointmentSlot.findOne({
+//         doctorId: doctorId,
+//         dayOfWeek: new RegExp(`^${dayOfWeek}$`, "i"),
+//         startTime: startTime,
+//         status: "available",
+//       });
+//     }
+//     if (!slot && finalDate && startTime && doctorId) {
+//       slot = await AppointmentSlot.findOne({
+//         doctorId: doctorId,
+//         date: finalDate,
+//         startTime: startTime,
+//         status: "available",
+//       });
+//     }
+//     if (!slot && doctorId && startTime) {
+//       slot = await AppointmentSlot.findOne({
+//         doctorId: doctorId,
+//         startTime: startTime,
+//         status: "available",
+//       });
+//     }
+
+//     if (!slot) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Slot not found. Please select a valid available slot.",
+//       });
+//     }
+
+//     if (slot.status !== "available") {
+//       return res.status(400).json({
+//         success: false,
+//         message: `Slot is not available. Current status: ${slot.status}`,
+//       });
+//     }
+
+//     // Update slot status
+//     slot.status = "booked";
+//     if (finalDate) slot.date = finalDate;
+//     await slot.save();
+
+//     // ===== NORMALIZE REFERRAL =====
+//     let finalReferralContactId = null;
+//     let finalReferralCustomerId = null;
+//     let finalReferralDoctorId = null;
+//     let finalReferredBy = "";
+
+//     if (referralDoctorId && mongoose.Types.ObjectId.isValid(referralDoctorId)) {
+//       finalReferralDoctorId = referralDoctorId;
+//       finalReferralContactId = referralDoctorId;
+//     }
+//     if (referralCustomerId && mongoose.Types.ObjectId.isValid(referralCustomerId)) {
+//       finalReferralCustomerId = referralCustomerId;
+//       if (!finalReferralContactId) {
+//         finalReferralContactId = referralCustomerId;
+//       }
+//     }
+//     if (
+//       !finalReferralContactId &&
+//       referralContactId &&
+//       mongoose.Types.ObjectId.isValid(referralContactId)
+//     ) {
+//       finalReferralContactId = referralContactId;
+//     }
+//     finalReferredBy = referredByDoctor || referredByCustomer || referredBy || "";
+
+//     // ===== ✅ COMPUTE FINANCIALS — TRUST FRONTEND FIRST =====
+//     const finalServices = serviceItems || services || [];
+//     const servicesTotal = finalServices.reduce(
+//       (sum, s) => sum + (Number(s.price) || 0),
+//       0
+//     );
+
+//     // Server-side fallback calc
+//     const commissionPercent = parseFloat(referralCommission) || 0;
+//     const serverSubtotal = servicesTotal;
+//     const serverCommissionAmount = (serverSubtotal * commissionPercent) / 100;
+//     const serverDiscountAmount = Number(discount) || 0;
+//     const serverFinalPayable =
+//       serverSubtotal - serverCommissionAmount - serverDiscountAmount;
+
+//     // ✅ Trust frontend if provided, else fallback
+//     const subtotal =
+//       Number.isFinite(Number(clientSubtotal)) && Number(clientSubtotal) > 0
+//         ? Number(clientSubtotal)
+//         : serverSubtotal;
+
+//     const commissionAmount =
+//       Number.isFinite(Number(clientCommissionAmount))
+//         ? Number(clientCommissionAmount)
+//         : serverCommissionAmount;
+
+//     const discountAmount = Number(discount) || 0;
+
+//     const finalPayableFromClient =
+//       Number(clientFinalPayable) ||
+//       Number(clientFinalPayableAmount) ||
+//       Number(clientGrandTotal) ||
+//       Number(clientTotalAmount) ||
+//       0;
+
+//     const finalPayable =
+//       finalPayableFromClient > 0 ? finalPayableFromClient : serverFinalPayable;
+
+//     // ✅ AMOUNT PAID / BALANCE — trust frontend explicitly
+//     const parsedPartial = Number(partialAmount) || 0;
+//     const clientSentAmountPaid = Number(clientAmountPaid);
+//     const clientSentBalance = Number(clientBalanceAmount);
+//     const frontendTrusted =
+//       Number.isFinite(clientSentAmountPaid) &&
+//       Number.isFinite(clientSentBalance) &&
+//       (clientSentAmountPaid > 0 || clientSentBalance > 0);
+
+//     let finalPaymentStatus = paymentStatus || "Pending";
+//     let finalAmountPaid = 0;
+//     let finalBalanceAmount = finalPayable;
+
+//     if (frontendTrusted) {
+//       // ✅ Trust frontend numbers
+//       finalAmountPaid = Math.max(
+//         0,
+//         Math.min(clientSentAmountPaid, finalPayable)
+//       );
+//       finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
+
+//       if (finalBalanceAmount <= 0 && finalAmountPaid > 0) {
+//         finalPaymentStatus = "Paid";
+//         finalAmountPaid = finalPayable;
+//         finalBalanceAmount = 0;
+//       } else if (finalAmountPaid > 0 && finalBalanceAmount > 0) {
+//         finalPaymentStatus = "Partial";
+//       } else if (finalAmountPaid <= 0) {
+//         finalPaymentStatus = paymentStatus === "Due" ? "Due" : "Pending";
+//       }
+//     } else {
+//       // Fallback logic
+//       if (paymentStatus === "Paid") {
+//         finalAmountPaid = finalPayable;
+//         finalBalanceAmount = 0;
+//         finalPaymentStatus = "Paid";
+//       } else if (paymentStatus === "Partial" && parsedPartial > 0) {
+//         finalAmountPaid = Math.min(parsedPartial, finalPayable);
+//         finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
+//         finalPaymentStatus = finalBalanceAmount === 0 ? "Paid" : "Partial";
+//         if (finalPaymentStatus === "Paid") {
+//           finalAmountPaid = finalPayable;
+//           finalBalanceAmount = 0;
+//         }
+//       } else if (paymentStatus === "Due") {
+//         finalAmountPaid = 0;
+//         finalBalanceAmount = finalPayable;
+//         finalPaymentStatus = "Due";
+//       } else {
+//         // Pending or unknown
+//         if (parsedPartial > 0) {
+//           if (parsedPartial >= finalPayable) {
+//             finalPaymentStatus = "Paid";
+//             finalAmountPaid = finalPayable;
+//             finalBalanceAmount = 0;
+//           } else {
+//             finalPaymentStatus = "Partial";
+//             finalAmountPaid = parsedPartial;
+//             finalBalanceAmount = finalPayable - parsedPartial;
+//           }
+//         } else {
+//           finalPaymentStatus = "Pending";
+//           finalAmountPaid = 0;
+//           finalBalanceAmount = finalPayable;
+//         }
+//       }
+//     }
+
+//     console.log("💰 Computed FINAL:", {
+//       subtotal,
+//       commissionAmount,
+//       discountAmount,
+//       finalPayable,
+//       finalAmountPaid,
+//       finalBalanceAmount,
+//       finalPaymentStatus,
+//     });
+
+//     // ===== CREATE APPOINTMENT =====
+//     const appointmentData = {
+//       slotId: slot._id,
+//       appointmentDate: finalDate,
+//       slotDetails: {
+//         dayOfWeek: slot.dayOfWeek || dayOfWeek,
+//         date: finalDate,
+//         startTime: slot.startTime || startTime,
+//         endTime: slot.endTime || endTime,
+//         startTime24: slot.startTime24 || startTime24,
+//         endTime24: slot.endTime24 || endTime24,
+//         doctorId: slot.doctorId || doctorId,
+//         doctorName: slot.doctorName || doctorName,
+//         doctorSpecialization:
+//           slot.doctorSpecialization || doctorSpecialization,
+//       },
+//       patientId: patientId || undefined,
+//       patientName,
+//       patientTitle: patientTitle || "Mr.",
+//       patientDob: patientDob || "",
+//       patientAge,
+//       patientGender,
+//       patientPhone,
+//       patientEmail: patientEmail || "",
+//       patientAddress: patientAddress || "",
+//       patientCity: patientCity || "",
+//       patientPincode: patientPincode || "",
+//       patientBloodGroup: patientBloodGroup || "",
+//       patientMedicalHistory: patientMedicalHistory || "",
+//       patientAllergies: patientAllergies || "",
+//       patientMedications: patientMedications || "",
+//       purpose: purpose || "",
+//       symptoms: symptoms || "",
+
+//       paymentType: paymentType || "cash",
+//       paymentStatus: finalPaymentStatus,
+//       partialAmount: finalAmountPaid,
+//       amountPaid: finalAmountPaid,
+//       balanceAmount: finalBalanceAmount,
+//       appointmentType: appointmentType || "Consultation",
+//       priority: priority || "Normal",
+
+//       // Referral
+//       referredBy: finalReferredBy,
+//       referralContactId: finalReferralContactId,
+//       referralCustomerId: finalReferralCustomerId,
+//       referralDoctorId: finalReferralDoctorId,
+//       referredByCustomer: referredByCustomer || "",
+//       referredByDoctor: referredByDoctor || "",
+//       referralCommission: referralCommission || "",
+//       referralCommissionType: referralCommissionType || "",
+
+//       // Services
+//       services: finalServices.map((s) => ({
+//         serviceId: s.serviceId || s._id,
+//         name: s.name,
+//         price: Number(s.price) || 0,
+//         description: s.description || "",
+//         paymentStatus: s.paymentStatus || "Pending",
+//       })),
+
+//       // ✅ Financials — all synced to same value
+//       servicesTotal,
+//       subtotal,
+//       commissionAmount,
+//       discount: discountAmount,
+//       discountType: discountType || "₹",
+//       finalPayable,
+//       finalPayableAmount: finalPayable,
+//       grandTotal: finalPayable,
+//       totalAmount: finalPayable,
+//       totalFee: finalPayable,
+
+//       insuranceProvider: insuranceProvider || "",
+//       insurancePolicyNumber: insurancePolicyNumber || "",
+//       notes: notes || "",
+//       status: "confirmed",
+//       bookedAt: new Date(),
+//       isOP: isOP || false,
+//       partnerPaymentStatus: "Due",
+//     };
+
+//     const bookedAppointment = new Appointment(appointmentData);
+//     await bookedAppointment.save();
+
+//     // ============================================================
+//     // ✅ CRITICAL FIX: FORCE OVERRIDE after save
+//     // This bypasses any pre-save hook that recalculates finalPayable
+//     // ============================================================
+//     await Appointment.updateOne(
+//       { _id: bookedAppointment._id },
+//       {
+//         $set: {
+//           servicesTotal,
+//           subtotal,
+//           commissionAmount,
+//           discount: discountAmount,
+//           discountType: discountType || "₹",
+//           finalPayable,
+//           finalPayableAmount: finalPayable,
+//           grandTotal: finalPayable,
+//           totalAmount: finalPayable,
+//           totalFee: finalPayable,
+//           amountPaid: finalAmountPaid,
+//           balanceAmount: finalBalanceAmount,
+//           partialAmount: finalAmountPaid,
+//           paymentStatus: finalPaymentStatus,
+//         },
+//       }
+//     );
+
+//     console.log("✅ Force override applied to DB");
+
+//     // ===== FETCH FRESH DOCUMENT =====
+//     const populatedAppointment = await Appointment.findById(
+//       bookedAppointment._id
+//     )
+//       .populate("referralContactId")
+//       .populate("referralCustomerId")
+//       .populate("referralDoctorId");
+
+//     console.log("🎯 Final DB values:", {
+//       finalPayable: populatedAppointment.finalPayable,
+//       amountPaid: populatedAppointment.amountPaid,
+//       balanceAmount: populatedAppointment.balanceAmount,
+//       paymentStatus: populatedAppointment.paymentStatus,
+//     });
+
+//     return res.status(200).json({
+//       success: true,
+//       message: `✅ Appointment booked successfully for ${patientName}!`,
+//       appointment: populatedAppointment,
+//       slot: slot,
+//     });
+//   } catch (error) {
+//     console.error("❌ Error booking appointment:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// });
+
+
+
+
 // ============================================================
-// POST /appointment-slots/book  — Book Appointment (FULLY FIXED)
+// POST /appointment-slots/book — Book Appointment (NO VALIDATION)
 // Trusts frontend financials + Force-overrides after save
 // ============================================================
 router.post("/book", async (req, res) => {
@@ -1334,7 +1777,7 @@ router.post("/book", async (req, res) => {
       services
     } = req.body;
 
-    console.log("📥 Booking request received");
+    console.log("📥 Booking request received (NO VALIDATION MODE)");
     console.log("🔍 Frontend financials:", {
       clientSubtotal,
       clientCommissionAmount,
@@ -1349,23 +1792,21 @@ router.post("/book", async (req, res) => {
     const finalDate =
       appointmentDate || date || new Date().toISOString().split("T")[0];
 
-    // ===== FIND SLOT =====
+    // ===== FIND SLOT (BEST EFFORT — NO BLOCKING) =====
     if (_id && mongoose.Types.ObjectId.isValid(_id)) {
       slot = await AppointmentSlot.findById(_id);
     }
+    if (!slot && slotId && mongoose.Types.ObjectId.isValid(slotId)) {
+      slot = await AppointmentSlot.findById(slotId);
+    }
     if (!slot && slotId) {
-      if (mongoose.Types.ObjectId.isValid(slotId)) {
-        slot = await AppointmentSlot.findById(slotId);
-      } else {
-        slot = await AppointmentSlot.findOne({ slotId: slotId });
-      }
+      slot = await AppointmentSlot.findOne({ slotId: slotId });
     }
     if (!slot && dayOfWeek && startTime && doctorId) {
       slot = await AppointmentSlot.findOne({
         doctorId: doctorId,
         dayOfWeek: new RegExp(`^${dayOfWeek}$`, "i"),
         startTime: startTime,
-        status: "available",
       });
     }
     if (!slot && finalDate && startTime && doctorId) {
@@ -1373,35 +1814,24 @@ router.post("/book", async (req, res) => {
         doctorId: doctorId,
         date: finalDate,
         startTime: startTime,
-        status: "available",
       });
     }
     if (!slot && doctorId && startTime) {
       slot = await AppointmentSlot.findOne({
         doctorId: doctorId,
         startTime: startTime,
-        status: "available",
       });
     }
 
+    // ✅ NO ERROR IF SLOT NOT FOUND — continue with whatever we have
     if (!slot) {
-      return res.status(404).json({
-        success: false,
-        message: "Slot not found. Please select a valid available slot.",
-      });
+      console.log("⚠️ No slot found — proceeding without slot linkage");
+    } else {
+      // Update slot status only if found
+      slot.status = "booked";
+      if (finalDate) slot.date = finalDate;
+      await slot.save();
     }
-
-    if (slot.status !== "available") {
-      return res.status(400).json({
-        success: false,
-        message: `Slot is not available. Current status: ${slot.status}`,
-      });
-    }
-
-    // Update slot status
-    slot.status = "booked";
-    if (finalDate) slot.date = finalDate;
-    await slot.save();
 
     // ===== NORMALIZE REFERRAL =====
     let finalReferralContactId = null;
@@ -1464,7 +1894,7 @@ router.post("/book", async (req, res) => {
       0;
 
     const finalPayable =
-      finalPayableFromClient > 0 ? finalPayableFromClient : serverFinalPayable;
+      finalPayableFromClient > 0 ? finalPayableFromClient : Math.max(0, serverFinalPayable);
 
     // ✅ AMOUNT PAID / BALANCE — trust frontend explicitly
     const parsedPartial = Number(partialAmount) || 0;
@@ -1544,29 +1974,29 @@ router.post("/book", async (req, res) => {
       finalPaymentStatus,
     });
 
-    // ===== CREATE APPOINTMENT =====
+    // ===== CREATE APPOINTMENT (NO VALIDATION) =====
     const appointmentData = {
-      slotId: slot._id,
+      slotId: slot ? slot._id : undefined,
       appointmentDate: finalDate,
       slotDetails: {
-        dayOfWeek: slot.dayOfWeek || dayOfWeek,
+        dayOfWeek: (slot && slot.dayOfWeek) || dayOfWeek || "",
         date: finalDate,
-        startTime: slot.startTime || startTime,
-        endTime: slot.endTime || endTime,
-        startTime24: slot.startTime24 || startTime24,
-        endTime24: slot.endTime24 || endTime24,
-        doctorId: slot.doctorId || doctorId,
-        doctorName: slot.doctorName || doctorName,
+        startTime: (slot && slot.startTime) || startTime || "",
+        endTime: (slot && slot.endTime) || endTime || "",
+        startTime24: (slot && slot.startTime24) || startTime24 || "",
+        endTime24: (slot && slot.endTime24) || endTime24 || "",
+        doctorId: (slot && slot.doctorId) || doctorId || "",
+        doctorName: (slot && slot.doctorName) || doctorName || "",
         doctorSpecialization:
-          slot.doctorSpecialization || doctorSpecialization,
+          (slot && slot.doctorSpecialization) || doctorSpecialization || "",
       },
       patientId: patientId || undefined,
-      patientName,
+      patientName: patientName || "Unknown Patient",
       patientTitle: patientTitle || "Mr.",
       patientDob: patientDob || "",
-      patientAge,
-      patientGender,
-      patientPhone,
+      patientAge: patientAge || "",
+      patientGender: patientGender || "",
+      patientPhone: patientPhone || "",
       patientEmail: patientEmail || "",
       patientAddress: patientAddress || "",
       patientCity: patientCity || "",
@@ -1598,8 +2028,8 @@ router.post("/book", async (req, res) => {
 
       // Services
       services: finalServices.map((s) => ({
-        serviceId: s.serviceId || s._id,
-        name: s.name,
+        serviceId: s.serviceId || s._id || undefined,
+        name: s.name || "Service",
         price: Number(s.price) || 0,
         description: s.description || "",
         paymentStatus: s.paymentStatus || "Pending",
@@ -1674,9 +2104,9 @@ router.post("/book", async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `✅ Appointment booked successfully for ${patientName}!`,
+      message: `✅ Appointment booked successfully for ${patientName || "Unknown Patient"}!`,
       appointment: populatedAppointment,
-      slot: slot,
+      slot: slot || null,
     });
   } catch (error) {
     console.error("❌ Error booking appointment:", error);
@@ -3245,6 +3675,376 @@ router.put("/reschedule/:appointmentId", async (req, res) => {
     });
   }
 });
+
+
+
+
+// =============================================
+// RESET ALL BOOKED SLOTS TO AVAILABLE
+// =============================================
+router.patch("/reset-booked-slots", async (req, res) => {
+  try {
+    const result = await AppointmentSlot.updateMany(
+      { status: "booked" },
+      { $set: { status: "available" } }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "All booked slots have been changed to available.",
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount
+    });
+
+  } catch (error) {
+    console.error("Error resetting booked slots:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+
+
+
+router.post("/save-invoice", async (req, res) => {
+  try {
+    const { bookingId, html } = req.body;
+
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: "bookingId is required",
+      });
+    }
+
+    if (!html) {
+      return res.status(400).json({
+        success: false,
+        message: "html is required",
+      });
+    }
+
+    const booking = await Appointment.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    // ✅ Agar invoice already exist karti hai toh skip karo
+    if (booking.invoiceUrl && booking.invoiceUrl.trim() !== "") {
+      console.log(`ℹ️ Invoice already exists for booking ${bookingId}: ${booking.invoiceUrl}`);
+      return res.status(200).json({
+        success: true,
+        message: "Invoice already exists — skipping regeneration",
+        invoiceUrl: booking.invoiceUrl,
+        alreadyExists: true,
+      });
+    }
+
+    // Ensure uploads directory exists
+    const uploadsDir = path.join(__dirname, "..", "uploads");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const fileName = `invoice-${bookingId}.pdf`;
+    const filePath = path.join(uploadsDir, fileName);
+
+    console.log(`🖨️ Generating PDF for booking ${bookingId}...`);
+
+    // ===== Convert HTML to PDF using puppeteer =====
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    await page.pdf({
+      path: filePath,
+      format: "A4",
+      printBackground: true,
+      margin: { top: "0", right: "0", bottom: "0", left: "0" },
+    });
+
+    await browser.close();
+
+    console.log(`✅ PDF generated: ${filePath}`);
+
+    // Save URL to DB
+    const invoiceUrl = `/uploads/${fileName}`;
+    booking.invoiceUrl = invoiceUrl;
+    booking.invoiceGeneratedAt = new Date();
+    await booking.save();
+
+    console.log(`✅ Invoice URL saved to DB: ${invoiceUrl}`);
+
+    return res.status(200).json({
+      success: true,
+      message: "Invoice saved successfully",
+      invoiceUrl,
+      alreadyExists: false,
+    });
+  } catch (error) {
+    console.error("❌ Error saving invoice:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+
+
+
+router.post("/send-invoice", async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: "bookingId is required",
+      });
+    }
+
+    // ===== Booking fetch karo =====
+    const booking = await Appointment.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    // ===== Invoice URL check karo =====
+    if (!booking.invoiceUrl || booking.invoiceUrl.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Invoice not generated yet. Please generate invoice first.",
+      });
+    }
+
+    // ===== Patient phone check karo =====
+    const patientPhone = booking.patientPhone;
+    if (!patientPhone) {
+      return res.status(400).json({
+        success: false,
+        message: "Patient phone number not found in booking",
+      });
+    }
+
+    // ===== Phone number format karo (91 + 10 digit) =====
+    let formattedPhone = patientPhone.toString().replace(/\D/g, "");
+    if (formattedPhone.length === 10) {
+      formattedPhone = "91" + formattedPhone;
+    } else if (formattedPhone.startsWith("0")) {
+      formattedPhone = "91" + formattedPhone.slice(1);
+    }
+
+    // ===== PDF ka full public URL banao =====
+    const invoiceFullUrl = booking.invoiceUrl.startsWith("http")
+      ? booking.invoiceUrl
+      : `${BASE_URL}${booking.invoiceUrl}`;
+
+    // ===== Patient ka naam =====
+    const patientName = `${booking.patientTitle || ""} ${booking.patientName || ""}`.trim() || "Patient";
+
+    console.log(`📤 Sending invoice to ${formattedPhone}...`);
+    console.log(`🔗 Invoice URL: ${invoiceFullUrl}`);
+
+    // ===== MSG91 WhatsApp API Payload =====
+    const payload = {
+      integrated_number: INTEGRATED_NUMBER,
+      content_type: "template",
+      payload: {
+        messaging_product: "whatsapp",
+        type: "template",
+        template: {
+          name: TEMPLATE_NAME,
+          language: {
+            code: "en",
+            policy: "deterministic",
+          },
+          namespace: MSG91_NAMESPACE,
+          to_and_components: [
+            {
+              to: [formattedPhone],
+              components: {
+                body_1: {
+                  type: "text",
+                  value: patientName,
+                },
+                body_2: {
+                  type: "text",
+                  value: invoiceFullUrl,
+                },
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    // ===== MSG91 API Call =====
+    const response = await axios.post(MSG91_WA_API, payload, {
+      headers: {
+        "Content-Type": "application/json",
+        authkey: MSG91_AUTH_KEY,
+      },
+    });
+
+    console.log("✅ WhatsApp API Response:", response.data);
+
+    // ===== Booking mein sent status save karo (optional) =====
+    booking.invoiceSentAt = new Date();
+    booking.invoiceSentTo = formattedPhone;
+    await booking.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Invoice sent successfully on WhatsApp",
+      phone: formattedPhone,
+      invoiceUrl: invoiceFullUrl,
+      msg91Response: response.data,
+    });
+  } catch (error) {
+    console.error("❌ Error sending invoice:", error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.response?.data?.message || error.message || "Failed to send invoice",
+      error: error.response?.data || null,
+    });
+  }
+});
+
+
+// ===== SEND INVOICE ON WHATSAPP =====
+router.post("/send-invoice", async (req, res) => {
+  console.log("📤 [BACKEND] Received send-invoice request:", req.body);
+  try {
+    const { bookingId } = req.body;
+
+    if (!bookingId) {
+      return res.status(400).json({ success: false, message: "Booking ID is required" });
+    }
+
+    const booking = await Appointment.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Booking not found in database" });
+    }
+
+    // ===== Invoice URL Check =====
+    if (!booking.invoiceUrl || booking.invoiceUrl.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Invoice not generated yet. Please generate invoice first.",
+      });
+    }
+
+    // ===== Patient Phone =====
+    const patientPhone = booking.patientPhone;
+    if (!patientPhone) {
+      return res.status(400).json({ success: false, message: "Patient phone number not found" });
+    }
+
+    // ===== Phone Format =====
+    let formattedPhone = patientPhone;
+    if (!patientPhone.startsWith("+")) {
+      if (patientPhone.length === 10) {
+        formattedPhone = `+91${patientPhone}`;
+      } else {
+        formattedPhone = `+${patientPhone}`;
+      }
+    }
+    const phoneWithoutPlus = formattedPhone.replace("+", "");
+
+    // ===== MSG91 Config =====
+    const msg91AuthKey = "565249AxLd3LEpU17G6aae8ee2P1";
+    const integratedNumber = "919010480303";
+    const namespace = "dad418a7_c0d7_42c8_8f6e_1d6abee724f2";
+    const templateName = "invoice_link";
+
+    // ===== Patient Name =====
+    const patientName =
+      `${booking.patientTitle || ""} ${booking.patientName || ""}`.trim() || "Patient";
+
+    // ===== Full Invoice URL =====
+    const BASE_URL = "https://api.timelyhealth.in";
+    const invoiceFullUrl = booking.invoiceUrl.startsWith("http")
+      ? booking.invoiceUrl
+      : `${BASE_URL}${booking.invoiceUrl}`;
+
+    // ===== MSG91 Payload =====
+    const msg91Payload = {
+      integrated_number: integratedNumber,
+      content_type: "template",
+      payload: {
+        messaging_product: "whatsapp",
+        type: "template",
+        template: {
+          name: templateName,
+          language: {
+            code: "en",
+            policy: "deterministic",
+          },
+          namespace: namespace,
+          to_and_components: [
+            {
+              to: [phoneWithoutPlus],
+              components: {
+                body_1: { type: "text", value: patientName },
+                body_2: { type: "text", value: invoiceFullUrl },
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    console.log("📤 Sending WhatsApp payload:", JSON.stringify(msg91Payload, null, 2));
+
+    const response = await axios.post(
+      "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
+      msg91Payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          authkey: msg91AuthKey,
+        },
+      }
+    );
+
+    console.log("✅ WhatsApp sent:", response.data);
+
+    // ===== Save sent status =====
+    booking.invoiceSentAt = new Date();
+    booking.invoiceSentTo = phoneWithoutPlus;
+    await booking.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Invoice sent successfully on WhatsApp!",
+      phone: phoneWithoutPlus,
+      invoiceUrl: invoiceFullUrl,
+      msg91Response: response.data,
+    });
+  } catch (error) {
+    console.error("❌ Send Invoice Error:", error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.response?.data?.message || error.message || "Failed to send invoice",
+      error: error.response?.data || null,
+    });
+  }
+});
+
 
 
 

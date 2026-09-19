@@ -189,13 +189,25 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-// Ensure upload directory exists for employee experiences
-const uploadDir = path.join(__dirname, "../uploads/employee-experience");
+// ═══════════════════════════════════════════════════════════
+// ✅✅✅ UPLOADS ROOT — MUST MATCH server.js ⚠️⚠️⚠️
+// ═══════════════════════════════════════════════════════════
+// Uses __dirname which points to /routes folder.
+// So path.join(__dirname, "..", "uploads") = backend root / uploads
+//
+const UPLOADS_ROOT = process.env.UPLOADS_ROOT || path.join(__dirname, "..", "uploads");
+
+console.log("📁 [ROUTES] Uploads root:", UPLOADS_ROOT);
+console.log("📁 [ROUTES] Exists:", fs.existsSync(UPLOADS_ROOT));
+
+// ═══════════════════════════════════════════════════════════
+// ═══ MULTER CONFIG: EMPLOYEE EXPERIENCE UPLOADS ════════════
+// ═══════════════════════════════════════════════════════════
+const uploadDir = path.join(UPLOADS_ROOT, "employee-experience");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Configure Multer for document uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => { cb(null, uploadDir); },
   filename: (req, file, cb) => { cb(null, Date.now() + "-" + Math.round(Math.random() * 1E9) + path.extname(file.originalname)); }
@@ -210,18 +222,17 @@ const upload = multer({
   }
 });
 
-
-
-// ─── Ensure upload directory exists for faces ───
-const faceUploadDir = path.join(__dirname, "../uploads/faces");
+// ═══════════════════════════════════════════════════════════
+// ═══ MULTER CONFIG: FACE UPLOADS ═══════════════════════════
+// ═══════════════════════════════════════════════════════════
+const faceUploadDir = path.join(UPLOADS_ROOT, "faces");
 if (!fs.existsSync(faceUploadDir)) {
   fs.mkdirSync(faceUploadDir, { recursive: true });
 }
 
-// ─── Multer config for face uploads ───
 const faceStorage = multer.diskStorage({
   destination: (req, file, cb) => { cb(null, faceUploadDir); },
-  filename: (req, file, cb) => { 
+  filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
     cb(null, Date.now() + "-" + Math.round(Math.random() * 1E9) + ext);
   }
@@ -236,6 +247,73 @@ const faceUpload = multer({
   }
 });
 
+// ═══════════════════════════════════════════════════════════
+// ═══ ✅ EMPLOYEE DOCUMENTS (PAN / Aadhaar) MULTER CONFIG ════
+// ═══════════════════════════════════════════════════════════
+const employeeDocsDir = path.join(UPLOADS_ROOT, "employee-documents");
+console.log("📁 [ROUTES] Employee docs folder path:", employeeDocsDir);
+
+if (!fs.existsSync(employeeDocsDir)) {
+  fs.mkdirSync(employeeDocsDir, { recursive: true });
+  console.log("📁 [ROUTES] Created employee-documents folder");
+} else {
+  console.log("✅ [ROUTES] Employee-documents folder already exists");
+}
+
+// ✅ SANITIZE FUNCTION
+const sanitizeBaseName = (originalName) => {
+  const ext = path.extname(originalName);
+  let base = path.basename(originalName, ext);
+  base = base.replace(/[^a-zA-Z0-9]/g, "_");
+  base = base.replace(/_+/g, "_");
+  base = base.replace(/^_+|_+$/g, "");
+  base = base.slice(0, 30);
+  if (!base) base = "file";
+  return base;
+};
+
+const employeeDocStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    console.log("🎯 [MULTER] Upload destination:", employeeDocsDir);
+    console.log("🎯 [MULTER] Original filename:", file.originalname);
+    if (!fs.existsSync(employeeDocsDir)) {
+      fs.mkdirSync(employeeDocsDir, { recursive: true });
+    }
+    cb(null, employeeDocsDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const cleanBase = sanitizeBaseName(file.originalname);
+    const timestamp = Date.now();
+    const randomHex = Math.floor(Math.random() * 0xFFFFFFFF).toString(16);
+    const finalName = `${cleanBase}-${timestamp}-${randomHex}${ext}`;
+    console.log("📝 [MULTER] Final filename:", finalName);
+    cb(null, finalName);
+  }
+});
+
+const employeeDocUpload = multer({
+  storage: employeeDocStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp'
+    ];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF, JPG, JPEG, PNG, WEBP files are allowed'));
+    }
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// ═══ CONTROLLERS ════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 const {
   addEmployee, getEmployees, getEmployeeByEmail, getEmployeeByPhone,
   loginEmployee, getEmployeeAttendanceSummary, assignLocation,
@@ -243,7 +321,6 @@ const {
   submitResignation, addEmployeeExperience, getEmployeeExperiences,
   getEmployeeCandidateDocuments, getEmployeeLetters, getBirthdaysToday,
   getAnniversariesToday, convertEmployeeIdsToTH, applyEmployeeSalaryIncrement,
-  // 🆕 Salary increment controllers
   applySalaryIncrement, getEmployeeSalaryForDate, getSalaryIncrementHistory,
   getSalaryTimeline, getAllEmployeesSalaryStatus, applyPendingIncrements,
   fixEmployeeCurrentSalary, forgotPassword, resetPassword, claimOT,
@@ -259,7 +336,9 @@ const {
   getLocation,
   getAllEmployeeLocations,
   updateImageCaptureAttendance,
-  getAllEmployeesForCresol
+  getAllEmployeesForCresol,
+  uploadEmployeeDocument,
+  deleteEmployeeDocument
 } = require("../controller/employee.controller");
 
 const router = express.Router();
@@ -286,62 +365,49 @@ router.get("/experience/:employeeId", getEmployeeExperiences);
 router.get("/candidate-documents/:employeeId", getEmployeeCandidateDocuments);
 router.get("/letters/:employeeId", getEmployeeLetters);
 
-// ==================== 🆕 SALARY INCREMENT ROUTES ====================
+// ==================== SALARY INCREMENT ROUTES ====================
 router.put("/:id/salary-increment", applySalaryIncrement);
 router.get("/:id/salary-for-date", getEmployeeSalaryForDate);
 router.get("/:id/salary-history", getSalaryIncrementHistory);
 router.get("/:id/salary-timeline", getSalaryTimeline);
 router.get("/salary-status/all", getAllEmployeesSalaryStatus);
 router.post("/salary/apply-pending-increments", applyPendingIncrements);
-// Fix employee current salary (temporary fix for existing data)
 router.post("/:id/fix-salary", fixEmployeeCurrentSalary);
 
 router.put('/convert-ids', convertEmployeeIdsToTH);
 
-// Apply salary increment
 router.put('/applysalary-increment/:id', applyEmployeeSalaryIncrement);
 router.post('/claimot', claimOT);
 router.get('/allotclaimed', getAllOTClaimsWithDetails);
 router.put('/update-otclaimedstatus/:id', updateOTClaimStatus);
-
 router.get('/employeeotclaimed/:employeeId', getClaimedOTByEmployee);
 
-// =====================================================
-// ROUTES
-// =====================================================
-
-// Raise Issue
+// ==================== ISSUE ROUTES ====================
 router.post("/raise-issue/:employeeId", raiseIssue);
-
-// Get All Issues
 router.get("/get-all-issues", getAllIssues);
-
-// Get Employee Issues
 router.get("/get-employee-issues/:employeeId", getEmployeeIssues);
-
-// Update Issue
 router.put("/update-issue/:issueId", updateIssue);
-
-// Delete Issue
 router.delete("/delete-issue/:issueId", deleteIssue);
 
-
-// 1. Upload Face
+// ==================== FACE ROUTES ====================
 router.post("/upload-face", faceUpload.single('image'), uploadEmployeeFace);
-
-// 2. Verify Face
 router.post("/verify-face", faceUpload.single('image'), verifyFace);
 
-
-// ─── LOCATION ROUTES ───
-// UPDATE location
+// ==================== LOCATION ROUTES ====================
 router.put('/update-location/:employeeId', updateLocation);
-
-// GET location
 router.get('/get-location/:employeeId', getLocation);
-
 router.get("/employee-locations", getAllEmployeeLocations);
-
 router.put('/update-image-capture', updateImageCaptureAttendance);
+
+// =====================================================
+// ✅ EMPLOYEE DOCUMENT ROUTES (PAN / Aadhaar)
+// =====================================================
+router.post(
+  "/upload-document",
+  employeeDocUpload.single("file"),
+  uploadEmployeeDocument
+);
+
+router.post("/delete-document", deleteEmployeeDocument);
 
 module.exports = router;

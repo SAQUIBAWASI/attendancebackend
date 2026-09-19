@@ -24,11 +24,17 @@ const employeeTaskRoutes = require("./routes/employeeTask.routes");
 
 
 
+
 // ✅ IMPORT DAILY TASK REPEATER JOB
 const startDailyTaskRepeater = require("./middleware/startDailyTaskRepeater");
 
 // ✅ Initialize Express app
 const app = express();
+
+
+// JSON body limit badha do (base64 PDF ke liye)
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // ✅ Middleware setup
 const allowedOrigins = ["http://localhost:5173", "http://localhost:3000", "http://localhost:3001", 'https://attendancefrontend.vercel.app', "https://bm-frontend-lyart.vercel.app", "https://www.timelyhealth.in",
@@ -175,6 +181,60 @@ app.use("/api/attendance-edit-requests", require("./routes/attendanceEditRequest
 
 // ✅ Password Reset
 app.use("/api/password-reset", require("./routes/passwordReset.routes"));
+
+
+
+const UPLOADS_ROOT = process.env.UPLOADS_ROOT || path.join(__dirname, "uploads");
+
+console.log("\n═══════════════════════════════════════════════════════════");
+console.log("📁 [SERVER] Working Directory (cwd):", process.cwd());
+console.log("📁 [SERVER] __dirname:", __dirname);
+console.log("📁 [SERVER] UPLOADS_ROOT:", UPLOADS_ROOT);
+console.log("📁 [SERVER] UPLOADS_ROOT exists:", fs.existsSync(UPLOADS_ROOT));
+
+if (!fs.existsSync(UPLOADS_ROOT)) {
+  console.log(`⚠️ [SERVER] UPLOADS_ROOT does NOT exist — creating it now`);
+  fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
+}
+
+// Create all required upload subfolders
+const REQUIRED_UPLOAD_DIRS = [
+  "attendance",
+  "attendanceimage",
+  "candidate-documents",
+  "employee-documents",
+  "employee-experience",
+  "faces",
+  "letterheads",
+  "medical-certificates",
+];
+
+REQUIRED_UPLOAD_DIRS.forEach((dir) => {
+  const fullPath = path.join(UPLOADS_ROOT, dir);
+  if (!fs.existsSync(fullPath)) {
+    fs.mkdirSync(fullPath, { recursive: true });
+    console.log(`📁 [SERVER] Created: ${dir}`);
+  }
+});
+
+console.log("✅ [SERVER] All upload folders verified");
+
+// List existing files in employee-documents for debugging
+try {
+  const empDocDir = path.join(UPLOADS_ROOT, "employee-documents");
+  if (fs.existsSync(empDocDir)) {
+    const files = fs.readdirSync(empDocDir);
+    console.log("📁 [SERVER] Employee-documents file count:", files.length);
+    if (files.length > 0) {
+      console.log("📁 [SERVER] Sample files:", files.slice(0, 5));
+    }
+  } else {
+    console.log("⚠️ [SERVER] employee-documents folder MISSING!");
+  }
+} catch (e) {
+  console.log("⚠️ [SERVER] Error listing:", e.message);
+}
+console.log("═══════════════════════════════════════════════════════════\n");
 
 // ✅ Default test route
 app.get("/", (req, res) => {
