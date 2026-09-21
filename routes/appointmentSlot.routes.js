@@ -1827,7 +1827,6 @@ router.post("/book", async (req, res) => {
     if (!slot) {
       console.log("⚠️ No slot found — proceeding without slot linkage");
     } else {
-      // Update slot status only if found
       slot.status = "booked";
       if (finalDate) slot.date = finalDate;
       await slot.save();
@@ -1865,7 +1864,6 @@ router.post("/book", async (req, res) => {
       0
     );
 
-    // Server-side fallback calc
     const commissionPercent = parseFloat(referralCommission) || 0;
     const serverSubtotal = servicesTotal;
     const serverCommissionAmount = (serverSubtotal * commissionPercent) / 100;
@@ -1873,7 +1871,6 @@ router.post("/book", async (req, res) => {
     const serverFinalPayable =
       serverSubtotal - serverCommissionAmount - serverDiscountAmount;
 
-    // ✅ Trust frontend if provided, else fallback
     const subtotal =
       Number.isFinite(Number(clientSubtotal)) && Number(clientSubtotal) > 0
         ? Number(clientSubtotal)
@@ -1896,7 +1893,6 @@ router.post("/book", async (req, res) => {
     const finalPayable =
       finalPayableFromClient > 0 ? finalPayableFromClient : Math.max(0, serverFinalPayable);
 
-    // ✅ AMOUNT PAID / BALANCE — trust frontend explicitly
     const parsedPartial = Number(partialAmount) || 0;
     const clientSentAmountPaid = Number(clientAmountPaid);
     const clientSentBalance = Number(clientBalanceAmount);
@@ -1910,11 +1906,7 @@ router.post("/book", async (req, res) => {
     let finalBalanceAmount = finalPayable;
 
     if (frontendTrusted) {
-      // ✅ Trust frontend numbers
-      finalAmountPaid = Math.max(
-        0,
-        Math.min(clientSentAmountPaid, finalPayable)
-      );
+      finalAmountPaid = Math.max(0, Math.min(clientSentAmountPaid, finalPayable));
       finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
 
       if (finalBalanceAmount <= 0 && finalAmountPaid > 0) {
@@ -1927,7 +1919,6 @@ router.post("/book", async (req, res) => {
         finalPaymentStatus = paymentStatus === "Due" ? "Due" : "Pending";
       }
     } else {
-      // Fallback logic
       if (paymentStatus === "Paid") {
         finalAmountPaid = finalPayable;
         finalBalanceAmount = 0;
@@ -1945,7 +1936,6 @@ router.post("/book", async (req, res) => {
         finalBalanceAmount = finalPayable;
         finalPaymentStatus = "Due";
       } else {
-        // Pending or unknown
         if (parsedPartial > 0) {
           if (parsedPartial >= finalPayable) {
             finalPaymentStatus = "Paid";
@@ -2016,7 +2006,6 @@ router.post("/book", async (req, res) => {
       appointmentType: appointmentType || "Consultation",
       priority: priority || "Normal",
 
-      // Referral
       referredBy: finalReferredBy,
       referralContactId: finalReferralContactId,
       referralCustomerId: finalReferralCustomerId,
@@ -2026,7 +2015,6 @@ router.post("/book", async (req, res) => {
       referralCommission: referralCommission || "",
       referralCommissionType: referralCommissionType || "",
 
-      // Services
       services: finalServices.map((s) => ({
         serviceId: s.serviceId || s._id || undefined,
         name: s.name || "Service",
@@ -2035,7 +2023,6 @@ router.post("/book", async (req, res) => {
         paymentStatus: s.paymentStatus || "Pending",
       })),
 
-      // ✅ Financials — all synced to same value
       servicesTotal,
       subtotal,
       commissionAmount,
@@ -2061,7 +2048,6 @@ router.post("/book", async (req, res) => {
 
     // ============================================================
     // ✅ CRITICAL FIX: FORCE OVERRIDE after save
-    // This bypasses any pre-save hook that recalculates finalPayable
     // ============================================================
     await Appointment.updateOne(
       { _id: bookedAppointment._id },
@@ -2102,6 +2088,90 @@ router.post("/book", async (req, res) => {
       paymentStatus: populatedAppointment.paymentStatus,
     });
 
+       // ============================================================
+    // 📤 SEND WHATSAPP NOTIFICATION (Only if appointment date is today or future)
+    // ============================================================
+    try {
+      const patientPhone = appointmentData.patientPhone;
+      const appointmentDate = appointmentData.appointmentDate || finalDate;
+
+      // ✅ Check: Appointment date aaj ki ya future ki honi chahiye
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // aaj ki date, 12:00 AM
+
+      const apptDate = new Date(appointmentDate);
+      apptDate.setHours(0, 0, 0, 0); // appointment date, 12:00 AM
+
+      const isTodayOrFuture = apptDate >= today;
+
+      if (!isTodayOrFuture) {
+        console.log(`⏭️ Skipping WhatsApp — appointment date is in the past: ${appointmentDate}`);
+      } else if (patientPhone) {
+        let formattedPhone = patientPhone;
+        if (!patientPhone.startsWith("+")) {
+          if (patientPhone.length === 10) {
+            formattedPhone = `+91${patientPhone}`;
+          } else {
+            formattedPhone = `+${patientPhone}`;
+          }
+        }
+        const phoneWithoutPlus = formattedPhone.replace("+", "");
+
+        const msg91AuthKey = "432519AzEW3EBfmb1N67482e1aP1";
+        const integratedNumber = "919010480303";
+        const namespace = "dad418a7_c0d7_42c8_8f6e_1d6abee724f2";
+        const templateName = "appointment_booked";
+
+        const patientNameForMsg = appointmentData.patientName || "Patient";
+
+        // Format date to DD MMM YYYY
+        const formattedDate = new Date(appointmentDate).toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+        });
+
+        const msg91Payload = {
+          integrated_number: integratedNumber,
+          content_type: "template",
+          payload: {
+            messaging_product: "whatsapp",
+            type: "template",
+            template: {
+              name: templateName,
+              language: { code: "en", policy: "deterministic" },
+              namespace: namespace,
+              to_and_components: [
+                {
+                  to: [phoneWithoutPlus],
+                  components: {
+                    body_1: { type: "text", value: patientNameForMsg },
+                    body_2: { type: "text", value: formattedDate },
+                  },
+                },
+              ],
+            },
+          },
+        };
+
+        console.log("📤 Sending WhatsApp to:", phoneWithoutPlus);
+        const waResponse = await axios.post(
+          "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
+          msg91Payload,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              authkey: msg91AuthKey,
+            },
+          }
+        );
+        console.log("✅ WhatsApp sent:", waResponse.data);
+      }
+    } catch (waError) {
+      console.error("❌ WhatsApp Error (ignored):", waError.response?.data || waError.message);
+      // WhatsApp fail ho jaye toh booking fail nahi hogi
+    }
+
     return res.status(200).json({
       success: true,
       message: `✅ Appointment booked successfully for ${patientName || "Unknown Patient"}!`,
@@ -2121,7 +2191,9 @@ router.post("/book", async (req, res) => {
 
 
 
-
+// ============================================================
+// POST /appointment-slots/book-online — Online Booking + Razorpay + WhatsApp
+// ============================================================
 router.post("/book-online", onlineUploadFields, async (req, res) => {
   try {
     // ============ PARSE FORM-DATA ============
@@ -2156,16 +2228,16 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
       purpose,
       symptoms,
 
-      paymentType,        // "cash" | "online" | "card" | "upi"
+      paymentType,
       paymentStatus,
       partialAmount,
       appointmentType,
       priority,
 
       // ✅ Razorpay fields
-      transactionId,      // razorpay_payment_id (after payment success)
-      razorpayOrderId,    // razorpay_order_id  (optional, from frontend)
-      razorpaySignature,  // razorpay_signature (optional, for verification)
+      transactionId,
+      razorpayOrderId,
+      razorpaySignature,
 
       // Referral
       referredByCustomer,
@@ -2357,11 +2429,7 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
       finalPayableFromClient > 0 ? finalPayableFromClient : serverFinalPayable;
 
     // ============================================================
-    // ✅ RAZORPAY FLOW — Handle 2 cases
-    //   Case A: Online payment + NO transactionId yet
-    //           → Create Razorpay order, DON'T book slot yet
-    //   Case B: Online payment + transactionId present
-    //           → Verify payment, then book slot
+    // ✅ RAZORPAY FLOW
     // ============================================================
     const isOnlinePayment =
       paymentType === "online" ||
@@ -2372,7 +2440,7 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
     if (isOnlinePayment && !transactionId && finalPayable > 0) {
       try {
         const razorpayOrder = await razorpay.orders.create({
-          amount: Math.round(finalPayable * 100), // paise
+          amount: Math.round(finalPayable * 100),
           currency: "INR",
           receipt: `apt_${Date.now()}`,
           notes: {
@@ -2408,7 +2476,7 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
       }
     }
 
-    // -------- Case B: Verify Razorpay Payment (if transactionId given) --------
+    // -------- Case B: Verify Razorpay Payment --------
     let verifiedPayment = null;
     let finalPaymentStatus = paymentStatus || "Pending";
     let finalAmountPaid = 0;
@@ -2447,7 +2515,6 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
 
     // ============ FINAL PAYMENT STATUS CALC ============
     if (verifiedPayment) {
-      // Online payment — trust Razorpay
       const paidInRupees = Number(verifiedPayment.amount) / 100;
       finalAmountPaid = Math.min(paidInRupees, finalPayable);
       finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
@@ -2460,7 +2527,6 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
         finalPaymentStatus = "Partial";
       }
     } else {
-      // Cash/offline OR no payment provided — use original logic
       const parsedPartial = Number(partialAmount) || 0;
       const clientSentAmountPaid = Number(clientAmountPaid);
       const clientSentBalance = Number(clientBalanceAmount);
@@ -2470,10 +2536,7 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
         (clientSentAmountPaid > 0 || clientSentBalance > 0);
 
       if (frontendTrusted) {
-        finalAmountPaid = Math.max(
-          0,
-          Math.min(clientSentAmountPaid, finalPayable)
-        );
+        finalAmountPaid = Math.max(0, Math.min(clientSentAmountPaid, finalPayable));
         finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
 
         if (finalBalanceAmount <= 0 && finalAmountPaid > 0) {
@@ -2528,7 +2591,7 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
       finalPaymentStatus,
     });
 
-    // ============ BOOK SLOT (only after payment OK) ============
+    // ============ BOOK SLOT ============
     slot.status = "booked";
     if (finalDate) slot.date = finalDate;
     await slot.save();
@@ -2574,7 +2637,6 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
       amountPaid: finalAmountPaid,
       balanceAmount: finalBalanceAmount,
 
-      // ✅ Razorpay references
       paymentTransactionId: transactionId || "",
       razorpayOrderId: razorpayOrderId || "",
       razorpayPaymentId: transactionId || "",
@@ -2582,7 +2644,6 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
       appointmentType: appointmentType || "Online Consultation",
       priority: priority || "Normal",
 
-      // ONLINE-SPECIFIC
       isOP: false,
       bookingType: "Online",
       isOnline: true,
@@ -2592,7 +2653,6 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
       reports: reports,
       prescriptions: prescriptions,
 
-      // Referral
       referredBy: finalReferredBy,
       referralContactId: finalReferralContactId,
       referralCustomerId: finalReferralCustomerId,
@@ -2602,7 +2662,6 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
       referralCommission: referralCommission || "",
       referralCommissionType: referralCommissionType || "",
 
-      // Services
       services: finalServices.map((s) => ({
         serviceId: s.serviceId || s._id,
         name: s.name,
@@ -2612,7 +2671,6 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
         paymentStatus: s.paymentStatus || "Pending",
       })),
 
-      // Financials
       servicesTotal,
       subtotal,
       commissionAmount,
@@ -2679,6 +2737,76 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
       prescriptions: populatedAppointment.prescriptions?.length || 0,
     });
 
+    // ============================================================
+    // 📤 SEND WHATSAPP NOTIFICATION
+    // ============================================================
+    try {
+      const patientPhone = appointmentData.patientPhone;
+      if (patientPhone) {
+        let formattedPhone = patientPhone;
+        if (!patientPhone.startsWith("+")) {
+          if (patientPhone.length === 10) {
+            formattedPhone = `+91${patientPhone}`;
+          } else {
+            formattedPhone = `+${patientPhone}`;
+          }
+        }
+        const phoneWithoutPlus = formattedPhone.replace("+", "");
+
+        const msg91AuthKey = "432519AzEW3EBfmb1N67482e1aP1";
+        const integratedNumber = "919010480303";
+        const namespace = "dad418a7_c0d7_42c8_8f6e_1d6abee724f2";
+        const templateName = "appointment_booked";
+
+        const patientNameForMsg = appointmentData.patientName || "Patient";
+        const appointmentDate = appointmentData.appointmentDate || finalDate;
+
+        const formattedDate = new Date(appointmentDate).toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+        });
+
+        const msg91Payload = {
+          integrated_number: integratedNumber,
+          content_type: "template",
+          payload: {
+            messaging_product: "whatsapp",
+            type: "template",
+            template: {
+              name: templateName,
+              language: { code: "en", policy: "deterministic" },
+              namespace: namespace,
+              to_and_components: [
+                {
+                  to: [phoneWithoutPlus],
+                  components: {
+                    body_1: { type: "text", value: patientNameForMsg },
+                    body_2: { type: "text", value: formattedDate },
+                  },
+                },
+              ],
+            },
+          },
+        };
+
+        console.log("📤 Sending WhatsApp to:", phoneWithoutPlus);
+        const waResponse = await axios.post(
+          "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
+          msg91Payload,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              authkey: msg91AuthKey,
+            },
+          }
+        );
+        console.log("✅ WhatsApp sent:", waResponse.data);
+      }
+    } catch (waError) {
+      console.error("❌ WhatsApp Error (ignored):", waError.response?.data || waError.message);
+    }
+
     return res.status(200).json({
       success: true,
       message: `✅ Online appointment booked successfully for ${patientName}!`,
@@ -2705,7 +2833,6 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
     });
   }
 });
-
 // ============================================================
 // PUT /appointment-slots/updateop/:bookingId — Update Appointment
 // Trusts frontend financials + Force-overrides after save
@@ -3803,156 +3930,54 @@ router.post("/save-invoice", async (req, res) => {
 
 
 
-router.post("/send-invoice", async (req, res) => {
-  try {
-    const { bookingId } = req.body;
-
-    if (!bookingId) {
-      return res.status(400).json({
-        success: false,
-        message: "bookingId is required",
-      });
-    }
-
-    // ===== Booking fetch karo =====
-    const booking = await Appointment.findById(bookingId);
-    if (!booking) {
-      return res.status(404).json({
-        success: false,
-        message: "Booking not found",
-      });
-    }
-
-    // ===== Invoice URL check karo =====
-    if (!booking.invoiceUrl || booking.invoiceUrl.trim() === "") {
-      return res.status(400).json({
-        success: false,
-        message: "Invoice not generated yet. Please generate invoice first.",
-      });
-    }
-
-    // ===== Patient phone check karo =====
-    const patientPhone = booking.patientPhone;
-    if (!patientPhone) {
-      return res.status(400).json({
-        success: false,
-        message: "Patient phone number not found in booking",
-      });
-    }
-
-    // ===== Phone number format karo (91 + 10 digit) =====
-    let formattedPhone = patientPhone.toString().replace(/\D/g, "");
-    if (formattedPhone.length === 10) {
-      formattedPhone = "91" + formattedPhone;
-    } else if (formattedPhone.startsWith("0")) {
-      formattedPhone = "91" + formattedPhone.slice(1);
-    }
-
-    // ===== PDF ka full public URL banao =====
-    const invoiceFullUrl = booking.invoiceUrl.startsWith("http")
-      ? booking.invoiceUrl
-      : `${BASE_URL}${booking.invoiceUrl}`;
-
-    // ===== Patient ka naam =====
-    const patientName = `${booking.patientTitle || ""} ${booking.patientName || ""}`.trim() || "Patient";
-
-    console.log(`📤 Sending invoice to ${formattedPhone}...`);
-    console.log(`🔗 Invoice URL: ${invoiceFullUrl}`);
-
-    // ===== MSG91 WhatsApp API Payload =====
-    const payload = {
-      integrated_number: INTEGRATED_NUMBER,
-      content_type: "template",
-      payload: {
-        messaging_product: "whatsapp",
-        type: "template",
-        template: {
-          name: TEMPLATE_NAME,
-          language: {
-            code: "en",
-            policy: "deterministic",
-          },
-          namespace: MSG91_NAMESPACE,
-          to_and_components: [
-            {
-              to: [formattedPhone],
-              components: {
-                body_1: {
-                  type: "text",
-                  value: patientName,
-                },
-                body_2: {
-                  type: "text",
-                  value: invoiceFullUrl,
-                },
-              },
-            },
-          ],
-        },
-      },
-    };
-
-    // ===== MSG91 API Call =====
-    const response = await axios.post(MSG91_WA_API, payload, {
-      headers: {
-        "Content-Type": "application/json",
-        authkey: MSG91_AUTH_KEY,
-      },
-    });
-
-    console.log("✅ WhatsApp API Response:", response.data);
-
-    // ===== Booking mein sent status save karo (optional) =====
-    booking.invoiceSentAt = new Date();
-    booking.invoiceSentTo = formattedPhone;
-    await booking.save();
-
-    return res.status(200).json({
-      success: true,
-      message: "Invoice sent successfully on WhatsApp",
-      phone: formattedPhone,
-      invoiceUrl: invoiceFullUrl,
-      msg91Response: response.data,
-    });
-  } catch (error) {
-    console.error("❌ Error sending invoice:", error.response?.data || error.message);
-    return res.status(500).json({
-      success: false,
-      message: error.response?.data?.message || error.message || "Failed to send invoice",
-      error: error.response?.data || null,
-    });
-  }
-});
-
-
 // ===== SEND INVOICE ON WHATSAPP =====
 router.post("/send-invoice", async (req, res) => {
-  console.log("📤 [BACKEND] Received send-invoice request:", req.body);
+  console.log("\n========== 📤 SEND INVOICE REQUEST START ==========");
+  console.log("📥 Request Body:", JSON.stringify(req.body, null, 2));
+
   try {
     const { bookingId } = req.body;
 
     if (!bookingId) {
+      console.log("❌ ERROR: Booking ID missing");
       return res.status(400).json({ success: false, message: "Booking ID is required" });
     }
 
+    // ===== Fetch Booking =====
+    console.log("🔍 Fetching booking from DB with ID:", bookingId);
     const booking = await Appointment.findById(bookingId);
+
     if (!booking) {
+      console.log("❌ ERROR: Booking not found in DB");
       return res.status(404).json({ success: false, message: "Booking not found in database" });
     }
 
+    console.log("✅ Booking found:");
+    console.log("   - Patient Name:", booking.patientName);
+    console.log("   - Patient Title:", booking.patientTitle);
+    console.log("   - Patient Phone:", booking.patientPhone);
+    console.log("   - Invoice URL:", booking.invoiceUrl);
+    console.log("   - Invoice Generated At:", booking.invoiceGeneratedAt);
+
     // ===== Invoice URL Check =====
     if (!booking.invoiceUrl || booking.invoiceUrl.trim() === "") {
+      console.log("❌ ERROR: Invoice URL is empty");
       return res.status(400).json({
         success: false,
         message: "Invoice not generated yet. Please generate invoice first.",
       });
     }
 
-    // ===== Patient Phone =====
+    // ===== Patient Phone Check =====
     const patientPhone = booking.patientPhone;
     if (!patientPhone) {
+      console.log("❌ ERROR: Patient phone missing");
       return res.status(400).json({ success: false, message: "Patient phone number not found" });
     }
+
+    console.log("📞 RAW Patient Phone:", JSON.stringify(patientPhone));
+    console.log("📞 Phone Type:", typeof patientPhone);
+    console.log("📞 Phone Length:", patientPhone.length);
 
     // ===== Phone Format =====
     let formattedPhone = patientPhone;
@@ -3965,21 +3990,34 @@ router.post("/send-invoice", async (req, res) => {
     }
     const phoneWithoutPlus = formattedPhone.replace("+", "");
 
+    console.log("📞 Formatted Phone:", JSON.stringify(formattedPhone));
+    console.log("📞 Phone Without Plus:", JSON.stringify(phoneWithoutPlus));
+
     // ===== MSG91 Config =====
     const msg91AuthKey = "565249AxLd3LEpU17G6aae8ee2P1";
     const integratedNumber = "919010480303";
     const namespace = "dad418a7_c0d7_42c8_8f6e_1d6abee724f2";
     const templateName = "invoice_link";
 
+    console.log("\n🔧 MSG91 CONFIG:");
+    console.log("   - Authkey:", msg91AuthKey);
+    console.log("   - Integrated Number:", JSON.stringify(integratedNumber));
+    console.log("   - Namespace:", JSON.stringify(namespace));
+    console.log("   - Template Name:", JSON.stringify(templateName));
+
     // ===== Patient Name =====
     const patientName =
       `${booking.patientTitle || ""} ${booking.patientName || ""}`.trim() || "Patient";
+
+    console.log("👤 Patient Name:", JSON.stringify(patientName));
 
     // ===== Full Invoice URL =====
     const BASE_URL = "https://api.timelyhealth.in";
     const invoiceFullUrl = booking.invoiceUrl.startsWith("http")
       ? booking.invoiceUrl
       : `${BASE_URL}${booking.invoiceUrl}`;
+
+    console.log("📄 Invoice Full URL:", JSON.stringify(invoiceFullUrl));
 
     // ===== MSG91 Payload =====
     const msg91Payload = {
@@ -4008,8 +4046,12 @@ router.post("/send-invoice", async (req, res) => {
       },
     };
 
-    console.log("📤 Sending WhatsApp payload:", JSON.stringify(msg91Payload, null, 2));
+    console.log("\n========== 📤 FINAL MSG91 PAYLOAD ==========");
+    console.log(JSON.stringify(msg91Payload, null, 2));
+    console.log("=============================================\n");
 
+    // ===== Call MSG91 API =====
+    console.log("🚀 Calling MSG91 API...");
     const response = await axios.post(
       "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
       msg91Payload,
@@ -4021,12 +4063,16 @@ router.post("/send-invoice", async (req, res) => {
       }
     );
 
-    console.log("✅ WhatsApp sent:", response.data);
+    console.log("✅ MSG91 API Response:");
+    console.log(JSON.stringify(response.data, null, 2));
 
     // ===== Save sent status =====
     booking.invoiceSentAt = new Date();
     booking.invoiceSentTo = phoneWithoutPlus;
     await booking.save();
+
+    console.log("💾 Booking updated with invoiceSentAt:", booking.invoiceSentAt);
+    console.log("========== ✅ SEND INVOICE SUCCESS ==========\n");
 
     return res.status(200).json({
       success: true,
@@ -4036,7 +4082,13 @@ router.post("/send-invoice", async (req, res) => {
       msg91Response: response.data,
     });
   } catch (error) {
-    console.error("❌ Send Invoice Error:", error.response?.data || error.message);
+    console.log("\n========== ❌ SEND INVOICE ERROR ==========");
+    console.log("❌ Error Message:", error.message);
+    console.log("❌ Error Response Data:", JSON.stringify(error.response?.data, null, 2));
+    console.log("❌ Error Status:", error.response?.status);
+    console.log("❌ Error Headers:", JSON.stringify(error.response?.headers, null, 2));
+    console.log("===========================================\n");
+
     return res.status(500).json({
       success: false,
       message: error.response?.data?.message || error.message || "Failed to send invoice",
@@ -4044,7 +4096,6 @@ router.post("/send-invoice", async (req, res) => {
     });
   }
 });
-
 
 
 
