@@ -38,6 +38,28 @@ const appointmentSchema = new mongoose.Schema(
     },
 
 
+    reviews: [
+  {
+    serviceId: { type: String, default: "" },
+    name: { type: String, },
+    price: { type: Number, default: 0, min: 0 },
+    category: { type: String, default: "" },
+    description: { type: String, default: "" },
+    addedAt: { type: Date, default: Date.now },
+  },
+],
+reviewServicesTotal: { type: Number, default: 0, min: 0 },
+
+
+offerApplied: {
+  referralContactId: { type: String, default: "" },
+  offerId: { type: String, default: "" },
+  offerName: { type: String, default: "" },
+  offerAmount: { type: Number, default: 0 },
+},
+offerDeduction: { type: Number, default: 0 },
+
+
 
     // In your Appointment schema:
     rescheduleHistory: [

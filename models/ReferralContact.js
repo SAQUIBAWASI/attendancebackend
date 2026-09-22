@@ -25,6 +25,14 @@ const ReferralContactSchema = new mongoose.Schema(
     // Common fields
     referralDate: { type: String, trim: true },
     referralNotes: { type: String, trim: true },
+
+  // ✅ OFFERS ARRAY (bas ye change)
+    offers: [
+      {
+        offerName: { type: String, default: "" },
+        offerAmount: { type: Number, default: 0 }
+      }
+    ],
     status: {
       type: String,
       enum: ['active', 'inactive'],

@@ -5,7 +5,10 @@ const {
   getAllReferralContacts,
   addReferralContact,
   updateReferralContact,
-  deleteReferralContact
+  deleteReferralContact,
+  updateOffer,
+  addOffer,
+  deleteOffer
 } = require('../controller/referralContactController');
 
 // GET all referral contacts
@@ -19,5 +22,12 @@ router.put('/updatereferralcontact/:id', updateReferralContact);
 
 // DELETE referral contact
 router.delete('/deletereferralcontact/:id', deleteReferralContact);
+
+
+// ✅ OFFER ROUTES
+router.post("/addoffer/:id", addOffer);
+router.put("/updateoffer/:id/:offerId", updateOffer);
+router.delete("/deleteoffer/:id/:offerId", deleteOffer);
+
 
 module.exports = router;

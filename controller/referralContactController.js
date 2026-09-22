@@ -158,10 +158,98 @@ const deleteReferralContact = async (req, res) => {
   }
 };
 
+
+
+
+
+const addOffer = async (req, res) => {
+  try {
+    const { offerName, offerAmount } = req.body;
+
+    if (!offerName || offerAmount === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "offerName and offerAmount are required"
+      });
+    }
+
+    const referral = await ReferralContact.findById(req.params.id);
+    if (!referral) {
+      return res.status(404).json({ success: false, message: "Referral not found" });
+    }
+
+    referral.offers.push({
+      offerName: String(offerName).trim(),
+      offerAmount: Number(offerAmount)
+    });
+
+    await referral.save();
+    res.json({ success: true, data: referral });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// @desc    Update existing offer
+// @route   PUT /api/referralcontacts/updateoffer/:id/:offerId
+const updateOffer = async (req, res) => {
+  try {
+    const { offerName, offerAmount } = req.body;
+    const { id, offerId } = req.params;
+
+    const referral = await ReferralContact.findById(id);
+    if (!referral) {
+      return res.status(404).json({ success: false, message: "Referral not found" });
+    }
+
+    const offer = referral.offers.id(offerId);
+    if (!offer) {
+      return res.status(404).json({ success: false, message: "Offer not found" });
+    }
+
+    offer.offerName = String(offerName).trim();
+    offer.offerAmount = Number(offerAmount);
+
+    await referral.save();
+    res.json({ success: true, data: referral });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// @desc    Delete offer
+// @route   DELETE /api/referralcontacts/deleteoffer/:id/:offerId
+const deleteOffer = async (req, res) => {
+  try {
+    const { id, offerId } = req.params;
+
+    const referral = await ReferralContact.findById(id);
+    if (!referral) {
+      return res.status(404).json({ success: false, message: "Referral not found" });
+    }
+
+    const offer = referral.offers.id(offerId);
+    if (!offer) {
+      return res.status(404).json({ success: false, message: "Offer not found" });
+    }
+
+    offer.deleteOne();
+    await referral.save();
+
+    res.json({ success: true, data: referral });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
 module.exports = {
   getAllReferralContacts,
   getReferralContactById,
   addReferralContact,
   updateReferralContact,
-  deleteReferralContact
+  deleteReferralContact,
+  addOffer,
+  updateOffer,
+  deleteOffer
 };

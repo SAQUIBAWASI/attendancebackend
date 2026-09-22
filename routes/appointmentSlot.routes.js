@@ -243,10 +243,10 @@ router.post("/config", async (req, res) => {
       });
     }
 
-    return res.status(200).json({ 
-      success: true, 
-      message: "Slot configuration updated successfully!", 
-      config 
+    return res.status(200).json({
+      success: true,
+      message: "Slot configuration updated successfully!",
+      config
     });
   } catch (error) {
     console.error("Error updating slot config:", error);
@@ -340,7 +340,7 @@ router.get("/", async (req, res) => {
 
     // Apply additional filters if needed
     let filteredSlots = slots;
-    
+
     if (status && status !== "All") {
       filteredSlots = filteredSlots.filter((s) => s.status === status);
     }
@@ -534,15 +534,81 @@ router.put("/updatecharges/:id", async (req, res) => {
 // Route: GET /getallbookings
 router.get("/getallbookings", async (req, res) => {
   try {
-    // Get all bookings directly from database
-    const bookings = await Appointment.find({})
-      .sort({ date: -1, startTime: 1 });
+    const bookings = await Appointment.find({
+      isActive: { $ne: false }, // ✅ true ya undefined dono allow, sirf false skip
+    }).sort({ createdAt: -1 });
+
+    // ✅ Transform each booking — merge review total into finalPayable
+    const transformedBookings = bookings.map((booking) => {
+      const b = booking.toObject ? booking.toObject() : booking;
+
+      // ✅ Calculate review services total
+      const reviewsArray = Array.isArray(b.reviews) ? b.reviews : [];
+      const reviewServicesTotal = reviewsArray.reduce(
+        (sum, r) => sum + (Number(r.price) || 0),
+        0
+      );
+
+      // ✅ Calculate services total
+      const servicesArray = Array.isArray(b.services) ? b.services : [];
+      const servicesTotal = servicesArray.reduce(
+        (sum, s) => sum + (Number(s.price) || 0),
+        0
+      );
+
+      // ✅ Calculate original totals
+      const originalFinalPayable =
+        Number(b.finalPayable) ||
+        Number(b.finalPayableAmount) ||
+        Number(b.grandTotal) ||
+        Number(b.totalAmount) ||
+        servicesTotal ||
+        0;
+
+      // ✅ NEW Total = original finalPayable + review services total
+      const newFinalPayable = originalFinalPayable + reviewServicesTotal;
+      const newTotalAmount = Number(b.totalAmount || 0) + reviewServicesTotal;
+      const newGrandTotal = Number(b.grandTotal || 0) + reviewServicesTotal;
+      const newSubtotal = Number(b.subtotal || 0) + reviewServicesTotal;
+
+      // ✅ Recalculate balance
+      const amountPaid = Number(b.amountPaid) || 0;
+      const newBalanceAmount = Math.max(0, newFinalPayable - amountPaid);
+
+      // ✅ Recalculate payment status based on new total
+      let newPaymentStatus = b.paymentStatus || "Pending";
+      if (newFinalPayable > 0 && amountPaid >= newFinalPayable) {
+        newPaymentStatus = "Paid";
+      } else if (amountPaid > 0 && amountPaid < newFinalPayable) {
+        newPaymentStatus = "Partial";
+      } else if (amountPaid === 0 && newFinalPayable > 0) {
+        newPaymentStatus = b.paymentStatus === "Due" ? "Due" : "Pending";
+      }
+
+      // ✅ Return updated booking with merged amounts
+      return {
+        ...b,
+        // Original values
+        _originalFinalPayable: originalFinalPayable,
+        _reviewServicesTotal: reviewServicesTotal,
+
+        // Updated values (with review total merged)
+        finalPayable: newFinalPayable,
+        finalPayableAmount: newFinalPayable,
+        grandTotal: newGrandTotal,
+        totalAmount: newTotalAmount,
+        subtotal: newSubtotal,
+        balanceAmount: newBalanceAmount,
+        paymentStatus: newPaymentStatus,
+        reviewServicesTotal, // ensure this is set
+      };
+    });
 
     return res.status(200).json({
       success: true,
-      count: bookings.length,
+      count: transformedBookings.length,
       message: "All bookings fetched successfully",
-      bookings
+      bookings: transformedBookings,
     });
 
   } catch (error) {
@@ -551,10 +617,106 @@ router.get("/getallbookings", async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch bookings",
-      error: error.message
+      error: error.message,
     });
   }
 });
+
+
+
+
+// ✅ GET ALL INACTIVE BOOKINGS
+// Route: GET /getallinactivebookings
+router.get("/getallinactivebookings", async (req, res) => {
+  try {
+    // ✅ Sirf INACTIVE bookings — latest created first
+    const bookings = await Appointment.find({
+      isActive: false, // ✅ sirf false wali
+    }).sort({ createdAt: -1 });
+
+    // ✅ Transform each booking — merge review total into finalPayable
+    const transformedBookings = bookings.map((booking) => {
+      const b = booking.toObject ? booking.toObject() : booking;
+
+      // ✅ Calculate review services total
+      const reviewsArray = Array.isArray(b.reviews) ? b.reviews : [];
+      const reviewServicesTotal = reviewsArray.reduce(
+        (sum, r) => sum + (Number(r.price) || 0),
+        0
+      );
+
+      // ✅ Calculate services total
+      const servicesArray = Array.isArray(b.services) ? b.services : [];
+      const servicesTotal = servicesArray.reduce(
+        (sum, s) => sum + (Number(s.price) || 0),
+        0
+      );
+
+      // ✅ Calculate original totals
+      const originalFinalPayable =
+        Number(b.finalPayable) ||
+        Number(b.finalPayableAmount) ||
+        Number(b.grandTotal) ||
+        Number(b.totalAmount) ||
+        servicesTotal ||
+        0;
+
+      // ✅ NEW Total = original finalPayable + review services total
+      const newFinalPayable = originalFinalPayable + reviewServicesTotal;
+      const newTotalAmount = Number(b.totalAmount || 0) + reviewServicesTotal;
+      const newGrandTotal = Number(b.grandTotal || 0) + reviewServicesTotal;
+      const newSubtotal = Number(b.subtotal || 0) + reviewServicesTotal;
+
+      // ✅ Recalculate balance
+      const amountPaid = Number(b.amountPaid) || 0;
+      const newBalanceAmount = Math.max(0, newFinalPayable - amountPaid);
+
+      // ✅ Recalculate payment status based on new total
+      let newPaymentStatus = b.paymentStatus || "Pending";
+      if (newFinalPayable > 0 && amountPaid >= newFinalPayable) {
+        newPaymentStatus = "Paid";
+      } else if (amountPaid > 0 && amountPaid < newFinalPayable) {
+        newPaymentStatus = "Partial";
+      } else if (amountPaid === 0 && newFinalPayable > 0) {
+        newPaymentStatus = b.paymentStatus === "Due" ? "Due" : "Pending";
+      }
+
+      // ✅ Return updated booking with merged amounts
+      return {
+        ...b,
+        _originalFinalPayable: originalFinalPayable,
+        _reviewServicesTotal: reviewServicesTotal,
+
+        finalPayable: newFinalPayable,
+        finalPayableAmount: newFinalPayable,
+        grandTotal: newGrandTotal,
+        totalAmount: newTotalAmount,
+        subtotal: newSubtotal,
+        balanceAmount: newBalanceAmount,
+        paymentStatus: newPaymentStatus,
+        reviewServicesTotal,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: transformedBookings.length,
+      message: "All inactive bookings fetched successfully",
+      bookings: transformedBookings,
+    });
+
+  } catch (error) {
+    console.error("Error fetching inactive bookings:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch inactive bookings",
+      error: error.message,
+    });
+  }
+});
+
+
 
 // =============================================
 // 6. CREATE MANUAL CUSTOM SLOT (FIXED)
@@ -761,7 +923,7 @@ router.put("/:bookingId/update-partner-payment", async (req, res) => {
     // Update partner payment status
     booking.partnerPaymentStatus = partnerPaymentStatus;
     booking.updatedAt = new Date();
-    
+
     // ===== ADD TIMESTAMP FIELD =====
     booking.partnerPaymentUpdatedAt = new Date(); // NEW: dedicated timestamp field
 
@@ -963,17 +1125,17 @@ router.get("/getallreferralbookings", async (req, res) => {
 
         referralContactDetails: rc
           ? {
-              _id: rc._id,
-              referralType: rc.referralType,
-              name: rc.doctorName || rc.customerName || "",
-              organization: rc.doctorOrganization || "",
-              phone: rc.doctorPhone || rc.customerPhone || "",
-              specialization: rc.doctorSpecialization || "",
-              clinicCommission: Number(rc.clinicCommission) || 0,
-              pharmacyCommission: Number(rc.pharmacyCommission) || 0,
-              labCommission: Number(rc.labCommission) || 0,
-              totalCommission: Number(rc.totalCommission) || 0,
-            }
+            _id: rc._id,
+            referralType: rc.referralType,
+            name: rc.doctorName || rc.customerName || "",
+            organization: rc.doctorOrganization || "",
+            phone: rc.doctorPhone || rc.customerPhone || "",
+            specialization: rc.doctorSpecialization || "",
+            clinicCommission: Number(rc.clinicCommission) || 0,
+            pharmacyCommission: Number(rc.pharmacyCommission) || 0,
+            labCommission: Number(rc.labCommission) || 0,
+            totalCommission: Number(rc.totalCommission) || 0,
+          }
           : null,
       };
     };
@@ -1705,6 +1867,7 @@ router.put("/updatelabtotal/:id", async (req, res) => {
 // ============================================================
 // POST /appointment-slots/book — Book Appointment (NO VALIDATION)
 // Trusts frontend financials + Force-overrides after save
+// ✅ OFFER APPLIED SUPPORT
 // ============================================================
 router.post("/book", async (req, res) => {
   try {
@@ -1774,7 +1937,10 @@ router.post("/book", async (req, res) => {
       notes,
       isOP,
       serviceItems,
-      services
+      services,
+
+      // ===== ✅ OFFER APPLIED =====
+      offerApplied
     } = req.body;
 
     console.log("📥 Booking request received (NO VALIDATION MODE)");
@@ -1786,6 +1952,7 @@ router.post("/book", async (req, res) => {
       clientAmountPaid,
       clientBalanceAmount,
       paymentStatus,
+      offerApplied,
     });
 
     let slot = null;
@@ -1868,8 +2035,12 @@ router.post("/book", async (req, res) => {
     const serverSubtotal = servicesTotal;
     const serverCommissionAmount = (serverSubtotal * commissionPercent) / 100;
     const serverDiscountAmount = Number(discount) || 0;
+
+    // ✅ OFFER DEDUCTION
+    const offerAmount = Number(offerApplied?.offerAmount) || 0;
+
     const serverFinalPayable =
-      serverSubtotal - serverCommissionAmount - serverDiscountAmount;
+      serverSubtotal - serverCommissionAmount - serverDiscountAmount - offerAmount;
 
     const subtotal =
       Number.isFinite(Number(clientSubtotal)) && Number(clientSubtotal) > 0
@@ -1882,6 +2053,7 @@ router.post("/book", async (req, res) => {
         : serverCommissionAmount;
 
     const discountAmount = Number(discount) || 0;
+    const offerDeduction = offerAmount; // ✅
 
     const finalPayableFromClient =
       Number(clientFinalPayable) ||
@@ -1958,6 +2130,7 @@ router.post("/book", async (req, res) => {
       subtotal,
       commissionAmount,
       discountAmount,
+      offerDeduction,
       finalPayable,
       finalAmountPaid,
       finalBalanceAmount,
@@ -2028,6 +2201,11 @@ router.post("/book", async (req, res) => {
       commissionAmount,
       discount: discountAmount,
       discountType: discountType || "₹",
+
+      // ✅ OFFER APPLIED
+      offerApplied: offerApplied || null,
+      offerDeduction: offerDeduction,
+
       finalPayable,
       finalPayableAmount: finalPayable,
       grandTotal: finalPayable,
@@ -2058,6 +2236,8 @@ router.post("/book", async (req, res) => {
           commissionAmount,
           discount: discountAmount,
           discountType: discountType || "₹",
+          offerApplied: offerApplied || null,
+          offerDeduction: offerDeduction,
           finalPayable,
           finalPayableAmount: finalPayable,
           grandTotal: finalPayable,
@@ -2086,21 +2266,22 @@ router.post("/book", async (req, res) => {
       amountPaid: populatedAppointment.amountPaid,
       balanceAmount: populatedAppointment.balanceAmount,
       paymentStatus: populatedAppointment.paymentStatus,
+      offerApplied: populatedAppointment.offerApplied,
+      offerDeduction: populatedAppointment.offerDeduction,
     });
 
-       // ============================================================
+    // ============================================================
     // 📤 SEND WHATSAPP NOTIFICATION (Only if appointment date is today or future)
     // ============================================================
     try {
       const patientPhone = appointmentData.patientPhone;
       const appointmentDate = appointmentData.appointmentDate || finalDate;
 
-      // ✅ Check: Appointment date aaj ki ya future ki honi chahiye
       const today = new Date();
-      today.setHours(0, 0, 0, 0); // aaj ki date, 12:00 AM
+      today.setHours(0, 0, 0, 0);
 
       const apptDate = new Date(appointmentDate);
-      apptDate.setHours(0, 0, 0, 0); // appointment date, 12:00 AM
+      apptDate.setHours(0, 0, 0, 0);
 
       const isTodayOrFuture = apptDate >= today;
 
@@ -2117,14 +2298,13 @@ router.post("/book", async (req, res) => {
         }
         const phoneWithoutPlus = formattedPhone.replace("+", "");
 
-        const msg91AuthKey = "432519AzEW3EBfmb1N67482e1aP1";
+        const msg91AuthKey = "565249AxLd3LEpU17G6aae8ee2P1";
         const integratedNumber = "919010480303";
         const namespace = "dad418a7_c0d7_42c8_8f6e_1d6abee724f2";
         const templateName = "appointment_booked";
 
         const patientNameForMsg = appointmentData.patientName || "Patient";
 
-        // Format date to DD MMM YYYY
         const formattedDate = new Date(appointmentDate).toLocaleDateString("en-GB", {
           day: "2-digit",
           month: "long",
@@ -2169,7 +2349,6 @@ router.post("/book", async (req, res) => {
       }
     } catch (waError) {
       console.error("❌ WhatsApp Error (ignored):", waError.response?.data || waError.message);
-      // WhatsApp fail ho jaye toh booking fail nahi hogi
     }
 
     return res.status(200).json({
@@ -2186,7 +2365,6 @@ router.post("/book", async (req, res) => {
     });
   }
 });
-
 
 
 
@@ -2738,73 +2916,143 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
     });
 
     // ============================================================
-    // 📤 SEND WHATSAPP NOTIFICATION
+    // 📤 SEND WHATSAPP NOTIFICATION(S)
     // ============================================================
     try {
-      const patientPhone = appointmentData.patientPhone;
-      if (patientPhone) {
-        let formattedPhone = patientPhone;
-        if (!patientPhone.startsWith("+")) {
-          if (patientPhone.length === 10) {
-            formattedPhone = `+91${patientPhone}`;
+      const patientPhoneRaw = appointmentData.patientPhone;
+      if (patientPhoneRaw) {
+        let formattedPhone = patientPhoneRaw;
+        if (!patientPhoneRaw.startsWith("+")) {
+          if (patientPhoneRaw.length === 10) {
+            formattedPhone = `+91${patientPhoneRaw}`;
           } else {
-            formattedPhone = `+${patientPhone}`;
+            formattedPhone = `+${patientPhoneRaw}`;
           }
         }
         const phoneWithoutPlus = formattedPhone.replace("+", "");
 
-        const msg91AuthKey = "432519AzEW3EBfmb1N67482e1aP1";
+        const msg91AuthKey = "565249AxLd3LEpU17G6aae8ee2P1";
         const integratedNumber = "919010480303";
-        const namespace = "dad418a7_c0d7_42c8_8f6e_1d6abee724f2";
-        const templateName = "appointment_booked";
 
-        const patientNameForMsg = appointmentData.patientName || "Patient";
-        const appointmentDate = appointmentData.appointmentDate || finalDate;
+        // ---------- 1️⃣ Appointment Booked Template ----------
+        try {
+          const bookedNamespace = "dad418a7_c0d7_42c8_8f6e_1d6abee724f2";
+          const bookedTemplateName = "appointment_booked";
 
-        const formattedDate = new Date(appointmentDate).toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "long",
-          year: "numeric",
-        });
+          const patientNameForMsg = appointmentData.patientName || "Patient";
+          const appointmentDate = appointmentData.appointmentDate || finalDate;
 
-        const msg91Payload = {
-          integrated_number: integratedNumber,
-          content_type: "template",
-          payload: {
-            messaging_product: "whatsapp",
-            type: "template",
-            template: {
-              name: templateName,
-              language: { code: "en", policy: "deterministic" },
-              namespace: namespace,
-              to_and_components: [
-                {
-                  to: [phoneWithoutPlus],
-                  components: {
-                    body_1: { type: "text", value: patientNameForMsg },
-                    body_2: { type: "text", value: formattedDate },
+          const formattedDate = new Date(appointmentDate).toLocaleDateString(
+            "en-GB",
+            {
+              day: "2-digit",
+              month: "long",
+              year: "numeric",
+            }
+          );
+
+          const bookedPayload = {
+            integrated_number: integratedNumber,
+            content_type: "template",
+            payload: {
+              messaging_product: "whatsapp",
+              type: "template",
+              template: {
+                name: bookedTemplateName,
+                language: { code: "en", policy: "deterministic" },
+                namespace: bookedNamespace,
+                to_and_components: [
+                  {
+                    to: [phoneWithoutPlus],
+                    components: {
+                      body_1: { type: "text", value: patientNameForMsg },
+                      body_2: { type: "text", value: formattedDate },
+                    },
                   },
-                },
-              ],
+                ],
+              },
             },
-          },
-        };
+          };
 
-        console.log("📤 Sending WhatsApp to:", phoneWithoutPlus);
-        const waResponse = await axios.post(
-          "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
-          msg91Payload,
-          {
-            headers: {
-              "Content-Type": "application/json",
-              authkey: msg91AuthKey,
+          console.log("📤 Sending BOOKED WhatsApp to:", phoneWithoutPlus);
+          const bookedResponse = await axios.post(
+            "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
+            bookedPayload,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                authkey: msg91AuthKey,
+              },
+            }
+          );
+          console.log("✅ Booked WhatsApp sent:", bookedResponse.data);
+        } catch (bookedErr) {
+          console.error(
+            "❌ Booked WhatsApp Error (ignored):",
+            bookedErr.response?.data || bookedErr.message
+          );
+        }
+
+        // ---------- 2️⃣ Patient Login URL Template ----------
+        try {
+          const loginTemplateName = "patient_login_url";
+
+          // 🔧 CHANGE THIS to your actual patient login URL
+          const patientLoginUrl = "https://www.timelyhealth.in/patientlogin";
+
+          const loginPayload = {
+            integrated_number: integratedNumber,
+            content_type: "template",
+            payload: {
+              messaging_product: "whatsapp",
+              type: "template",
+              template: {
+                name: loginTemplateName,
+                language: { code: "en", policy: "deterministic" },
+                namespace: null,
+                to_and_components: [
+                  {
+                    to: [phoneWithoutPlus],
+                    components: {
+                      body_1: {
+                        type: "text",
+                        value: appointmentData.patientName || "Patient",
+                      },
+                      body_2: {
+                        type: "text",
+                        value: patientLoginUrl,
+                      },
+                    },
+                  },
+                ],
+              },
             },
-          }
-        );
-        console.log("✅ WhatsApp sent:", waResponse.data);
+          };
+
+          console.log("📤 Sending LOGIN URL WhatsApp to:", phoneWithoutPlus);
+          const loginResponse = await axios.post(
+            "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
+            loginPayload,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                authkey: msg91AuthKey,
+              },
+            }
+          );
+          console.log("✅ Login URL WhatsApp sent:", loginResponse.data);
+        } catch (loginErr) {
+          console.error(
+            "❌ Login URL WhatsApp Error (ignored):",
+            loginErr.response?.data || loginErr.message
+          );
+        }
       }
     } catch (waError) {
-      console.error("❌ WhatsApp Error (ignored):", waError.response?.data || waError.message);
+      console.error(
+        "❌ WhatsApp Outer Error (ignored):",
+        waError.response?.data || waError.message
+      );
     }
 
     return res.status(200).json({
@@ -3442,23 +3690,7 @@ router.put("/toggle-active/:id", async (req, res) => {
 router.put("/review/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { isReviewed, reviewDate } = req.body;
-
-    // Validate ID
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid booking ID",
-      });
-    }
-
-    // Validate payload
-    if (typeof isReviewed !== "boolean") {
-      return res.status(400).json({
-        success: false,
-        message: "isReviewed must be a boolean value",
-      });
-    }
+    const { isReviewed, reviewDate, reviews, reviewServicesTotal } = req.body;
 
     // Find the booking
     const booking = await Appointment.findById(id);
@@ -3469,43 +3701,36 @@ router.put("/review/:id", async (req, res) => {
       });
     }
 
-    // ✅ Business rule — 3-day review window check (only when marking as reviewed)
-    if (isReviewed === true && !booking.isReviewed) {
-      const appointmentDateStr = booking.appointmentDate || booking.date;
-      if (appointmentDateStr) {
-        const appointmentDate = new Date(appointmentDateStr);
-        if (!isNaN(appointmentDate.getTime())) {
-          appointmentDate.setHours(23, 59, 59, 999);
-
-          const today = new Date();
-          const diffMs = today - appointmentDate;
-          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-          // Allow 0 to 3 days AFTER appointment
-          if (diffDays < 0) {
-            return res.status(400).json({
-              success: false,
-              message: "Review will be available on appointment date.",
-            });
-          }
-
-          if (diffDays > 3) {
-            return res.status(400).json({
-              success: false,
-              message: "Review window expired (3 days limit).",
-            });
-          }
-        }
-      }
-    }
-
-    // Update fields
+    // Update fields — no validation, direct save
     booking.isReviewed = isReviewed;
     booking.reviewDate = isReviewed
       ? reviewDate
         ? new Date(reviewDate)
         : new Date()
       : null;
+
+    // Save reviews array
+    if (isReviewed === true) {
+      booking.reviews = Array.isArray(reviews)
+        ? reviews.map((r) => ({
+          serviceId: r?.serviceId || "",
+          name: r?.name || "",
+          price: Number(r?.price) || 0,
+          category: r?.category || "",
+          description: r?.description || "",
+          addedAt: r?.addedAt ? new Date(r.addedAt) : new Date(),
+        }))
+        : [];
+
+      booking.reviewServicesTotal =
+        reviewServicesTotal !== undefined
+          ? Number(reviewServicesTotal) || 0
+          : booking.reviews.reduce((sum, r) => sum + (Number(r.price) || 0), 0);
+    } else {
+      booking.reviews = [];
+      booking.reviewServicesTotal = 0;
+    }
+
     booking.updatedAt = new Date();
 
     await booking.save();
@@ -3519,6 +3744,8 @@ router.put("/review/:id", async (req, res) => {
         _id: booking._id,
         isReviewed: booking.isReviewed,
         reviewDate: booking.reviewDate,
+        reviews: booking.reviews,
+        reviewServicesTotal: booking.reviewServicesTotal,
         patientName: booking.patientName,
       },
     });
@@ -3531,7 +3758,6 @@ router.put("/review/:id", async (req, res) => {
     });
   }
 });
-
 
 
 
