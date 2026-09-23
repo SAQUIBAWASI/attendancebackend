@@ -56,13 +56,26 @@ const addReferralContact = async (req, res) => {
       labCommission,
       referralDate,
       referralNotes,
-      status
+      status,
+      offers // ✅ NEW — optional offers array from frontend
     } = req.body;
 
     // Auto-calculate total commission
-    const totalCommission = (parseFloat(clinicCommission) || 0) + 
-                           (parseFloat(pharmacyCommission) || 0) + 
-                           (parseFloat(labCommission) || 0);
+    const totalCommission =
+      (parseFloat(clinicCommission) || 0) +
+      (parseFloat(pharmacyCommission) || 0) +
+      (parseFloat(labCommission) || 0);
+
+    // ✅ Normalize offers (array of { offerName, offerAmount })
+    let normalizedOffers = [];
+    if (Array.isArray(offers)) {
+      normalizedOffers = offers
+        .filter((o) => o && o.offerName && o.offerAmount !== undefined)
+        .map((o) => ({
+          offerName: String(o.offerName).trim(),
+          offerAmount: Number(o.offerAmount) || 0,
+        }));
+    }
 
     const contact = new ReferralContact({
       referralType,
@@ -79,22 +92,22 @@ const addReferralContact = async (req, res) => {
       totalCommission,
       referralDate,
       referralNotes,
-      status
+      status,
+      offers: normalizedOffers, // ✅ save offers if provided
     });
 
     await contact.save();
     res.status(201).json({
       success: true,
-      data: contact
+      data: contact,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
-
 // ==================== UPDATE ====================
 const updateReferralContact = async (req, res) => {
   try {
