@@ -19,4 +19,6 @@ router.put("/read/:id", controller.markAsRead);
 // Mark all as read
 router.put("/read-all/:userId", controller.markAllAsRead);
 
+router.delete("/delete", controller.deleteNotifications);
+
 module.exports = router;

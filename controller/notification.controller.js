@@ -218,3 +218,37 @@ exports.markAllAsRead = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
+
+
+exports.deleteNotifications = async (req, res) => {
+  try {
+    const { notificationIds } = req.body;
+
+    // Validate notificationIds
+    if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "notificationIds array is required"
+      });
+    }
+
+    // Delete multiple notifications
+    const result = await Notification.deleteMany({
+      _id: { $in: notificationIds }
+    });
+
+    res.json({
+      success: true,
+      message: `${result.deletedCount} notification(s) deleted successfully`,
+      deletedCount: result.deletedCount
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};

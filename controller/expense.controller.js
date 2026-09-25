@@ -77,7 +77,7 @@ exports.addExpense = async (req, res) => {
     }
 };
 
-// 📋 Get my expenses
+// 📋 Get my expenses (with server-side stats for cards)
 exports.getMyExpenses = async (req, res) => {
     try {
         const { employeeId } = req.query;
@@ -89,19 +89,111 @@ exports.getMyExpenses = async (req, res) => {
             });
         }
 
+        // 1️⃣ Fetch expenses + employee details
         const expenses = await Expense.find({ employeeId }).sort({ date: -1 });
-        
-        // ✅ Manually fetch employee details
         const employee = await Employee.findOne({ employeeId });
+
         const expensesWithDetails = expenses.map(exp => ({
             ...exp.toObject(),
             employeeDetails: employee || null
         }));
 
+        // 2️⃣ Current KM rate
+        const rateSetting = await GlobalSetting.findOne({ key: "kmRate" });
+        const rate = rateSetting ? Number(rateSetting.value) : 10;
+
+        // 3️⃣ ✅ Compute ALL card values on the server
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        let totalClaims = 0;
+        let totalDistance = 0;
+        let totalAmount = 0;
+        let monthlyClaims = 0;
+        let monthlyAmount = 0;
+        let monthlyDistance = 0;
+        let pendingClaims = 0;
+        let approvedClaims = 0;
+        let rejectedClaims = 0;
+        let approvedAmount = 0;
+        let pendingAmount = 0;
+        let rejectedAmount = 0;
+        let totalOrderValue = 0;
+        let totalUpsellValue = 0;
+        let totalStops = 0;
+
+        expenses.forEach((exp) => {
+            const km = Number(exp.km) || 0;
+            const amount = Number(exp.totalAmount) || 0;
+
+            totalClaims += 1;
+            totalDistance += km;
+            totalAmount += amount;
+            totalStops += Array.isArray(exp.stops) ? exp.stops.length : 0;
+
+            totalOrderValue += Number(exp.orderValue) || 0;
+            totalUpsellValue += Number(exp.upsellValue) || 0;
+
+            // Status-wise split
+            const status = exp.status || "Pending";
+            if (status === "Approved") {
+                approvedClaims += 1;
+                approvedAmount += amount;
+            } else if (status === "Rejected") {
+                rejectedClaims += 1;
+                rejectedAmount += amount;
+            } else {
+                pendingClaims += 1;
+                pendingAmount += amount;
+            }
+
+            // Current-month bucket
+            if (exp.date) {
+                const d = new Date(exp.date);
+                if (
+                    d.getMonth() === currentMonth &&
+                    d.getFullYear() === currentYear
+                ) {
+                    monthlyClaims += 1;
+                    monthlyAmount += amount;
+                    monthlyDistance += km;
+                }
+            }
+        });
+
+        const stats = {
+            totalClaims,
+            totalDistance: Number(totalDistance.toFixed(2)),
+            totalAmount: Number(totalAmount.toFixed(2)),
+
+            monthlyClaims,
+            monthlyAmount: Number(monthlyAmount.toFixed(2)),
+            monthlyDistance: Number(monthlyDistance.toFixed(2)),
+
+            pendingClaims,
+            approvedClaims,
+            rejectedClaims,
+            pendingAmount: Number(pendingAmount.toFixed(2)),
+            approvedAmount: Number(approvedAmount.toFixed(2)),
+            rejectedAmount: Number(rejectedAmount.toFixed(2)),
+
+            totalOrderValue: Number(totalOrderValue.toFixed(2)),
+            totalUpsellValue: Number(totalUpsellValue.toFixed(2)),
+            totalStops,
+            avgClaimAmount: totalClaims
+                ? Number((totalAmount / totalClaims).toFixed(2))
+                : 0
+        };
+
+        // 4️⃣ Send everything together
         res.status(200).json({
             success: true,
-            data: expensesWithDetails
+            data: expensesWithDetails, // list for table
+            stats,                     // 👈 cards consume this
+            rate                       // 👈 hero pill rate
         });
+
     } catch (error) {
         console.error("Get my expenses error:", error);
         res.status(500).json({
@@ -111,6 +203,8 @@ exports.getMyExpenses = async (req, res) => {
         });
     }
 };
+
+
 
 // 📊 Get all expenses (Admin view) - WITHOUT POPULATE
 exports.getAllExpenses = async (req, res) => {

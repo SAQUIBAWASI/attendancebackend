@@ -338,7 +338,9 @@ const {
   updateImageCaptureAttendance,
   getAllEmployeesForCresol,
   uploadEmployeeDocument,
-  deleteEmployeeDocument
+  deleteEmployeeDocument,
+  employeeDashboard,
+  getEmployeeSalarySummary
 } = require("../controller/employee.controller");
 
 const router = express.Router();
@@ -368,6 +370,7 @@ router.get("/letters/:employeeId", getEmployeeLetters);
 // ==================== SALARY INCREMENT ROUTES ====================
 router.put("/:id/salary-increment", applySalaryIncrement);
 router.get("/:id/salary-for-date", getEmployeeSalaryForDate);
+router.get("/salary-summary/:id", getEmployeeSalarySummary);
 router.get("/:id/salary-history", getSalaryIncrementHistory);
 router.get("/:id/salary-timeline", getSalaryTimeline);
 router.get("/salary-status/all", getAllEmployeesSalaryStatus);
@@ -409,5 +412,6 @@ router.post(
 );
 
 router.post("/delete-document", deleteEmployeeDocument);
+router.get("/empdashboard/:employeeId", employeeDashboard);
 
 module.exports = router;

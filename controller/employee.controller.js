@@ -4378,6 +4378,12 @@ const { logActivity } = require("./userActivity.controller");
 const ClaimedOT = require('../models/ClaimedOT');
 const Attendance = require('../models/Attendance');
 const Issue = require("../models/Issues");
+const Leave = require("../models/Leave");
+const Holiday = require("../models/Holiday");
+const CompOff = require("../models/CompOff");
+const AttendanceSummary = require("../models/AttendanceSummary");
+
+
 
 // ==================== GET EMPLOYEE BY PHONE ====================
 const getEmployeeByPhone = async (req, res) => {
@@ -5312,25 +5318,38 @@ const getEmployeeIssues = async (req, res) => {
   }
 };
 
+// ============================================
+// UPDATE ISSUE
+// PUT /api/employees/update-issue/:issueId
+// ============================================
 const updateIssue = async (req, res) => {
   try {
     const { issueId } = req.params;
     const { issueTitle, issueDescription, issueType, priority, status, adminRemark } = req.body;
+
     const issue = await Issue.findById(issueId);
-    if (!issue) return res.status(404).json({ success: false, message: 'Not found' });
+    if (!issue) {
+      return res.status(404).json({ success: false, message: "Issue not found" });
+    }
+
     if (issueTitle) issue.issueTitle = issueTitle;
     if (issueDescription) issue.issueDescription = issueDescription;
     if (issueType) issue.issueType = issueType;
     if (priority) issue.priority = priority;
+
     if (status) {
       issue.status = status;
       if (status === "Resolved") issue.resolvedAt = new Date();
     }
+
     if (adminRemark !== undefined) issue.adminRemark = adminRemark;
+
     await issue.save();
-    res.status(200).json({ success: true, data: issue });
+
+    return res.status(200).json({ success: true, data: issue });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Update issue error:", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -5618,6 +5637,825 @@ const deleteEmployeeDocument = async (req, res) => {
   }
 };
 
+
+
+
+
+// ✅ SINGLE DASHBOARD CONTROLLER — sirf employeeId param
+const employeeDashboard = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        message: "employeeId is required",
+      });
+    }
+
+    // 1️⃣ PROFILE
+    const profile = await Employee.findOne({ employeeId }).lean();
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    const targetId = employeeId;
+    const department = profile.department || "";
+
+    // 2️⃣ ATTENDANCE
+    const attendance = await Attendance.find({
+      $or: [
+        { employeeId: targetId },
+        { "employeeId.employeeId": targetId },
+      ],
+    })
+      .sort({ checkInTime: -1 })
+      .limit(500)
+      .lean();
+
+    // 3️⃣ LEAVES
+    const leaves = await Leave.find({ employeeId: targetId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // 4️⃣ PERMISSIONS (approved)
+    let permissions = [];
+    try {
+      permissions = await Permission.find({
+        employeeId: targetId,
+        status: "APPROVED",
+      }).lean();
+    } catch (e) {
+      console.warn("Permissions fetch failed:", e.message);
+    }
+
+    // 5️⃣ LOCATION
+    let locationName = "Not Assigned";
+    try {
+      if (profile.location?.name) {
+        locationName = profile.location.name;
+      } else {
+        const locDoc = await Employee.findById(profile._id)
+          .populate("location")
+          .lean();
+        if (locDoc?.location?.name) locationName = locDoc.location.name;
+      }
+    } catch (e) {
+      console.warn("Location fetch failed:", e.message);
+    }
+
+    // 6️⃣ SHIFT
+    let shiftData = null;
+    try {
+      shiftData = await Shift.findOne({ employeeId: targetId }).lean();
+    } catch (e) {
+      console.warn("Shift fetch failed:", e.message);
+    }
+
+    let shiftTiming = "Not Assigned";
+    let upcomingShift = null;
+
+    if (shiftData) {
+      if (shiftData.startTime) {
+        shiftTiming = `${shiftData.startTime} - ${shiftData.endTime}`;
+      } else if (shiftData.employeeAssignment?.startTime) {
+        shiftTiming = `${shiftData.employeeAssignment.startTime} - ${shiftData.employeeAssignment.endTime}`;
+      } else {
+        shiftTiming = "No Shift Assigned";
+      }
+
+      const scheduled = shiftData.scheduledChange;
+      if (scheduled?.shiftType) {
+        upcomingShift = {
+          shiftType: scheduled.shiftType,
+          shiftName: scheduled.shiftName || `Shift ${scheduled.shiftType}`,
+          timeRange: scheduled.selectedTimeRange || "Not specified",
+          description: scheduled.selectedDescription || "Shift timing",
+          effectiveFrom: scheduled.effectiveFrom,
+          shiftCategory:
+            scheduled.shiftCategory || shiftData.shiftCategory || "Regular",
+        };
+      }
+    }
+
+    // 7️⃣ BIRTHDAYS TODAY
+    const today = new Date();
+    const todayMonth = today.getMonth() + 1;
+    const todayDate = today.getDate();
+
+    let birthdaysToday = [];
+    try {
+      birthdaysToday = await Employee.aggregate([
+        {
+          $match: {
+            department,
+            $expr: {
+              $and: [
+                { $eq: [{ $month: "$dob" }, todayMonth] },
+                { $eq: [{ $dayOfMonth: "$dob" }, todayDate] },
+              ],
+            },
+          },
+        },
+        {
+          $project: {
+            name: 1,
+            email: 1,
+            employeeName: "$name",
+            department: 1,
+          },
+        },
+      ]);
+    } catch (e) {
+      console.warn("Birthdays fetch failed:", e.message);
+    }
+
+    // 8️⃣ ANNIVERSARIES TODAY
+    let anniversariesToday = [];
+    try {
+      anniversariesToday = await Employee.aggregate([
+        {
+          $match: {
+            department,
+            $expr: {
+              $and: [
+                { $eq: [{ $month: "$joiningDate" }, todayMonth] },
+                { $eq: [{ $dayOfMonth: "$joiningDate" }, todayDate] },
+              ],
+            },
+          },
+        },
+        {
+          $project: {
+            name: 1,
+            email: 1,
+            employeeName: "$name",
+            department: 1,
+            yearsOfService: {
+              $subtract: [today.getFullYear(), { $year: "$joiningDate" }],
+            },
+          },
+        },
+      ]);
+    } catch (e) {
+      console.warn("Anniversaries fetch failed:", e.message);
+    }
+
+    // 9️⃣ LEAVES TODAY (department-wise)
+    let leavesToday = [];
+    try {
+      const deptEmployeeIds = await Employee.find({ department }).distinct(
+        "employeeId"
+      );
+
+      leavesToday = await Leave.find({
+        status: "approved",
+        employeeId: { $in: deptEmployeeIds },
+        startDate: { $lte: today },
+        endDate: { $gte: today },
+      }).lean();
+    } catch (e) {
+      console.warn("Leaves today fetch failed:", e.message);
+    }
+
+    // 🔟 PERFORMANCE
+    let performanceData = null;
+    try {
+      const currentMonth = today.getMonth() + 1;
+      const currentYear = today.getFullYear();
+      const perfRes = await require("../services/performanceService").getEmployeePerformance(
+        targetId,
+        currentMonth,
+        currentYear
+      );
+      performanceData = perfRes;
+    } catch (e) {
+      console.warn("Performance fetch failed:", e.message);
+    }
+
+    // 1️⃣1️⃣ TOP PERFORMER
+    let topPerformer = null;
+    try {
+      const currentMonth = today.getMonth() + 1;
+      const currentYear = today.getFullYear();
+      const topRes = await require("../services/performanceService").getTopPerformers(
+        currentMonth,
+        currentYear
+      );
+      topPerformer = topRes?.[0] || null;
+    } catch (e) {
+      console.warn("Top performer fetch failed:", e.message);
+    }
+
+    // ✅ RESPONSE
+    return res.json({
+      success: true,
+      data: {
+        profile,
+        attendance,
+        leaves,
+        permissions,
+        location: locationName,
+        shift: {
+          shiftData,
+          shiftTiming,
+          upcomingShift,
+        },
+        birthdaysToday,
+        anniversariesToday,
+        leavesToday,
+        performanceData,
+        topPerformer,
+      },
+    });
+  } catch (error) {
+    console.error("Dashboard API error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+
+
+
+
+// ============================================
+// HELPERS
+// ============================================
+const fmtDate = (d) => {
+  if (!d) return "";
+  const dt = new Date(d);
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const day = String(dt.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+// ✅ Month normalize — YYYY-MM ya MM-YYYY dono accept karo
+const normalizeMonth = (m) => {
+  if (!m) return null;
+  const s = String(m).trim();
+  if (/^\d{4}-\d{2}$/.test(s)) {
+    const [y, mo] = s.split("-").map(Number);
+    if (mo < 1 || mo > 12) return null;
+    return s;
+  }
+  if (/^\d{2}-\d{4}$/.test(s)) {
+    const [mo, y] = s.split("-").map(Number);
+    if (mo < 1 || mo > 12) return null;
+    return `${y}-${String(mo).padStart(2, "0")}`;
+  }
+  return null;
+};
+
+const getDaysInMonth = (monthStr) => {
+  const [y, m] = monthStr.split("-").map(Number);
+  return new Date(y, m, 0).getDate();
+};
+
+const getPreviousMonth = (monthStr) => {
+  const [y, m] = monthStr.split("-").map(Number);
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
+const formatMonthDisplay = (monthStr) => {
+  if (!monthStr) return "Current Month";
+  const parts = monthStr.split("-");
+  let y, m;
+  if (parts[0].length === 4) [y, m] = parts;
+  else [m, y] = parts;
+  const names = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  return `${names[parseInt(m, 10) - 1]} ${y}`;
+};
+
+const formatDecimalHours = (h) => {
+  if (!h && h !== 0) return "0h 0m";
+  const hr = Math.floor(h);
+  const mn = Math.round((h - hr) * 60);
+  return mn === 60 ? `${hr + 1}h 0m` : `${hr}h ${mn}m`;
+};
+
+const isHistoricalMonth = (month) => {
+  const today = new Date();
+  const curY = today.getFullYear();
+  const curM = today.getMonth() + 1;
+  const [y, m] = month.split("-").map(Number);
+  if (y < curY) return true;
+  if (y === curY && m < curM) return true;
+  return false;
+};
+
+const isCurrentMonth = (month) => {
+  const today = new Date();
+  return month === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+};
+
+const shouldIncludeWeekOff = (month) => {
+  const today = new Date();
+  const curY = today.getFullYear();
+  const curM = today.getMonth() + 1;
+  const curD = today.getDate();
+  const [y, m] = month.split("-").map(Number);
+  if (y < curY) return true;
+  if (y === curY && m < curM) return true;
+  if (y === curY && m === curM) return curD >= 26;
+  return false;
+};
+
+const isPayslipAllowed = (month) => {
+  if (isHistoricalMonth(month)) return true;
+  if (isCurrentMonth(month)) {
+    const days = getDaysInMonth(month);
+    return new Date().getDate() >= days;
+  }
+  return true;
+};
+
+// ============================================
+// LEAVES PER MONTH
+// ============================================
+const processLeavesForMonth = (leaves, targetMonth) => {
+  const map = {};
+  const [year, monthNum] = targetMonth.split("-").map(Number);
+  const startOfMonth = new Date(year, monthNum - 1, 1);
+  const endOfMonth = new Date(year, monthNum, 0, 23, 59, 59);
+
+  (leaves || []).forEach((leave) => {
+    const empId = String(leave.employeeId);
+    if (!empId) return;
+
+    const ls = new Date(leave.startDate);
+    const le = new Date(leave.endDate);
+    const ovStart = new Date(Math.max(ls, startOfMonth));
+    const ovEnd = new Date(Math.min(le, endOfMonth));
+    const days = ovStart <= ovEnd
+      ? Math.ceil(Math.abs(ovEnd - ovStart) / (1000 * 60 * 60 * 24)) + 1
+      : 0;
+
+    const safe = new Date(startOfMonth);
+    safe.setDate(startOfMonth.getDate() - 6);
+    const extStart = new Date(Math.max(ls, safe));
+    const inExt = extStart <= ovEnd;
+
+    if (!map[empId]) {
+      map[empId] = { CL: 0, SL: 0, EL: 0, COFF: 0, LOP: 0, Other: 0, leaveDetails: [] };
+    }
+
+    const type = leave.leaveType || "Other";
+    if (days > 0) {
+      const typeMap = {
+        "Casual Leave": "CL", Casual: "CL", casual: "CL",
+        "Earned Leave": "EL", Earned: "EL", earned: "EL",
+        "Sick Leave": "SL", Sick: "SL", sick: "SL",
+        "Comp Off": "COFF", "comp off": "COFF",
+      };
+      const key = typeMap[type];
+      if (key) map[empId][key] += days;
+      else if (map[empId][type] !== undefined) map[empId][type] += days;
+      else map[empId].Other += days;
+    }
+
+    if (inExt) {
+      map[empId].leaveDetails.push({
+        type,
+        startDate: leave.startDate,
+        endDate: leave.endDate,
+        days: Math.ceil(Math.abs(le - ls) / (1000 * 60 * 60 * 24)) + 1,
+        reason: leave.reason || "",
+        status: leave.status || "pending",
+      });
+    }
+  });
+
+  return map;
+};
+
+// ============================================
+// WEEK-OFF CALC
+// ============================================
+const calculateEarnedWeekOffs = (
+  employeeId, year, monthNum, attendance, leavesMap, weekOffDay, shiftHours, holidayCount
+) => {
+  const weekOffNum = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].indexOf(weekOffDay);
+  const firstDay = new Date(year, monthNum - 1, 1);
+  const lastDay = new Date(year, monthNum, 0);
+
+  const attMap = new Map();
+  (attendance || []).forEach((r) => {
+    const key = fmtDate(r.date || r.checkInTime);
+    let hrs = 0;
+    if (r.totalHours) hrs = parseFloat(r.totalHours);
+    else if (r.workingHours) hrs = parseFloat(r.workingHours);
+    else if (r.hours) hrs = parseFloat(r.hours);
+    else if (r.checkInTime && r.checkOutTime) {
+      hrs = (new Date(r.checkOutTime) - new Date(r.checkInTime)) / 3600000;
+    }
+    attMap.set(key, (attMap.get(key) || 0) + hrs);
+  });
+
+  const isLeaveDay = (d) => {
+    const leaves = leavesMap?.[employeeId];
+    if (!leaves?.leaveDetails) return false;
+    const ds = fmtDate(d);
+    return leaves.leaveDetails.some((l) => ds >= fmtDate(l.startDate) && ds <= fmtDate(l.endDate));
+  };
+
+  const weeklyBreakdown = [];
+  let curr = new Date(firstDay);
+  while (curr.getDay() !== 1) curr.setDate(curr.getDate() - 1);
+
+  let weekNum = 1;
+  let eligibleWeeks = 0;
+  let totalWorkingDays = 0;
+  let totalLeaves = 0;
+  let totalPresentDays = 0;
+  let totalHalfDays = 0;
+
+  while (curr <= lastDay) {
+    const weekEnd = new Date(curr);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    let present = 0, half = 0, leaves = 0, wo = 0, totDays = 0, actualWork = 0;
+
+    for (let d = new Date(curr); d <= weekEnd; d.setDate(d.getDate() + 1)) {
+      if (d < firstDay || d > lastDay) continue;
+      totDays++;
+      if (d.getDay() === weekOffNum) { wo++; continue; }
+      actualWork++;
+      if (isLeaveDay(d)) { leaves++; totalLeaves++; continue; }
+      const hrs = attMap.get(fmtDate(d));
+      if (hrs !== undefined) {
+        if (hrs >= shiftHours * 0.8) { present++; totalPresentDays++; totalWorkingDays++; }
+        else { half += 0.5; totalHalfDays++; totalWorkingDays += 0.5; }
+      }
+    }
+
+    const eff = present + half + leaves;
+    let eligible = false;
+    if (totDays === 7) eligible = eff >= 5;
+    else eligible = (present + half >= actualWork) && actualWork >= 3;
+
+    weeklyBreakdown.push({
+      weekNumber: weekNum, daysInMonth: totDays, presentDays: present, halfDays: half,
+      leaves, weekOffDays: wo, effectiveWorkingDays: Math.round(eff * 10) / 10,
+      isEligibleForWeekoff: eligible,
+    });
+
+    if (eligible) eligibleWeeks++;
+    curr.setDate(curr.getDate() + 7);
+    weekNum++;
+  }
+
+  let totalWeekOffDays = 0;
+  for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
+    if (d.getDay() === weekOffNum) totalWeekOffDays++;
+  }
+
+  const totalActive = totalWorkingDays + totalLeaves + (holidayCount || 0);
+  let earned = Math.max(eligibleWeeks, Math.floor(totalActive / 5));
+  earned = Math.min(earned, totalWeekOffDays);
+
+  return { weeklyBreakdown, earnedWeekOffs: earned, totalWeekOffDays, totalWorkingDays, totalPresentDays, totalHalfDays };
+};
+
+// ============================================
+// MAIN COMPUTE
+// ============================================
+const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, allCompOffs, allOTClaims) => {
+  const [year, monthNum] = month.split("-").map(Number);
+  const daysInMonth = getDaysInMonth(month);
+  const includeWO = shouldIncludeWeekOff(month);
+  const isHist = isHistoricalMonth(month);
+  const isCurr = isCurrentMonth(month);
+  const canDl = isPayslipAllowed(month);
+  const empId = String(employee.employeeId).trim();
+
+  // ---- Leaves ----
+  const leavesMap = processLeavesForMonth(allLeaves, month);
+  const leavesObj = leavesMap[empId] || { CL:0, SL:0, EL:0, COFF:0, LOP:0, Other:0, leaveDetails: [] };
+
+  // ---- Holidays ----
+  let holidayCount = 0;
+  (allHolidays || []).forEach((h) => {
+    if (h.isActive === false) return;
+    const hs = h.fromDate, he = h.toDate;
+    if (!hs || !he) return;
+    const hStart = new Date(hs), hEnd = new Date(he);
+    const start = new Date(year, monthNum - 1, 1);
+    const end = new Date(year, monthNum, 0, 23, 59, 59);
+    const ov1 = new Date(Math.max(hStart, start));
+    const ov2 = new Date(Math.min(hEnd, end));
+    if (ov1 <= ov2) {
+      holidayCount += Math.max(1, Math.round((ov2 - ov1) / 86400000));
+    }
+  });
+
+  // ---- Comp Off earned ----
+  const start = new Date(year, monthNum - 1, 1);
+  const end = new Date(year, monthNum, 0, 23, 59, 59);
+  let compOffEarned = 0;
+  (allCompOffs || []).forEach((co) => {
+    if (co.status === "approved" && String(co.employeeId).trim() === empId) {
+      const wd = new Date(co.workDate);
+      if (wd >= start && wd <= end) compOffEarned++;
+    }
+  });
+
+  // ✅ SL excluded from comp-off used
+  const totalLeavesForCompOff =
+    (leavesObj.CL || 0) + (leavesObj.EL || 0) + (leavesObj.COFF || 0) + (leavesObj.Other || 0);
+  const totalLeavesForDisplay = totalLeavesForCompOff + (leavesObj.SL || 0);
+  const compOffUsed = Math.min(compOffEarned, totalLeavesForCompOff);
+  const compOffBalance = compOffEarned - compOffUsed;
+
+  // ---- Attendance summary ----
+  const summary = await AttendanceSummary.findOne({ employeeId: empId, month }) || {};
+
+  // ---- Attendance detail ----
+  const attendanceRecords = await Attendance.find({
+    employeeId: empId,
+    $or: [
+      { date: { $gte: start, $lte: end } },
+      { checkInTime: { $gte: start, $lte: end } },
+    ],
+  });
+
+  // ---- Week-offs ----
+  const weekOffDay = employee.weekOffDay || "Sunday";
+  const weekOffData = calculateEarnedWeekOffs(
+    empId, year, monthNum, attendanceRecords, leavesMap, weekOffDay,
+    employee.shiftHours || 8, holidayCount
+  );
+
+  // ---- Department flags ----
+  const dept = (employee.department || "").toLowerCase().trim();
+  const isDevOrMkt = dept.includes("developer") || dept.includes("digital marketing") || dept.includes("development");
+  const isConsultant = dept.includes("consultant");
+  const isSpecial = ["laboratory medicine","nursing","medical"].includes(dept) ||
+                    dept.includes("laboratory") || dept.includes("nursing") ||
+                    dept.includes("medical") || isConsultant;
+
+  let earned = weekOffData.earnedWeekOffs;
+  let defaultWO = isConsultant ? 2 : (employee.weekOffPerMonth || 4);
+  if (isDevOrMkt) {
+    defaultWO = weekOffData.totalWeekOffDays || 5;
+    earned = defaultWO;
+  }
+  const finalWO = Math.min(earned, defaultWO);
+
+  // ---- Salary for date ----
+  let salaryForMonth = employee.salaryPerMonth || 0;
+  let originalSalary = employee.salaryPerMonth || salaryForMonth;
+  let incrementDetails = null;
+  try {
+    const targetDate = new Date(year, monthNum - 1, 15);
+    const s = await employee.getSalaryForDate(targetDate);
+    salaryForMonth = s.salaryPerMonth || salaryForMonth;
+    originalSalary = s.originalSalary || originalSalary;
+    incrementDetails = s.incrementDetails || null;
+  } catch (e) {}
+
+  const dailyRate = salaryForMonth > 0 ? salaryForMonth / daysInMonth : 0;
+
+  // ---- Present / half ----
+  let presentDays = summary.presentDays;
+  if (presentDays === undefined || presentDays === null ||
+      (presentDays === 0 && weekOffData.totalPresentDays > 0)) {
+    presentDays = weekOffData.totalPresentDays || 0;
+  }
+  let halfDays = summary.halfDayWorking;
+  if (halfDays === undefined || halfDays === null) halfDays = weekOffData.totalHalfDays || 0;
+  let workingDays = summary.totalWorkingDays;
+  if (workingDays === undefined || workingDays === null) workingDays = presentDays + halfDays * 0.5;
+
+  const overtimeHours = summary.overTimeHours || 0;
+
+  // ---- Expected working days / payable ----
+  const expectedWorkingDays = daysInMonth - finalWO;
+  const actualWorked = presentDays + halfDays * 0.5;
+  const payablePresent = Math.min(actualWorked, expectedWorkingDays);
+  const carryForward = Math.max(0, Math.round((actualWorked - expectedWorkingDays) * 100) / 100);
+
+  let calculatedSalary = 0;
+  if (salaryForMonth > 0 && daysInMonth > 0) {
+    const holidayAdd = isSpecial ? 0 : holidayCount;
+    const effectivePaid = payablePresent + (includeWO ? finalWO : 0) + holidayAdd + compOffBalance;
+    calculatedSalary = effectivePaid * dailyRate;
+  }
+
+  // ---- OT ----
+  let totalOT = overtimeHours || 0;
+  let calcOT = 0;
+  attendanceRecords.forEach((r) => {
+    let hrs = 0;
+    if (r.hours) hrs = parseFloat(r.hours);
+    else if (r.totalHours) hrs = parseFloat(r.totalHours);
+    else if (r.checkInTime && r.checkOutTime) hrs = (new Date(r.checkOutTime) - new Date(r.checkInTime)) / 3600000;
+    const sh = employee.shiftHours || 8;
+    if (hrs > sh) calcOT += (hrs - sh);
+  });
+  if (totalOT === 0 && calcOT > 0) totalOT = calcOT;
+  totalOT = Number(totalOT.toFixed(2));
+
+  let approvedOTAmount = 0;
+  let approvedOTHours = 0;
+  (allOTClaims || []).forEach((c) => {
+    if (String(c.employeeId).trim() !== empId) return;
+    const cd = new Date(c.date);
+    if (cd >= start && cd <= end) {
+      approvedOTAmount += c.otAmount || 0;
+      approvedOTHours += c.otHours || 0;
+    }
+  });
+
+  const baseCalc = Math.round(calculatedSalary);
+  let finalOTAmount = 0;
+  let finalPay = baseCalc;
+  if (approvedOTAmount > 0) {
+    finalOTAmount = approvedOTAmount;
+    finalPay = Math.round(baseCalc + approvedOTAmount);
+  } else if (totalOT > 0) {
+    const otRate = dailyRate / (employee.shiftHours || 8);
+    const amount = totalOT * otRate * 2;
+    finalOTAmount = amount;
+    finalPay = Math.round(baseCalc + amount);
+  }
+
+  return {
+    month,
+    monthFormatted: formatMonthDisplay(month),
+    monthDays: daysInMonth,
+
+    presentDays,
+    halfDays,
+    halfDayWorking: halfDays,
+    totalWorkingDays: workingDays,
+    workingDays,
+    fullDayNotWorking: summary.fullDayNotWorking ?? 0,
+    overTimeHours: totalOT,
+    overTimeHoursFormatted: formatDecimalHours(totalOT),
+
+    weekOffs: finalWO,
+    earnedWeekOffs: earned,
+    defaultWeekOffs: defaultWO,
+    targetWeekOffCount: defaultWO,
+    weekOffDay,
+    weeklyBreakdown: weekOffData.weeklyBreakdown,
+
+    salaryPerMonth: salaryForMonth,
+    originalSalary,
+    salaryPerDay: dailyRate.toFixed(2),
+    dailyRate: dailyRate.toFixed(2),
+    calculatedSalary: Math.round(calculatedSalary),
+    baseCalculatedSalary: baseCalc,
+    finalPay,
+    finalOTAmount: Math.round(finalOTAmount),
+    otAmount: Math.round(finalOTAmount),
+    hasApprovedOT: approvedOTAmount > 0,
+    approvedOTAmount,
+    approvedOTHours,
+
+    holidayCount: isConsultant ? 0 : holidayCount,
+    compOffEarned,
+    compOffUsed,
+    compOffBalance,
+    totalLeaves: totalLeavesForDisplay,
+    leavesBreakdown: leavesObj,
+
+    expectedWorkingDays,
+    payablePresentDays: payablePresent,
+    carryForwardDays: carryForward,
+
+    includeWeekOffInSalary: includeWO,
+    isHistoricalMonth: isHist,
+    isCurrentMonth: isCurr,
+    canDownload: canDl,
+    incrementDetails,
+
+    employeeId: employee.employeeId,
+    name: employee.name,
+    department: employee.department || "N/A",
+    designation: employee.designation || employee.role || "N/A",
+    role: employee.role || employee.designation || "N/A",
+    shiftHours: employee.shiftHours || 8,
+    joiningDate: employee.joinDate || employee.joiningDate || "",
+    location: employee.location || "HYDERABAD",
+    bankAccount: employee.bankAccount || employee.bankAccountNo || "",
+    bankName: employee.bankName || "",
+    panNo: employee.panCard || employee.panNumber || "",
+    pfNo: employee.pfNumber || employee.pfNo || "",
+    uanNo: employee.uanNumber || employee.uanNo || "",
+    esicNo: employee.esicNumber || employee.esicNo || "",
+    branch: employee.branch || "",
+    basicPay: employee.basicPay,
+    hra: employee.hra,
+    conveyanceAllowance: employee.conveyanceAllowance,
+    medicalAllowance: employee.medicalAllowance,
+    performanceAllowance: employee.performanceAllowance,
+    specialAllowance: employee.specialAllowance,
+    gmcAmount: employee.gmc || employee.gmcAmount,
+    ptax: employee.profTax || employee.ptax,
+    otherDeductions: employee.otherDeductions,
+  };
+};
+
+// ============================================
+// 🚀 MAIN CONTROLLER
+// GET /api/employees/:id/salary-summary?month=YYYY-MM
+// ============================================
+const getEmployeeSalarySummary = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { month } = req.query;
+
+    const requestedMonth = month ? normalizeMonth(month) : null;
+    if (month && !requestedMonth) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid month format. Use YYYY-MM (e.g. 2026-09) or MM-YYYY (e.g. 09-2026)",
+      });
+    }
+
+    const employee = await Employee.findById(id);
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found" });
+    }
+
+    const [allLeaves, allHolidays, allCompOffs, allOTClaims] = await Promise.all([
+      Leave.find({ status: "approved" }).lean(),
+      Holiday.find({ isActive: { $ne: false } }).lean(),
+      CompOff.find({ employeeId: String(employee.employeeId), status: "approved" }).lean(),
+      ClaimedOT.find({ employeeId: String(employee.employeeId), status: "approved" }).lean(),
+    ]);
+
+    let months = [];
+    if (requestedMonth) {
+      months = [requestedMonth];
+    } else {
+      const cur = new Date();
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(cur.getFullYear(), cur.getMonth() - i, 1);
+        const mStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        if (employee.joinDate || employee.joiningDate) {
+          const jd = new Date(employee.joinDate || employee.joiningDate);
+          const jStr = `${jd.getFullYear()}-${String(jd.getMonth() + 1).padStart(2, "0")}`;
+          if (mStr < jStr) continue;
+        }
+        months.push(mStr);
+      }
+    }
+    if (months.length === 0) {
+      const d = new Date();
+      months = [`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`];
+    }
+
+    const records = [];
+    for (const m of months) {
+      const rec = await computeSalaryForMonth(
+        employee, m, allLeaves, allHolidays, allCompOffs, allOTClaims
+      );
+      records.push(rec);
+    }
+    records.sort((a, b) => b.month.localeCompare(a.month));
+
+    const totalNetPay = records.reduce((s, r) => s + (r.calculatedSalary || 0), 0);
+    const payslipsAvailable = records.filter((r) => r.canDownload).length;
+    const avgSalary = records.length ? Math.round(totalNetPay / records.length) : 0;
+
+    return res.status(200).json({
+      success: true,
+      employee: {
+        _id: employee._id,
+        employeeId: employee.employeeId,
+        name: employee.name,
+        department: employee.department,
+        designation: employee.designation || employee.role,
+      },
+      stats: {
+        totalRecords: records.length,
+        totalNetPay,
+        payslipsAvailable,
+        avgSalary,
+      },
+      data: records,
+    });
+  } catch (error) {
+    console.error("Salary summary error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch salary summary",
+      error: error.message,
+    });
+  }
+};
+
+
+
 module.exports = {
   getEmployeeByPhone,
   addEmployee,
@@ -5666,5 +6504,7 @@ module.exports = {
 
   // ✅ NEW
   uploadEmployeeDocument,
-  deleteEmployeeDocument
+  deleteEmployeeDocument,
+  employeeDashboard,
+  getEmployeeSalarySummary
 };
