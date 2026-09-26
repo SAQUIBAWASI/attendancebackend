@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "991518587847",
+    "project_id": "timely-f4f1e",
+    "storage_bucket": "timely-f4f1e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:991518587847:android:d0d22350c4d71c1d74b7e2",
+        "android_client_info": {
+          "package_name": "com.timely.attendance"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB14bGT-6R42xTL6t1qcnNDkledo_Hh2Fs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

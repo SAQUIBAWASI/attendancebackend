@@ -4382,6 +4382,7 @@ const Leave = require("../models/Leave");
 const Holiday = require("../models/Holiday");
 const CompOff = require("../models/CompOff");
 const AttendanceSummary = require("../models/AttendanceSummary");
+const { sendToToken } = require("../services/notificationService");
 
 
 
@@ -4553,10 +4554,20 @@ const getEmployeeByEmail = async (req, res) => {
   }
 };
 
-// ==================== LOGIN EMPLOYEE ====================
 const loginEmployee = async (req, res) => {
+  console.log("\n========================================");
+  console.log("🔐 [LOGIN] Request received at:", new Date().toISOString());
+
   try {
-    const { email, employeeId, password, latitude, longitude } = req.body;
+    const { email, employeeId, password, latitude, longitude, fcmToken } = req.body;
+
+    console.log("📥 [LOGIN] Payload:", {
+      email: email || null,
+      employeeId: employeeId || null,
+      latitude,
+      longitude,
+      fcmToken: fcmToken ? `${fcmToken.substring(0, 20)}...` : null,
+    });
 
     if (!email && !employeeId) {
       return res.status(400).json({ success: false, message: "Email or Employee ID is required" });
@@ -4567,29 +4578,132 @@ const loginEmployee = async (req, res) => {
 
     const query = email ? { email } : { employeeId };
     const employee = await Employee.findOne(query);
-
     if (!employee) {
       return res.status(404).json({ success: false, message: "Invalid Email" });
     }
+
     if (employee.password !== password) {
       return res.status(401).json({ success: false, message: "Invalid password" });
     }
 
-    const address = await getAddressFromCoords(latitude, longitude);
+    console.log("✅ [LOGIN] Auth OK for:", employee.employeeId, "-", employee.name);
 
+    const address = await getAddressFromCoords(latitude, longitude);
     employee.latitude = latitude;
     employee.longitude = longitude;
     employee.address = address;
-
     employee.lastLoginLocation = {
-      latitude, longitude, timestamp: new Date(), address
+      latitude, longitude, timestamp: new Date(), address,
     };
 
-    await employee.save();
+    // ========================================
+    // 🔥 FCM TOKEN — fresh token aaye to store karo (overwrite bhi allowed)
+    // ========================================
+    console.log("🔔 [FCM] State before:", {
+      incomingToken: fcmToken ? "YES" : "NO",
+      flagStored: employee.isFcmTokenStored,
+      existingToken: employee.fcmToken ? `${employee.fcmToken.substring(0, 20)}...` : null,
+    });
 
-    res.json({
+    // ✅ Simple rule: agar frontend ne naya token bheja, to update karo
+    // (Kyunki purana invalid ho sakta hai, aur frontend hi fresh token deta hai)
+    let tokenChanged = false;
+
+    if (fcmToken && fcmToken !== employee.fcmToken) {
+      employee.fcmToken = fcmToken;
+      employee.fcmUpdatedAt = new Date();
+      employee.isFcmTokenStored = true;
+      tokenChanged = true;
+      console.log("✅ [FCM] Token STORED/UPDATED");
+    } else if (fcmToken && fcmToken === employee.fcmToken) {
+      console.log("🔒 [FCM] Same token — no change");
+    } else {
+      console.log("⚠️ [FCM] No incoming token — using existing if available");
+    }
+
+    await employee.save();
+    console.log("💾 [LOGIN] Employee saved");
+
+    // ========================================
+    // 📤 PUSH NOTIFICATION — har login pe
+    // ========================================
+    const pushNotification = {
+      attempted: false,
+      sent: false,
+      tokenUsed: null,
+      title: null,
+      body: null,
+      messageId: null,
+      error: null,
+      reason: null,
+    };
+
+    const tokenToUse = employee.fcmToken;
+
+    if (tokenToUse) {
+      const title = "Login Successful ✅";
+      const body = `Welcome back, ${employee.name}! You are logged in successfully.`;
+
+      pushNotification.attempted = true;
+      pushNotification.tokenUsed = `${tokenToUse.substring(0, 20)}...`;
+      pushNotification.title = title;
+      pushNotification.body = body;
+
+      console.log("📤 [FCM] Sending push to:", pushNotification.tokenUsed);
+
+      try {
+        const result = await sendToToken({
+          token: tokenToUse,
+          title,
+          body,
+          data: {
+            type: "LOGIN_SUCCESS",
+            employeeId: String(employee.employeeId),
+            timestamp: new Date().toISOString(),
+          },
+        });
+
+        if (result.success) {
+          pushNotification.sent = true;
+          pushNotification.messageId = result.messageId;
+          console.log("✅ [FCM] PUSH SENT. MessageId:", result.messageId);
+        } else {
+          pushNotification.error = result.error;
+          pushNotification.reason = result.code || "send_failed";
+          console.error("❌ [FCM] PUSH FAILED. Code:", result.code);
+
+          // 🔥 INVALID TOKEN — DB se clear karo taaki next login pe fresh token store ho
+          if (
+            result.code === "messaging/registration-token-not-registered" ||
+            result.error === "NotRegistered" ||
+            result.code === "messaging/invalid-registration-token"
+          ) {
+            console.log("🧹 [FCM] Invalid token — clearing from DB");
+            employee.fcmToken = null;
+            employee.isFcmTokenStored = false;
+            employee.fcmUpdatedAt = new Date();
+            await employee.save();
+            pushNotification.reason = "invalid_token_cleared";
+            console.log("🧹 [FCM] Token cleared. Next login needs fresh token from app.");
+          }
+        }
+      } catch (e) {
+        pushNotification.error = e.message;
+        pushNotification.reason = "exception";
+        console.error("❌ [FCM] PUSH EXCEPTION:", e.message);
+      }
+    } else {
+      pushNotification.reason = "no_token_available";
+      console.log("⚠️ [FCM] No token to push to");
+    }
+
+    console.log("📨 [LOGIN] Response pushNotification:", JSON.stringify(pushNotification));
+    console.log("========================================\n");
+
+    return res.json({
       success: true,
       message: "Login successful",
+      pushNotification,
       employee: {
         id: employee._id,
         name: employee.name,
@@ -4605,11 +4719,13 @@ const loginEmployee = async (req, res) => {
         lastLoginLocation: employee.lastLoginLocation,
         lastCheckInLocation: employee.lastCheckInLocation,
         lastCheckOutLocation: employee.lastCheckOutLocation,
-        isAllowedImageCapturedAttendance: employee.isAllowedImageCapturedAttendance
+        isAllowedImageCapturedAttendance: employee.isAllowedImageCapturedAttendance,
+        isFcmTokenStored: employee.isFcmTokenStored,
       },
     });
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("❌ [LOGIN] EXCEPTION:", error);
+    console.log("========================================\n");
     res.status(500).json({ success: false, message: "Server Error", error: error.message });
   }
 };
@@ -6126,7 +6242,7 @@ const calculateEarnedWeekOffs = (
 // ============================================
 // MAIN COMPUTE
 // ============================================
-const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, allCompOffs, allOTClaims) => {
+const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, allCompOffs) => {
   const [year, monthNum] = month.split("-").map(Number);
   const daysInMonth = getDaysInMonth(month);
   const includeWO = shouldIncludeWeekOff(month);
@@ -6233,8 +6349,6 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
   let workingDays = summary.totalWorkingDays;
   if (workingDays === undefined || workingDays === null) workingDays = presentDays + halfDays * 0.5;
 
-  const overtimeHours = summary.overTimeHours || 0;
-
   // ---- Expected working days / payable ----
   const expectedWorkingDays = daysInMonth - finalWO;
   const actualWorked = presentDays + halfDays * 0.5;
@@ -6248,43 +6362,9 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
     calculatedSalary = effectivePaid * dailyRate;
   }
 
-  // ---- OT ----
-  let totalOT = overtimeHours || 0;
-  let calcOT = 0;
-  attendanceRecords.forEach((r) => {
-    let hrs = 0;
-    if (r.hours) hrs = parseFloat(r.hours);
-    else if (r.totalHours) hrs = parseFloat(r.totalHours);
-    else if (r.checkInTime && r.checkOutTime) hrs = (new Date(r.checkOutTime) - new Date(r.checkInTime)) / 3600000;
-    const sh = employee.shiftHours || 8;
-    if (hrs > sh) calcOT += (hrs - sh);
-  });
-  if (totalOT === 0 && calcOT > 0) totalOT = calcOT;
-  totalOT = Number(totalOT.toFixed(2));
-
-  let approvedOTAmount = 0;
-  let approvedOTHours = 0;
-  (allOTClaims || []).forEach((c) => {
-    if (String(c.employeeId).trim() !== empId) return;
-    const cd = new Date(c.date);
-    if (cd >= start && cd <= end) {
-      approvedOTAmount += c.otAmount || 0;
-      approvedOTHours += c.otHours || 0;
-    }
-  });
-
+  // ---- Final Pay (NO OVERTIME) ----
   const baseCalc = Math.round(calculatedSalary);
-  let finalOTAmount = 0;
-  let finalPay = baseCalc;
-  if (approvedOTAmount > 0) {
-    finalOTAmount = approvedOTAmount;
-    finalPay = Math.round(baseCalc + approvedOTAmount);
-  } else if (totalOT > 0) {
-    const otRate = dailyRate / (employee.shiftHours || 8);
-    const amount = totalOT * otRate * 2;
-    finalOTAmount = amount;
-    finalPay = Math.round(baseCalc + amount);
-  }
+  const finalPay = baseCalc;
 
   return {
     month,
@@ -6297,8 +6377,8 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
     totalWorkingDays: workingDays,
     workingDays,
     fullDayNotWorking: summary.fullDayNotWorking ?? 0,
-    overTimeHours: totalOT,
-    overTimeHoursFormatted: formatDecimalHours(totalOT),
+    overTimeHours: 0,
+    overTimeHoursFormatted: "0h 0m",
 
     weekOffs: finalWO,
     earnedWeekOffs: earned,
@@ -6314,11 +6394,11 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
     calculatedSalary: Math.round(calculatedSalary),
     baseCalculatedSalary: baseCalc,
     finalPay,
-    finalOTAmount: Math.round(finalOTAmount),
-    otAmount: Math.round(finalOTAmount),
-    hasApprovedOT: approvedOTAmount > 0,
-    approvedOTAmount,
-    approvedOTHours,
+    finalOTAmount: 0,
+    otAmount: 0,
+    hasApprovedOT: false,
+    approvedOTAmount: 0,
+    approvedOTHours: 0,
 
     holidayCount: isConsultant ? 0 : holidayCount,
     compOffEarned,
@@ -6386,11 +6466,10 @@ const getEmployeeSalarySummary = async (req, res) => {
       return res.status(404).json({ success: false, message: "Employee not found" });
     }
 
-    const [allLeaves, allHolidays, allCompOffs, allOTClaims] = await Promise.all([
+    const [allLeaves, allHolidays, allCompOffs] = await Promise.all([
       Leave.find({ status: "approved" }).lean(),
       Holiday.find({ isActive: { $ne: false } }).lean(),
       CompOff.find({ employeeId: String(employee.employeeId), status: "approved" }).lean(),
-      ClaimedOT.find({ employeeId: String(employee.employeeId), status: "approved" }).lean(),
     ]);
 
     let months = [];
@@ -6417,13 +6496,14 @@ const getEmployeeSalarySummary = async (req, res) => {
     const records = [];
     for (const m of months) {
       const rec = await computeSalaryForMonth(
-        employee, m, allLeaves, allHolidays, allCompOffs, allOTClaims
+        employee, m, allLeaves, allHolidays, allCompOffs
       );
       records.push(rec);
     }
     records.sort((a, b) => b.month.localeCompare(a.month));
 
-    const totalNetPay = records.reduce((s, r) => s + (r.calculatedSalary || 0), 0);
+    // ✅ totalNetPay ab finalPay se banega (OT-free)
+    const totalNetPay = records.reduce((s, r) => s + (r.finalPay || 0), 0);
     const payslipsAvailable = records.filter((r) => r.canDownload).length;
     const avgSalary = records.length ? Math.round(totalNetPay / records.length) : 0;
 
@@ -6453,7 +6533,6 @@ const getEmployeeSalarySummary = async (req, res) => {
     });
   }
 };
-
 
 
 module.exports = {

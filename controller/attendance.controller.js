@@ -1194,6 +1194,8 @@ const Location = require("../models/Location");
 const { logActivity } = require("./userActivity.controller");
 const AttendanceSummary = require("../models/AttendanceSummary");
 const CompanyIP = require("../models/CompanyIP");
+const { sendToToken } = require("../services/notificationService");
+
 
 
 const NodeGeocoder = require("node-geocoder");
@@ -1440,27 +1442,159 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 
 
 
-// ==================== CHECK-IN WITH IMAGE ====================
+// // ==================== CHECK-IN WITH IMAGE ====================
+// exports.checkIn = async (req, res) => {
+//   try {
+//     const { employeeId, employeeEmail, latitude, longitude, reason } = req.body;
+    
+//     // ✅ Get image from multer and convert to custom path
+//     let checkInImage = null;
+//     if (req.file) {
+//       // Convert Windows path to URL path
+//       const fileName = req.file.filename;
+//       checkInImage = `/uploads/attendanceimage/${fileName}`;
+//     }
+
+//     if (!employeeId || !employeeEmail || !latitude || !longitude) {
+//       return res.status(400).json({ message: "Employee ID, email, and location are required" });
+//     }
+
+//     const employee = await Employee.findOne({ employeeId }).populate("location");
+//     if (!employee) {
+//       return res.status(404).json({ message: "Employee not found" });
+//     }
+
+//     // ✅ Get address from coordinates
+//     const address = await getAddressFromCoords(latitude, longitude);
+
+//     // ⭐ UPDATE: Save location in employee DB on check-in WITH ADDRESS
+//     employee.latitude = latitude;
+//     employee.longitude = longitude;
+//     employee.address = address;
+//     employee.lastCheckInLocation = {
+//       latitude: latitude,
+//       longitude: longitude,
+//       timestamp: new Date(),
+//       address: address
+//     };
+//     await employee.save();
+
+//     const assignedLocation = employee.location;
+//     if (!assignedLocation) {
+//       return res.status(404).json({ message: "No location assigned to employee" });
+//     }
+
+//     const distance = haversineDistance(
+//       assignedLocation.latitude,
+//       assignedLocation.longitude,
+//       latitude,
+//       longitude
+//     );
+
+//     const onsite = distance <= ONSITE_RADIUS_M;
+
+//     const startOfToday = new Date();
+//     startOfToday.setHours(0, 0, 0, 0);
+
+//     const existingCheckIn = await Attendance.findOne({
+//       employeeId,
+//       checkInTime: { $gte: startOfToday },
+//       status: "checked-in",
+//     });
+
+//     if (existingCheckIn) {
+//       const checkInH = new Date(existingCheckIn.checkInTime).getHours();
+//       const nowH = new Date().getHours();
+
+//       if (checkInH < 13 && nowH >= 14) {
+//         const autoCheckOutTime = new Date(existingCheckIn.checkInTime.getTime() + 6 * 60 * 60 * 1000);
+//         existingCheckIn.checkOutTime = autoCheckOutTime;
+//         existingCheckIn.totalHours = 6;
+//         existingCheckIn.status = "checked-out";
+//         existingCheckIn.reason = "Auto-checkout (missing first half checkout)";
+//         await existingCheckIn.save();
+//       } else {
+//         return res.status(400).json({ message: "Already checked-in for today" });
+//       }
+//     }
+
+//     const attendanceData = {
+//       employeeId,
+//       employeeEmail,
+//       name: employee.name || employeeEmail.split('@')[0],
+//       checkInTime: new Date(),
+//       latitude,
+//       longitude,
+//       distance,
+//       onsite,
+//       officeName: assignedLocation.name,
+//       status: "checked-in",
+//       checkInImage: checkInImage, // ✅ Save check-in image with custom path
+//     };
+
+//     if (reason) {
+//       attendanceData.reason = reason.trim();
+//     }
+
+//     const attendance = await Attendance.create(attendanceData);
+//     const employeeName = employee.name || employeeEmail.split('@')[0];
+
+//     res.status(200).json({
+//       message: onsite
+//         ? `✅ Welcome to the office, ${employeeName}! Check-in successful (Inside assigned location: ${distance}m away)`
+//         : `✅ Check-in successful, ${employeeName} (Outside assigned location: ${distance}m away)`,
+//       attendance,
+//       employeeName: employeeName,
+//       employeeLocation: {
+//         latitude: employee.latitude,
+//         longitude: employee.longitude,
+//         address: employee.address,
+//         lastUpdated: employee.lastCheckInLocation?.timestamp || new Date()
+//       }
+//     });
+//   } catch (err) {
+//     console.error("Check-in error:", err);
+//     res.status(500).json({ message: "Check-In failed", error: err.message });
+//   }
+// };
+
+
+
 exports.checkIn = async (req, res) => {
+  console.log("\n========================================");
+  console.log("📍 [CHECK-IN] Request received at:", new Date().toISOString());
+
   try {
     const { employeeId, employeeEmail, latitude, longitude, reason } = req.body;
-    
+
+    console.log("📥 [CHECK-IN] Payload:", {
+      employeeId: employeeId || null,
+      employeeEmail: employeeEmail || null,
+      latitude,
+      longitude,
+      reason: reason || null,
+      hasImage: !!req.file,
+    });
+
     // ✅ Get image from multer and convert to custom path
     let checkInImage = null;
     if (req.file) {
-      // Convert Windows path to URL path
       const fileName = req.file.filename;
       checkInImage = `/uploads/attendanceimage/${fileName}`;
+      console.log("🖼️ [CHECK-IN] Image uploaded:", checkInImage);
     }
 
     if (!employeeId || !employeeEmail || !latitude || !longitude) {
+      console.log("❌ [CHECK-IN] Validation failed: missing required fields");
       return res.status(400).json({ message: "Employee ID, email, and location are required" });
     }
 
     const employee = await Employee.findOne({ employeeId }).populate("location");
     if (!employee) {
+      console.log("❌ [CHECK-IN] Employee not found:", employeeId);
       return res.status(404).json({ message: "Employee not found" });
     }
+    console.log("✅ [CHECK-IN] Employee found:", employee.name, "|", employee.employeeId);
 
     // ✅ Get address from coordinates
     const address = await getAddressFromCoords(latitude, longitude);
@@ -1473,12 +1607,13 @@ exports.checkIn = async (req, res) => {
       latitude: latitude,
       longitude: longitude,
       timestamp: new Date(),
-      address: address
+      address: address,
     };
     await employee.save();
 
     const assignedLocation = employee.location;
     if (!assignedLocation) {
+      console.log("❌ [CHECK-IN] No location assigned to employee");
       return res.status(404).json({ message: "No location assigned to employee" });
     }
 
@@ -1490,6 +1625,8 @@ exports.checkIn = async (req, res) => {
     );
 
     const onsite = distance <= ONSITE_RADIUS_M;
+
+    console.log("📏 [CHECK-IN] Distance:", Math.round(distance) + "m", "| Onsite:", onsite);
 
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
@@ -1511,7 +1648,9 @@ exports.checkIn = async (req, res) => {
         existingCheckIn.status = "checked-out";
         existingCheckIn.reason = "Auto-checkout (missing first half checkout)";
         await existingCheckIn.save();
+        console.log("🔄 [CHECK-IN] Auto-checkout applied to previous check-in");
       } else {
+        console.log("⚠️ [CHECK-IN] Already checked-in for today");
         return res.status(400).json({ message: "Already checked-in for today" });
       }
     }
@@ -1527,7 +1666,7 @@ exports.checkIn = async (req, res) => {
       onsite,
       officeName: assignedLocation.name,
       status: "checked-in",
-      checkInImage: checkInImage, // ✅ Save check-in image with custom path
+      checkInImage: checkInImage,
     };
 
     if (reason) {
@@ -1536,7 +1675,74 @@ exports.checkIn = async (req, res) => {
 
     const attendance = await Attendance.create(attendanceData);
     const employeeName = employee.name || employeeEmail.split('@')[0];
+    console.log("✅ [CHECK-IN] Attendance created:", attendance._id);
 
+    // ========================================
+    // 📤 PUSH NOTIFICATION ON CHECK-IN (fire & forget — response me kuch nahi)
+    // ========================================
+    const tokenToUse = employee.fcmToken;
+
+    console.log("🔔 [FCM] Token available:", tokenToUse ? `${tokenToUse.substring(0, 20)}...` : "NO");
+
+    if (tokenToUse) {
+      const title = "Check-In Successful ✅";
+      const body = onsite
+        ? `Welcome to the office, ${employeeName}! You checked in at ${assignedLocation.name} (${Math.round(distance)}m away).`
+        : `Check-in successful, ${employeeName}! You are outside the office (${Math.round(distance)}m away).`;
+
+      console.log("📤 [FCM] Sending check-in push to:", `${tokenToUse.substring(0, 20)}...`);
+      console.log("📤 [FCM] Title:", title);
+      console.log("📤 [FCM] Body:", body);
+
+      try {
+        const result = await sendToToken({
+          token: tokenToUse,
+          title,
+          body,
+          data: {
+            type: "CHECK_IN_SUCCESS",
+            employeeId: String(employee.employeeId),
+            attendanceId: String(attendance._id),
+            onsite: String(onsite),
+            distance: String(Math.round(distance)),
+            timestamp: new Date().toISOString(),
+          },
+        });
+
+        if (result.success) {
+          console.log("✅ [FCM] CHECK-IN PUSH SENT. MessageId:", result.messageId);
+        } else {
+          console.error(
+            "❌ [FCM] CHECK-IN PUSH FAILED. Code:",
+            result.code,
+            "| Error:",
+            result.error
+          );
+
+          // 🧹 Invalid token — clear from DB
+          if (
+            result.code === "messaging/registration-token-not-registered" ||
+            result.error === "NotRegistered" ||
+            result.code === "messaging/invalid-registration-token"
+          ) {
+            console.log("🧹 [FCM] Invalid token — clearing from DB");
+            employee.fcmToken = null;
+            employee.isFcmTokenStored = false;
+            employee.fcmUpdatedAt = new Date();
+            await employee.save();
+          }
+        }
+      } catch (e) {
+        console.error("❌ [FCM] CHECK-IN PUSH EXCEPTION:", e.message);
+      }
+    } else {
+      console.log("⚠️ [FCM] No token available — skipping check-in push");
+    }
+
+    console.log("📨 [CHECK-IN] Sending response");
+    console.log("========================================\n");
+
+    // ✅ RESPONSE — bilkul original jaisa, kuch change nahi
     res.status(200).json({
       message: onsite
         ? `✅ Welcome to the office, ${employeeName}! Check-in successful (Inside assigned location: ${distance}m away)`
@@ -1551,10 +1757,12 @@ exports.checkIn = async (req, res) => {
       }
     });
   } catch (err) {
-    console.error("Check-in error:", err);
+    console.error("❌ [CHECK-IN] EXCEPTION:", err);
+    console.log("========================================\n");
     res.status(500).json({ message: "Check-In failed", error: err.message });
   }
 };
+
 
 // exports.checkOut = async (req, res) => {
 //   try {
@@ -2173,27 +2381,268 @@ exports.checkIn = async (req, res) => {
 
 
 
-// ==================== CHECK-OUT WITH IMAGE ====================
+// // ==================== CHECK-OUT WITH IMAGE ====================
+// exports.checkOut = async (req, res) => {
+//   try {
+//     const { employeeId, latitude, longitude, reason } = req.body;
+    
+//     // ✅ Get image from multer and convert to custom path
+//     let checkOutImage = null;
+//     if (req.file) {
+//       // Convert Windows path to URL path
+//       const fileName = req.file.filename;
+//       checkOutImage = `/uploads/attendanceimage/${fileName}`;
+//     }
+
+//     if (!employeeId || latitude == null || longitude == null) {
+//       return res.status(400).json({ message: "Employee ID and location are required" });
+//     }
+
+//     const employee = await Employee.findOne({ employeeId }).populate("location");
+//     if (!employee) {
+//       return res.status(404).json({ message: "Employee not found" });
+//     }
+
+//     // ✅ Get address from coordinates
+//     const address = await getAddressFromCoords(latitude, longitude);
+
+//     // ⭐ UPDATE: Save location in employee DB on check-out WITH ADDRESS
+//     employee.latitude = latitude;
+//     employee.longitude = longitude;
+//     employee.address = address;
+//     employee.lastCheckOutLocation = {
+//       latitude: latitude,
+//       longitude: longitude,
+//       timestamp: new Date(),
+//       address: address
+//     };
+//     await employee.save();
+
+//     const assignedLocation = employee.location;
+//     if (!assignedLocation) {
+//       return res.status(404).json({ message: "No location assigned to employee" });
+//     }
+
+//     const distance = haversineDistance(
+//       assignedLocation.latitude,
+//       assignedLocation.longitude,
+//       latitude,
+//       longitude
+//     );
+//     const onsite = distance <= ONSITE_RADIUS_M;
+
+//     const startOfToday = new Date();
+//     startOfToday.setHours(0, 0, 0, 0);
+
+//     const existingCheckIn = await Attendance.findOne({
+//       employeeId,
+//       checkInTime: { $gte: startOfToday },
+//       status: { $in: ["checked-in", "on-break"] },
+//     });
+
+//     if (!existingCheckIn) {
+//       return res.status(400).json({ message: "No active check-in found for today" });
+//     }
+
+//     const activeBreak = existingCheckIn.breaks.find((b) => b.breakIn && !b.breakOut);
+//     if (activeBreak) {
+//       activeBreak.breakOut = new Date();
+//       const breakMinutes = (activeBreak.breakOut - activeBreak.breakIn) / (1000 * 60);
+//       activeBreak.breakMinutes = Math.round(breakMinutes);
+//     }
+
+//     existingCheckIn.totalBreakMinutes = existingCheckIn.breaks.reduce((sum, b) => sum + (b.breakMinutes || 0), 0);
+
+//     const checkOutTime = new Date();
+//     const checkInTime = new Date(existingCheckIn.checkInTime);
+//     const totalHours = (checkOutTime - checkInTime) / (1000 * 60 * 60);
+//     const workingHours = totalHours - (existingCheckIn.totalBreakMinutes / 60);
+//     const assignedShiftHours = employee.shiftHours || 8;
+//     const otHours = workingHours > assignedShiftHours ? workingHours - assignedShiftHours : 0;
+
+//     const hourlyRate = existingCheckIn.basicSalary / existingCheckIn.workingDays / existingCheckIn.assignedShiftHours;
+//     const otRate = hourlyRate * existingCheckIn.otMultiplier;
+//     const otAmount = otHours * otRate;
+
+//     existingCheckIn.checkOutTime = checkOutTime;
+//     existingCheckIn.totalHours = totalHours.toFixed(2);
+//     existingCheckIn.workingHours = workingHours.toFixed(2);
+//     existingCheckIn.otHours = otHours.toFixed(2);
+//     existingCheckIn.hourlyRate = hourlyRate.toFixed(2);
+//     existingCheckIn.otRate = otRate.toFixed(2);
+//     existingCheckIn.otAmount = otAmount.toFixed(2);
+//     existingCheckIn.status = "checked-out";
+//     existingCheckIn.latitude = latitude;
+//     existingCheckIn.longitude = longitude;
+//     existingCheckIn.distance = distance;
+//     existingCheckIn.onsite = onsite;
+//     existingCheckIn.checkOutImage = checkOutImage; // ✅ Save check-out image with custom path
+
+//     if (!onsite) {
+//       existingCheckIn.reason = reason || "No reason provided";
+//     }
+
+//     await existingCheckIn.save();
+
+//     // ============================================
+//     // EXTRA DAYS TRACKING
+//     // ============================================
+//     const today = new Date();
+//     const currentMonth = today.getMonth() + 1;
+//     const currentYear = today.getFullYear();
+//     const monthKey = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
+//     const emp = await Employee.findOne({ employeeId });
+
+//     if (emp) {
+//       const startOfMonth = new Date(currentYear, currentMonth - 1, 1);
+//       const endOfMonth = new Date(currentYear, currentMonth, 0, 23, 59, 59);
+
+//       const attendanceCount = await Attendance.countDocuments({
+//         employeeId: employeeId,
+//         status: "checked-out",
+//         checkInTime: { $gte: startOfMonth, $lte: endOfMonth }
+//       });
+
+//       if (attendanceCount > (emp.assignedWorkingDays || 26)) {
+//         const existingExtraDay = emp.extraDays.find(ed => {
+//           const edDate = new Date(ed.date);
+//           return edDate.toDateString() === today.toDateString();
+//         });
+
+//         if (!existingExtraDay) {
+//           const extraHours = Math.max(0, workingHours - assignedShiftHours);
+//           const usedBefore = new Date(today);
+//           usedBefore.setMonth(usedBefore.getMonth() - 1);
+
+//           const extraDayEntry = {
+//             date: today,
+//             day: today.toLocaleDateString('en-US', { 
+//               weekday: 'long', 
+//               day: 'numeric', 
+//               month: 'long', 
+//               year: 'numeric' 
+//             }),
+//             totalHours: Math.round(workingHours * 100) / 100,
+//             extraHours: Math.round(extraHours * 100) / 100,
+//             checkInTime: checkInTime,
+//             checkOutTime: checkOutTime,
+//             isCompOffRequested: false,
+//             compOffRequestId: null,
+//             month: monthKey,
+//             year: currentYear,
+//             monthNumber: currentMonth,
+//             usedBefore: usedBefore,
+//             status: 'active'
+//           };
+
+//           emp.extraDays.push(extraDayEntry);
+//           await emp.save();
+//           console.log(`✅ Extra day recorded for ${emp.name} on ${today.toDateString()}`);
+//         }
+//       }
+//     }
+
+//     const employeeName = employee.name || "Employee";
+
+//     await logActivity({
+//       userId: employeeId,
+//       userName: employeeName,
+//       userEmail: employee.email || "",
+//       userRole: "employee",
+//       action: "logout",
+//       actionDetails: `Employee checked out after ${workingHours.toFixed(2)} working hours`,
+//       ipAddress: req.ip || req.connection.remoteAddress,
+//       metadata: {
+//         checkInTime,
+//         checkOutTime,
+//         totalHours: totalHours.toFixed(2),
+//         workingHours: workingHours.toFixed(2),
+//         totalBreakMinutes: existingCheckIn.totalBreakMinutes,
+//         otHours: otHours.toFixed(2),
+//         otAmount: otAmount.toFixed(2),
+//         location: assignedLocation.name,
+//         onsite,
+//         distance,
+//         checkoutLocation: {
+//           latitude: latitude,
+//           longitude: longitude,
+//           address: address
+//         },
+//         checkInImage: existingCheckIn.checkInImage,
+//         checkOutImage: existingCheckIn.checkOutImage,
+//       },
+//     });
+
+//     res.status(200).json({
+//       message: onsite
+//         ? `✅ Goodbye, ${employeeName}! Check-out successful`
+//         : `✅ Goodbye, ${employeeName}! Check-out successful (Outside office location)`,
+//       employeeName,
+//       attendance: existingCheckIn,
+//       summary: {
+//         totalHours: totalHours.toFixed(2),
+//         breakMinutes: existingCheckIn.totalBreakMinutes,
+//         workingHours: workingHours.toFixed(2),
+//         otHours: otHours.toFixed(2),
+//         otAmount: otAmount.toFixed(2),
+//       },
+//       employeeLocation: {
+//         latitude: employee.latitude,
+//         longitude: employee.longitude,
+//         address: employee.address,
+//         lastCheckIn: employee.lastCheckInLocation?.timestamp || null,
+//         lastCheckOut: employee.lastCheckOutLocation?.timestamp || new Date()
+//       }
+//     });
+
+//   } catch (err) {
+//     console.error("Check-out error:", err);
+//     res.status(500).json({
+//       message: "Check-Out failed",
+//       error: err.message,
+//     });
+//   }
+// };
+
+
+
+
+
 exports.checkOut = async (req, res) => {
+  console.log("\n========================================");
+  console.log("📍 [CHECK-OUT] Request received at:", new Date().toISOString());
+
   try {
     const { employeeId, latitude, longitude, reason } = req.body;
-    
+
+    console.log("📥 [CHECK-OUT] Payload:", {
+      employeeId: employeeId || null,
+      latitude,
+      longitude,
+      reason: reason || null,
+      hasImage: !!req.file,
+    });
+
     // ✅ Get image from multer and convert to custom path
     let checkOutImage = null;
     if (req.file) {
-      // Convert Windows path to URL path
       const fileName = req.file.filename;
       checkOutImage = `/uploads/attendanceimage/${fileName}`;
+      console.log("🖼️ [CHECK-OUT] Image uploaded:", checkOutImage);
     }
 
     if (!employeeId || latitude == null || longitude == null) {
+      console.log("❌ [CHECK-OUT] Validation failed: missing required fields");
       return res.status(400).json({ message: "Employee ID and location are required" });
     }
 
     const employee = await Employee.findOne({ employeeId }).populate("location");
     if (!employee) {
+      console.log("❌ [CHECK-OUT] Employee not found:", employeeId);
       return res.status(404).json({ message: "Employee not found" });
     }
+    console.log("✅ [CHECK-OUT] Employee found:", employee.name, "|", employee.employeeId);
 
     // ✅ Get address from coordinates
     const address = await getAddressFromCoords(latitude, longitude);
@@ -2206,12 +2655,13 @@ exports.checkOut = async (req, res) => {
       latitude: latitude,
       longitude: longitude,
       timestamp: new Date(),
-      address: address
+      address: address,
     };
     await employee.save();
 
     const assignedLocation = employee.location;
     if (!assignedLocation) {
+      console.log("❌ [CHECK-OUT] No location assigned to employee");
       return res.status(404).json({ message: "No location assigned to employee" });
     }
 
@@ -2223,6 +2673,8 @@ exports.checkOut = async (req, res) => {
     );
     const onsite = distance <= ONSITE_RADIUS_M;
 
+    console.log("📏 [CHECK-OUT] Distance:", Math.round(distance) + "m", "| Onsite:", onsite);
+
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
@@ -2233,6 +2685,7 @@ exports.checkOut = async (req, res) => {
     });
 
     if (!existingCheckIn) {
+      console.log("❌ [CHECK-OUT] No active check-in found for today");
       return res.status(400).json({ message: "No active check-in found for today" });
     }
 
@@ -2243,16 +2696,22 @@ exports.checkOut = async (req, res) => {
       activeBreak.breakMinutes = Math.round(breakMinutes);
     }
 
-    existingCheckIn.totalBreakMinutes = existingCheckIn.breaks.reduce((sum, b) => sum + (b.breakMinutes || 0), 0);
+    existingCheckIn.totalBreakMinutes = existingCheckIn.breaks.reduce(
+      (sum, b) => sum + (b.breakMinutes || 0),
+      0
+    );
 
     const checkOutTime = new Date();
     const checkInTime = new Date(existingCheckIn.checkInTime);
     const totalHours = (checkOutTime - checkInTime) / (1000 * 60 * 60);
-    const workingHours = totalHours - (existingCheckIn.totalBreakMinutes / 60);
+    const workingHours = totalHours - existingCheckIn.totalBreakMinutes / 60;
     const assignedShiftHours = employee.shiftHours || 8;
     const otHours = workingHours > assignedShiftHours ? workingHours - assignedShiftHours : 0;
 
-    const hourlyRate = existingCheckIn.basicSalary / existingCheckIn.workingDays / existingCheckIn.assignedShiftHours;
+    const hourlyRate =
+      existingCheckIn.basicSalary /
+      existingCheckIn.workingDays /
+      existingCheckIn.assignedShiftHours;
     const otRate = hourlyRate * existingCheckIn.otMultiplier;
     const otAmount = otHours * otRate;
 
@@ -2268,13 +2727,14 @@ exports.checkOut = async (req, res) => {
     existingCheckIn.longitude = longitude;
     existingCheckIn.distance = distance;
     existingCheckIn.onsite = onsite;
-    existingCheckIn.checkOutImage = checkOutImage; // ✅ Save check-out image with custom path
+    existingCheckIn.checkOutImage = checkOutImage;
 
     if (!onsite) {
       existingCheckIn.reason = reason || "No reason provided";
     }
 
     await existingCheckIn.save();
+    console.log("✅ [CHECK-OUT] Attendance updated. Working hours:", workingHours.toFixed(2));
 
     // ============================================
     // EXTRA DAYS TRACKING
@@ -2282,7 +2742,7 @@ exports.checkOut = async (req, res) => {
     const today = new Date();
     const currentMonth = today.getMonth() + 1;
     const currentYear = today.getFullYear();
-    const monthKey = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+    const monthKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
 
     const emp = await Employee.findOne({ employeeId });
 
@@ -2293,11 +2753,11 @@ exports.checkOut = async (req, res) => {
       const attendanceCount = await Attendance.countDocuments({
         employeeId: employeeId,
         status: "checked-out",
-        checkInTime: { $gte: startOfMonth, $lte: endOfMonth }
+        checkInTime: { $gte: startOfMonth, $lte: endOfMonth },
       });
 
       if (attendanceCount > (emp.assignedWorkingDays || 26)) {
-        const existingExtraDay = emp.extraDays.find(ed => {
+        const existingExtraDay = emp.extraDays.find((ed) => {
           const edDate = new Date(ed.date);
           return edDate.toDateString() === today.toDateString();
         });
@@ -2309,11 +2769,11 @@ exports.checkOut = async (req, res) => {
 
           const extraDayEntry = {
             date: today,
-            day: today.toLocaleDateString('en-US', { 
-              weekday: 'long', 
-              day: 'numeric', 
-              month: 'long', 
-              year: 'numeric' 
+            day: today.toLocaleDateString("en-US", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
             }),
             totalHours: Math.round(workingHours * 100) / 100,
             extraHours: Math.round(extraHours * 100) / 100,
@@ -2325,12 +2785,12 @@ exports.checkOut = async (req, res) => {
             year: currentYear,
             monthNumber: currentMonth,
             usedBefore: usedBefore,
-            status: 'active'
+            status: "active",
           };
 
           emp.extraDays.push(extraDayEntry);
           await emp.save();
-          console.log(`✅ Extra day recorded for ${emp.name} on ${today.toDateString()}`);
+          console.log(`✅ [CHECK-OUT] Extra day recorded for ${emp.name} on ${today.toDateString()}`);
         }
       }
     }
@@ -2359,13 +2819,79 @@ exports.checkOut = async (req, res) => {
         checkoutLocation: {
           latitude: latitude,
           longitude: longitude,
-          address: address
+          address: address,
         },
         checkInImage: existingCheckIn.checkInImage,
         checkOutImage: existingCheckIn.checkOutImage,
       },
     });
 
+    // ========================================
+    // 📤 PUSH NOTIFICATION ON CHECK-OUT (fire & forget — response me kuch nahi)
+    // ========================================
+    const tokenToUse = employee.fcmToken;
+    console.log("🔔 [FCM] Token available:", tokenToUse ? `${tokenToUse.substring(0, 20)}...` : "NO");
+
+    if (tokenToUse) {
+      const title = "Check-Out Successful ✅";
+      const body = onsite
+        ? `Goodbye, ${employeeName}! You worked ${workingHours.toFixed(2)} hours today.`
+        : `Goodbye, ${employeeName}! Check-out successful (Outside office, ${Math.round(distance)}m away).`;
+
+      console.log("📤 [FCM] Sending check-out push to:", `${tokenToUse.substring(0, 20)}...`);
+      console.log("📤 [FCM] Title:", title);
+      console.log("📤 [FCM] Body:", body);
+
+      try {
+        const result = await sendToToken({
+          token: tokenToUse,
+          title,
+          body,
+          data: {
+            type: "CHECK_OUT_SUCCESS",
+            employeeId: String(employee.employeeId),
+            attendanceId: String(existingCheckIn._id),
+            onsite: String(onsite),
+            distance: String(Math.round(distance)),
+            workingHours: workingHours.toFixed(2),
+            timestamp: new Date().toISOString(),
+          },
+        });
+
+        if (result.success) {
+          console.log("✅ [FCM] CHECK-OUT PUSH SENT. MessageId:", result.messageId);
+        } else {
+          console.error(
+            "❌ [FCM] CHECK-OUT PUSH FAILED. Code:",
+            result.code,
+            "| Error:",
+            result.error
+          );
+
+          // 🧹 Invalid token — clear from DB
+          if (
+            result.code === "messaging/registration-token-not-registered" ||
+            result.error === "NotRegistered" ||
+            result.code === "messaging/invalid-registration-token"
+          ) {
+            console.log("🧹 [FCM] Invalid token — clearing from DB");
+            employee.fcmToken = null;
+            employee.isFcmTokenStored = false;
+            employee.fcmUpdatedAt = new Date();
+            await employee.save();
+          }
+        }
+      } catch (e) {
+        console.error("❌ [FCM] CHECK-OUT PUSH EXCEPTION:", e.message);
+      }
+    } else {
+      console.log("⚠️ [FCM] No token available — skipping check-out push");
+    }
+
+    console.log("📨 [CHECK-OUT] Sending response");
+    console.log("========================================\n");
+
+    // ✅ RESPONSE — bilkul original jaisa, kuch change nahi
     res.status(200).json({
       message: onsite
         ? `✅ Goodbye, ${employeeName}! Check-out successful`
@@ -2384,20 +2910,18 @@ exports.checkOut = async (req, res) => {
         longitude: employee.longitude,
         address: employee.address,
         lastCheckIn: employee.lastCheckInLocation?.timestamp || null,
-        lastCheckOut: employee.lastCheckOutLocation?.timestamp || new Date()
-      }
+        lastCheckOut: employee.lastCheckOutLocation?.timestamp || new Date(),
+      },
     });
-
   } catch (err) {
-    console.error("Check-out error:", err);
+    console.error("❌ [CHECK-OUT] EXCEPTION:", err);
+    console.log("========================================\n");
     res.status(500).json({
       message: "Check-Out failed",
       error: err.message,
     });
   }
 };
-
-
 
 
 

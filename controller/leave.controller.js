@@ -221,6 +221,7 @@ const Employee = require("../models/Employee"); // ✅ Employee for balances
 const ExtraDayCompOff = require('../models/ExtraDayCompOff');
 const Attendance = require("../models/Attendance");
 const Shift = require("../models/Shift");
+const { sendToToken } = require("../services/notificationService"); // 👈 ADD (agar already nahi hai)
 
 
 // ✅ Get leave balances
@@ -404,23 +405,34 @@ exports.getPendingLeaves = async (req, res) => {
   }
 };
 
-// ✅ Update leave status (Approve/Reject/Convert)
 exports.updateLeaveStatus = async (req, res) => {
+  console.log("\n========================================");
+  console.log("📋 [LEAVE-UPDATE] Request received at:", new Date().toISOString());
+
   try {
     const { id } = req.params;
     const { status, adminName, adminEmail, adminRole, isConvertedToCompOff, compOffId } = req.body;
 
-    const updateData = { 
-      updatedAt: new Date() 
+    console.log("📥 [LEAVE-UPDATE] Payload:", {
+      leaveId: id,
+      status: status || null,
+      adminName: adminName || null,
+      adminEmail: adminEmail || null,
+      isConvertedToCompOff: isConvertedToCompOff ?? null,
+      compOffId: compOffId || null,
+    });
+
+    const updateData = {
+      updatedAt: new Date(),
     };
-    
+
     if (status) {
       updateData.status = status;
       updateData.approvedDate = new Date();
       updateData.approvedBy = adminName;
       updateData.approvedByRole = adminRole || "Admin";
     }
-    
+
     // Add comp-off fields if provided
     if (isConvertedToCompOff !== undefined) {
       updateData.isConvertedToCompOff = isConvertedToCompOff;
@@ -432,21 +444,36 @@ exports.updateLeaveStatus = async (req, res) => {
       updateData.convertedDate = new Date();
     }
 
-    const leave = await Leave.findByIdAndUpdate(
-      id,
-      updateData,
-      { new: true }
-    );
+    const leave = await Leave.findByIdAndUpdate(id, updateData, { new: true });
 
     if (!leave) {
+      console.log("❌ [LEAVE-UPDATE] Leave not found:", id);
       return res.status(404).json({ message: "Leave not found" });
     }
+
+    console.log("✅ [LEAVE-UPDATE] Leave updated:", {
+      leaveId: leave._id,
+      employeeId: leave.employeeId,
+      employeeName: leave.employeeName,
+      leaveType: leave.leaveType,
+      newStatus: leave.status,
+    });
 
     // If this is not a comp-off conversion, log and notify
     if (status && !isConvertedToCompOff) {
       // Log leave approval/rejection activity
-      const action = status === "approved" ? "leave_approve" : (status === "manager_approved" ? "manager_approve" : "leave_reject");
-      const statusDisplay = status === "manager_approved" ? "Manager Approved" : (status === "approved" ? "Approved" : "Rejected");
+      const action =
+        status === "approved"
+          ? "leave_approve"
+          : status === "manager_approved"
+          ? "manager_approve"
+          : "leave_reject";
+      const statusDisplay =
+        status === "manager_approved"
+          ? "Manager Approved"
+          : status === "approved"
+          ? "Approved"
+          : "Rejected";
       const actionDetails = `${statusDisplay} ${leave.leaveType} for ${leave.employeeName}`;
 
       await logActivity({
@@ -465,28 +492,99 @@ exports.updateLeaveStatus = async (req, res) => {
         },
       });
 
-      // Notify employee
+      console.log("📝 [LEAVE-UPDATE] Activity logged:", actionDetails);
+
+      // ✅ In-app Notification (existing)
       await Notification.create({
         userId: leave.employeeId,
         role: "employee",
         title: `Leave ${statusDisplay}`,
-        message: `Your ${leave.leaveType} request has been ${status === 'manager_approved' ? 'approved by manager' : status}.`,
-        type: "leave"
+        message: `Your ${leave.leaveType} request has been ${
+          status === "manager_approved" ? "approved by manager" : status
+        }.`,
+        type: "leave",
       });
 
-      sendPushToUser(leave.employeeId, {
-        title: `Leave ${statusDisplay}`,
-        body: `Your leave request was ${status === 'manager_approved' ? 'approved by manager' : status}.`,
-        url: "/employee/leaves"
-      });
+      console.log("🔔 [LEAVE-UPDATE] In-app notification created");
+
+      // ========================================
+      // 📤 FCM PUSH NOTIFICATION — to employee
+      // ========================================
+      const employee = await Employee.findOne({ employeeId: leave.employeeId });
+      const tokenToUse = employee?.fcmToken || null;
+
+      console.log("🔔 [FCM] Employee found:", employee ? employee.name : "NO");
+      console.log("🔔 [FCM] Token available:", tokenToUse ? `${tokenToUse.substring(0, 20)}...` : "NO");
+
+      if (tokenToUse) {
+        const title = `Leave ${statusDisplay}`;
+        const body = `Your ${leave.leaveType} request has been ${
+          status === "manager_approved" ? "approved by manager" : status
+        }.`;
+
+        console.log("📤 [FCM] Sending leave-status push...");
+        console.log("📤 [FCM] Title:", title);
+        console.log("📤 [FCM] Body:", body);
+
+        try {
+          const result = await sendToToken({
+            token: tokenToUse,
+            title,
+            body,
+            data: {
+              type: "LEAVE_STATUS_UPDATE",
+              leaveId: String(leave._id),
+              employeeId: String(leave.employeeId),
+              status: String(status),
+              leaveType: String(leave.leaveType),
+              timestamp: new Date().toISOString(),
+            },
+          });
+
+          if (result.success) {
+            console.log("✅ [FCM] LEAVE STATUS PUSH SENT. MessageId:", result.messageId);
+          } else {
+            console.error(
+              "❌ [FCM] LEAVE STATUS PUSH FAILED. Code:",
+              result.code,
+              "| Error:",
+              result.error
+            );
+
+            // 🧹 Invalid token — clear from DB
+            if (
+              result.code === "messaging/registration-token-not-registered" ||
+              result.error === "NotRegistered" ||
+              result.code === "messaging/invalid-registration-token"
+            ) {
+              console.log("🧹 [FCM] Invalid token — clearing from DB");
+              employee.fcmToken = null;
+              employee.isFcmTokenStored = false;
+              employee.fcmUpdatedAt = new Date();
+              await employee.save();
+            }
+          }
+        } catch (e) {
+          console.error("❌ [FCM] LEAVE STATUS PUSH EXCEPTION:", e.message);
+        }
+      } else {
+        console.log("⚠️ [FCM] No token available — skipping leave-status push");
+      }
+    } else {
+      console.log("⏭️ [LEAVE-UPDATE] Skipping notification (comp-off conversion or no status)");
     }
 
-    res.status(200).json({ 
-      message: status ? `Leave ${status}` : 'Leave updated', 
-      leave 
+    console.log("📨 [LEAVE-UPDATE] Sending response");
+    console.log("========================================\n");
+
+    // ✅ RESPONSE — original jaisa, kuch change nahi
+    res.status(200).json({
+      message: status ? `Leave ${status}` : "Leave updated",
+      leave,
     });
   } catch (error) {
-    console.error("❌ Error updating leave status:", error);
+    console.error("❌ [LEAVE-UPDATE] EXCEPTION:", error);
+    console.log("========================================\n");
     res.status(500).json({ message: "Server error" });
   }
 };

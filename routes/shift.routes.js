@@ -160,7 +160,7 @@ const shiftController = require('../controller/shift.controller');
 // Master Shifts
 router.post('/create', shiftController.createMasterShift);
 router.get('/master', shiftController.getMasterShifts);
-router.put('/master/:id', shiftController.updateMasterShift); // ✅ EDIT SHIFT
+router.put('/master/:id', shiftController.updateMasterShift);
 router.get('/details/:shiftType', shiftController.getShiftDetails);
 router.delete('/master/:id', shiftController.deleteMasterShift);
 
@@ -185,4 +185,15 @@ router.post('/migrate-legacy', shiftController.migrateLegacyData);
 // Default Shifts Creation
 router.post('/create-defaults', shiftController.createDefaultShifts);
 
-module.exports = router;
+// Week Off
+router.post('/week-off', shiftController.saveWeekOff);
+router.get('/week-off', shiftController.getWeekOffRecords);
+router.delete('/week-off/:id', shiftController.deleteWeekOff);
+
+// ✅ Employee week-off dates for a month
+router.get('/employee-weekoff-dates', shiftController.getEmployeeWeekOffDates);
+
+// ✅ Eligible comp-off days (WeekOff + Attendance based)
+router.get('/eligible-comp-off-days', shiftController.getEligibleCompOffDays);
+
+module.exports = router; 

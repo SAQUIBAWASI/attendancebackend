@@ -444,6 +444,29 @@ const employeeSchema = new mongoose.Schema({
   uanNumber: { type: String, default: "" },
   esicNumber: { type: String, default: "" },
   branch: { type: String, default: "" },
+
+
+  // models/Employee.js (schema me add karo)
+// models/Employee.js (existing schema me add karo)
+fcmToken: {
+  type: String,
+  default: null,
+},
+fcmUpdatedAt: {
+  type: Date,
+  default: null,
+},
+isFcmTokenStored: {
+  type: Boolean,
+  default: false,
+},
+
+
+// models/Employee.js (schema me add karo)
+lastMissedCheckInNotifiedAt: {
+  type: Date,
+  default: null,
+},
   
   // Employment Info
   employeeId: { type: String, unique: true, required: true },

@@ -21,7 +21,7 @@ const fs = require("fs");
 const path = require("path");
 const taskRoutes = require("./routes/task.routes");
 const employeeTaskRoutes = require("./routes/employeeTask.routes");
-
+const { startMissedCheckInCron } = require("./services/missedCheckInCron");
 
 
 
@@ -86,10 +86,7 @@ mongoose
   })
   .then(() => {
     console.log("✅ MongoDB Connected Successfully!");
-    
-    // ✅ START DAILY TASK REPEATER JOB AFTER DB CONNECTION
-    console.log("\n📅 Starting Daily Task Repeater Job...");
-    startDailyTaskRepeater();
+    startMissedCheckInCron();
     
   })
   .catch((err) => {
@@ -308,10 +305,5 @@ app.listen(PORT, () => {
   console.log(`\n\n===============================================================`);
   console.log(`🚀 ATTENDANCE BACKEND IS RUNNING on port ${PORT}`);
   console.log(`===============================================================\n\n`);
-  console.log(`📍 Check-in: POST http://localhost:${PORT}/api/attendance/checkin`);
-  console.log(`📍 Check-out: POST http://localhost:${PORT}/api/attendance/checkout`);
-  console.log(`📍 View all: GET http://localhost:${PORT}/api/attendance/all`);
-  console.log(`📍 Comp-offs: GET http://localhost:${PORT}/api/leaves/comp-offs`); // ✅ Added
-  console.log(`📍 Comp-off Requests: GET http://localhost:${PORT}/api/leaves/comp-off-requests`);
   console.log(`📍 Frontend: http://localhost:3000`);
 });

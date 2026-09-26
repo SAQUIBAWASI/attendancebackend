@@ -887,6 +887,10 @@
 const Shift = require("../models/Shift");
 const Employee = require("../models/Employee");
 const Notification = require("../models/Notification");
+const WeekOffDate = require("../models/WeekOffDate");
+const WeekOff = require("../models/WeekOff");
+const Attendance = require("../models/Attendance");
+const Leave = require("../models/Leave");
 const { sendPushToUser } = require("./notification.controller");
 
 console.log("✅ Shift Controller Loaded");
@@ -903,13 +907,11 @@ const parseEffectiveFrom = (input) => {
   if (typeof input === "string") {
     const trimmed = input.trim();
 
-    // YYYY-MM (month picker) or YYYY-MM-DD
     if (/^\d{4}-\d{2}(-\d{2})?$/.test(trimmed)) {
       const [year, month, day = "01"] = trimmed.split("-");
       return startOfDay(new Date(Number(year), Number(month) - 1, Number(day)));
     }
 
-    // DD-MM-YYYY
     const dmy = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
     if (dmy) {
       return startOfDay(new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1])));
@@ -975,6 +977,233 @@ const applyScheduledChangeIfDue = async (assignment) => {
   return true;
 };
 
+// ============================================================================
+// ✅ COMP-OFF HELPERS — inline
+// ============================================================================
+const WEEK_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const DAY_MAP = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+
+const toDateKey = (value) => {
+  if (!value) return "";
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatDayLabel = (dateStr) => {
+  const date = new Date(`${dateStr}T00:00:00`);
+  return date.toLocaleDateString("en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  });
+};
+
+const resolveDayName = (dayName) => {
+  if (!dayName) return "";
+  if (dayName.length === 3) {
+    return WEEK_DAYS.find((d) => d.startsWith(dayName)) || dayName;
+  }
+  return dayName;
+};
+
+const calculateDatesFromPattern = (record, targetMonth = null) => {
+  if (!record) return [];
+
+  const hasSpecificMonths = Array.isArray(record.selectedMonths) && record.selectedMonths.length > 0;
+
+  if (targetMonth && hasSpecificMonths && !record.selectedMonths.includes(targetMonth)) {
+    if (Array.isArray(record.specificDates)) {
+      return record.specificDates.filter((d) => d.startsWith(targetMonth));
+    }
+    return [];
+  }
+
+  const calculatedDates = [];
+  let monthsToProcess = [];
+
+  if (targetMonth) {
+    monthsToProcess = [targetMonth];
+  } else if (hasSpecificMonths) {
+    monthsToProcess = record.selectedMonths;
+  } else {
+    const now = new Date();
+    monthsToProcess = [`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`];
+  }
+
+  if ((record.selectionMode === "weekly" || !record.selectionMode) && record.weekOffDays && record.weekOffDays.length > 0) {
+    monthsToProcess.forEach((monthVal) => {
+      if (hasSpecificMonths && !record.selectedMonths.includes(monthVal)) return;
+      const [year, month] = monthVal.split("-").map(Number);
+      const daysInMonth = new Date(year, month, 0).getDate();
+
+      record.weekOffDays.forEach((dayName) => {
+        const targetDay = DAY_MAP[resolveDayName(dayName)];
+        if (targetDay === undefined) return;
+        for (let day = 1; day <= daysInMonth; day++) {
+          const date = new Date(year, month - 1, day);
+          if (date.getDay() === targetDay) {
+            calculatedDates.push(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+          }
+        }
+      });
+    });
+  }
+
+  if (record.selectionMode === "weekwise" && record.weekwiseSelection && record.weekwiseSelection.length > 0) {
+    monthsToProcess.forEach((monthVal) => {
+      if (hasSpecificMonths && !record.selectedMonths.includes(monthVal)) return;
+      const [year, month] = monthVal.split("-").map(Number);
+      const daysInMonth = new Date(year, month, 0).getDate();
+
+      record.weekwiseSelection.forEach(({ week, day }) => {
+        const targetDay = DAY_MAP[resolveDayName(day)];
+        if (targetDay === undefined) return;
+        const firstDayOfMonth = new Date(year, month - 1, 1);
+        const firstDayOffset = (targetDay - firstDayOfMonth.getDay() + 7) % 7;
+        const targetDate = 1 + firstDayOffset + (week - 1) * 7;
+        if (targetDate <= daysInMonth && targetDate > 0) {
+          calculatedDates.push(`${year}-${String(month).padStart(2, "0")}-${String(targetDate).padStart(2, "0")}`);
+        }
+      });
+    });
+  }
+
+  if (Array.isArray(record.specificDates) && record.specificDates.length > 0) {
+    record.specificDates.forEach((dateStr) => {
+      const dateMonth = dateStr.slice(0, 7);
+      if (monthsToProcess.includes(dateMonth)) {
+        calculatedDates.push(dateStr);
+      }
+    });
+  }
+
+  return Array.from(new Set(calculatedDates)).sort();
+};
+
+const getEmployeeWeekOffRecordFromCollection = (records, employeeId) => {
+  if (!employeeId || !Array.isArray(records)) return null;
+  const empId = String(employeeId);
+
+  const specificRecord = records.find((rec) =>
+    !rec.selectAllEmployees &&
+    rec.selectedEmployees?.some((e) => String(e.employeeId) === empId || String(e._id) === empId)
+  );
+  if (specificRecord) return specificRecord;
+
+  return records.find((rec) => rec.selectAllEmployees === true) || null;
+};
+
+const getWorkedWeekOffCombOffOptions = async (employeeId, month) => {
+  const now = new Date();
+  const targetMonth = month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const [year, monthNum] = targetMonth.split("-").map(Number);
+  const startDate = new Date(year, monthNum - 1, 1);
+  const endDate = new Date(year, monthNum, 0, 23, 59, 59);
+
+  const [weekOffRecords, attendanceRecords, shiftAssignment, usedLeaves] = await Promise.all([
+    WeekOff.find().sort({ createdAt: -1 }),
+    Attendance.find({
+      employeeId,
+      checkInTime: { $gte: startDate, $lte: endDate }
+    }),
+    Shift.findOne({
+      $or: [
+        { "employeeAssignment.employeeId": employeeId },
+        { employeeId }
+      ]
+    }),
+    Leave.find({
+      employeeId,
+      $or: [
+        { isCombOff: true },
+        { leaveType: { $regex: /comb|comp.?off/i } }
+      ],
+      status: { $nin: ["rejected"] }
+    })
+  ]);
+
+  const weekOffRecord = getEmployeeWeekOffRecordFromCollection(weekOffRecords, employeeId);
+
+  let weekOffDates = calculateDatesFromPattern(weekOffRecord, targetMonth);
+
+  // ✅ FALLBACK: agar WeekOff record nahi hai, to Sundays poore month ke
+  if (!weekOffDates || weekOffDates.length === 0) {
+    const daysInMonth = new Date(year, monthNum, 0).getDate();
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(year, monthNum - 1, day);
+      if (d.getDay() === 0) {
+        weekOffDates.push(`${year}-${String(monthNum).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+      }
+    }
+  }
+
+  const hasWorkAssignment = !!shiftAssignment;
+
+  // ✅ Attendance group by date (multiple records per day possible)
+  const workedMap = new Map();
+  attendanceRecords.forEach((rec) => {
+    const key = toDateKey(rec.checkInTime);
+    if (!key) return;
+    const existing = workedMap.get(key);
+    const hours = rec.totalHours || rec.workingHours || 0;
+    if (existing) {
+      existing.totalHours = (existing.totalHours || 0) + hours;
+      existing.records.push(rec);
+    } else {
+      workedMap.set(key, {
+        date: key,
+        totalHours: hours,
+        records: [rec]
+      });
+    }
+  });
+
+  const usedWorkDates = new Set(
+    usedLeaves
+      .map((leave) => toDateKey(leave.combOffWorkDate || leave.startDate))
+      .filter(Boolean)
+  );
+
+  const allWeekOffs = weekOffDates.map((dateStr) => {
+    const att = workedMap.get(dateStr);
+    const worked = Boolean(att && att.totalHours > 0);
+    return {
+      date: dateStr,
+      day: formatDayLabel(dateStr),
+      isWeekOff: true,
+      hasWorkAssignment,
+      worked,
+      eligible: worked,
+      used: usedWorkDates.has(dateStr),
+      totalHours: att?.totalHours || 0,
+      extraHours: 0,
+      status: usedWorkDates.has(dateStr) ? "used" : worked ? "active" : "not-worked",
+      source: "weekOffWork"
+    };
+  });
+
+  const options = allWeekOffs.filter((item) => item.eligible && !item.used);
+
+  return {
+    employeeId,
+    month: targetMonth,
+    weekOffDates,
+    hasWorkAssignment,
+    hasWeekOffPolicy: Boolean(weekOffRecord),
+    options,
+    allWeekOffs,
+    workedCount: allWeekOffs.filter((item) => item.worked).length
+  };
+};
+
 // ✅ 1. CREATE MASTER SHIFT WITH SINGLE TIME SLOT
 exports.createMasterShift = async (req, res) => {
   try {
@@ -989,7 +1218,6 @@ exports.createMasterShift = async (req, res) => {
       });
     }
 
-    // Check if shift type already exists
     const existingShift = await Shift.findOne({ 
       shiftType: shiftType.toUpperCase(),
       isMasterShift: true
@@ -1002,7 +1230,6 @@ exports.createMasterShift = async (req, res) => {
       });
     }
 
-    // Format time slots with AM/PM
     const formatAmPm = (time24) => {
       if (!time24) return '';
       let [hours, minutes] = time24.split(':').map(Number);
@@ -1014,7 +1241,6 @@ exports.createMasterShift = async (req, res) => {
     let finalTimeSlots = [];
     
     if (isBrakeShift) {
-      // Brake shift handling
       finalTimeSlots = timeSlots.map((slot, idx) => ({
         slotId: `${shiftType.toUpperCase()}${idx + 1}`,
         startTime: slot.startTime,
@@ -1073,15 +1299,11 @@ exports.createMasterShift = async (req, res) => {
 // ✅ 2. GET ALL MASTER SHIFTS
 exports.getMasterShifts = async (req, res) => {
   try {
-    console.log("📝 GET MASTER SHIFTS REQUEST");
-    
     const masterShifts = await Shift.find({ 
       isMasterShift: true,
       isActive: true
     }).sort({ shiftType: 1 });
 
-    console.log("✅ FOUND MASTER SHIFTS:", masterShifts.length);
-    
     res.status(200).json({ 
       success: true,
       data: masterShifts
@@ -1101,8 +1323,6 @@ exports.updateMasterShift = async (req, res) => {
     const { id } = req.params;
     const { shiftType, shiftName, shiftCategory, timeSlots, isBrakeShift } = req.body;
 
-    console.log("📝 UPDATE MASTER SHIFT REQUEST:", { id, shiftType, shiftName, shiftCategory, isBrakeShift });
-
     const existingShift = await Shift.findOne({
       _id: id,
       isMasterShift: true
@@ -1115,7 +1335,6 @@ exports.updateMasterShift = async (req, res) => {
       });
     }
 
-    // Check for duplicate shift type
     const duplicateShift = await Shift.findOne({
       shiftType: shiftType.toUpperCase(),
       isMasterShift: true,
@@ -1129,7 +1348,6 @@ exports.updateMasterShift = async (req, res) => {
       });
     }
 
-    // Format time slots
     const formatAmPm = (time24) => {
       if (!time24) return '';
       let [hours, minutes] = time24.split(':').map(Number);
@@ -1146,7 +1364,6 @@ exports.updateMasterShift = async (req, res) => {
       description: slot.description
     }));
 
-    // Update master shift
     const updatedShift = await Shift.findByIdAndUpdate(
       id,
       {
@@ -1160,7 +1377,6 @@ exports.updateMasterShift = async (req, res) => {
       { new: true, runValidators: true }
     );
 
-    // Update all employee assignments
     const updateResult = await Shift.updateMany(
       {
         shiftType: existingShift.shiftType,
@@ -1184,7 +1400,6 @@ exports.updateMasterShift = async (req, res) => {
       }
     );
 
-    // Update legacy assignments
     await Shift.updateMany(
       {
         shiftType: existingShift.shiftType,
@@ -1199,9 +1414,6 @@ exports.updateMasterShift = async (req, res) => {
       }
     );
 
-    console.log(`✅ Updated ${updateResult.modifiedCount} employee assignments`);
-
-    // Notify affected employees
     const affectedEmployees = await Shift.find({
       shiftType: shiftType.toUpperCase(),
       isMasterShift: false,
@@ -1246,8 +1458,6 @@ exports.updateMasterShift = async (req, res) => {
 // ✅ 4. GET ALL EMPLOYEE ASSIGNMENTS
 exports.getEmployeeAssignments = async (req, res) => {
   try {
-    console.log("📝 GET EMPLOYEE ASSIGNMENTS REQUEST");
-    
     const newAssignments = await Shift.find({ 
       isMasterShift: false,
       isActive: true,
@@ -1296,8 +1506,6 @@ exports.getEmployeeAssignments = async (req, res) => {
     
     const validAssignments = activeAssignments.filter(a => a !== null);
     
-    console.log("✅ FOUND ASSIGNMENTS:", validAssignments.length);
-    
     res.status(200).json({ 
       success: true,
       data: validAssignments
@@ -1314,8 +1522,6 @@ exports.getEmployeeAssignments = async (req, res) => {
 // ✅ 5. ASSIGN SHIFT TO EMPLOYEE
 exports.assignShiftToEmployee = async (req, res) => {
   try {
-    console.log("📝 ASSIGN SHIFT REQUEST:", req.body);
-    
     const { employeeId, employeeName, shiftType, selectedSlotId, selectedTimeRange, selectedDescription } = req.body;
 
     if (!employeeId || !employeeName || !shiftType) {
@@ -1380,8 +1586,6 @@ exports.assignShiftToEmployee = async (req, res) => {
     });
 
     await newAssignment.save();
-    
-    console.log("✅ SHIFT ASSIGNED:", newAssignment);
 
     await Notification.create({
       userId: employeeId,
@@ -1422,8 +1626,6 @@ exports.assignShiftToEmployee = async (req, res) => {
 // ✅ 6. UPDATE ASSIGNMENT
 exports.updateAssignment = async (req, res) => {
   try {
-    console.log("📝 UPDATE ASSIGNMENT REQUEST - ID:", req.params.id);
-    
     const { id } = req.params;
     const { employeeName, shiftType, effectiveFrom } = req.body;
 
@@ -1469,8 +1671,6 @@ exports.updateAssignment = async (req, res) => {
     }
 
     await assignment.save();
-    
-    console.log("✅ ASSIGNMENT UPDATED:", assignment);
 
     const empId = assignment.employeeAssignment?.employeeId || assignment.employeeId;
     if (empId) {
@@ -1514,9 +1714,7 @@ exports.updateAssignment = async (req, res) => {
 exports.getEmployeesByShiftType = async (req, res) => {
   try {
     const { shiftType } = req.params;
-    
-    console.log("📝 GET EMPLOYEES FOR SHIFT:", shiftType);
-    
+
     const newEmployees = await Shift.find({ 
       shiftType: shiftType.toUpperCase(),
       isMasterShift: false,
@@ -1568,8 +1766,6 @@ exports.getEmployeesByShiftType = async (req, res) => {
 // ✅ 8. GET EMPLOYEE COUNT BY SHIFT TYPE
 exports.getEmployeeCountByShift = async (req, res) => {
   try {
-    console.log("📝 GET EMPLOYEE COUNT BY SHIFT REQUEST");
-    
     const masterShifts = await Shift.find({ 
       isMasterShift: true,
       isActive: true
@@ -1637,9 +1833,6 @@ exports.getEmployeeCountByShift = async (req, res) => {
 exports.deleteMasterShift = async (req, res) => {
   try {
     const { id } = req.params;
-
-    console.log("🗑️ DELETE MASTER SHIFT ID:", id);
-
     const deletedShift = await Shift.findOneAndDelete({
       _id: id,
       isMasterShift: true
@@ -1669,9 +1862,6 @@ exports.deleteMasterShift = async (req, res) => {
 exports.deleteAssignment = async (req, res) => {
   try {
     const { id } = req.params;
-
-    console.log("🗑️ DELETE ASSIGNMENT ID:", id);
-
     const deletedAssignment = await Shift.findOneAndDelete({
       _id: id,
       isMasterShift: false
@@ -1701,9 +1891,7 @@ exports.deleteAssignment = async (req, res) => {
 exports.getShiftForEmployee = async (req, res) => {
   try {
     const { employeeId } = req.params;
-    
-    console.log("📝 GET SHIFT FOR EMPLOYEE:", employeeId);
-    
+
     if (!employeeId) {
       return res.status(400).json({ 
         success: false,
@@ -1795,8 +1983,6 @@ exports.getShiftForEmployee = async (req, res) => {
 // ✅ 12. CREATE DEFAULT SHIFTS
 exports.createDefaultShifts = async (req, res) => {
   try {
-    console.log("📝 CREATING DEFAULT SHIFTS");
-    
     const defaultShifts = [
       {
         shiftType: "A",
@@ -1899,7 +2085,6 @@ exports.createDefaultShifts = async (req, res) => {
         
         await newShift.save();
         createdCount++;
-        console.log(`✅ Created shift: ${shiftData.shiftType} - ${shiftData.shiftCategory}`);
       }
     }
     
@@ -1920,8 +2105,6 @@ exports.createDefaultShifts = async (req, res) => {
 // ✅ 13. MIGRATE LEGACY DATA
 exports.migrateLegacyData = async (req, res) => {
   try {
-    console.log("📝 MIGRATING LEGACY DATA");
-    
     const legacyData = await Shift.find({ 
       employeeId: { $exists: true },
       isMasterShift: { $exists: false }
@@ -1965,8 +2148,6 @@ exports.migrateLegacyData = async (req, res) => {
         migratedCount++;
       }
     }
-    
-    console.log(`✅ MIGRATED ${migratedCount} LEGACY RECORDS`);
     
     res.status(200).json({ 
       success: true,
@@ -2019,5 +2200,325 @@ exports.getShiftDetails = async (req, res) => {
       success: false,
       message: "Server error"
     });
+  }
+};
+
+// ✅ 15. SAVE WEEK OFF
+exports.saveWeekOff = async (req, res) => {
+  try {
+    const { selectedEmployees, weekOffDays, specificDates, selectAllEmployees, selectedMonths, selectionMode, weekwiseSelection, monthlyPattern } = req.body;
+
+    if (!selectAllEmployees && (!selectedEmployees || selectedEmployees.length === 0)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Please select at least one employee or choose 'Select All Employees'" 
+      });
+    }
+
+    const hasWeeklyPattern = Array.isArray(weekOffDays) && weekOffDays.length > 0;
+    const hasWeekwisePattern = Array.isArray(weekwiseSelection) && weekwiseSelection.length > 0;
+    const hasMonthlyPattern = Array.isArray(monthlyPattern) && monthlyPattern.length > 0;
+    const hasSpecificDates = Array.isArray(specificDates) && specificDates.length > 0;
+
+    if (!hasWeeklyPattern && !hasWeekwisePattern && !hasMonthlyPattern && !hasSpecificDates) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Please select at least one week-off pattern or specific date" 
+      });
+    }
+
+    const now = new Date();
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const monthsToSave = (Array.isArray(selectedMonths) && selectedMonths.length > 0)
+      ? selectedMonths
+      : [currentMonthStr];
+
+    const newWeekOff = new WeekOff({
+      selectedEmployees: selectedEmployees || [],
+      weekOffDays: weekOffDays || [],
+      specificDates: specificDates || [],
+      selectAllEmployees: selectAllEmployees || false,
+      selectedMonths: monthsToSave,
+      selectionMode: selectionMode || 'weekly',
+      weekwiseSelection: weekwiseSelection || [],
+      monthlyPattern: monthlyPattern || []
+    });
+
+    await newWeekOff.save();
+
+    let patternSummary = "";
+    if (selectionMode === 'weekly' && hasWeeklyPattern) {
+      patternSummary = weekOffDays.join(', ');
+    } else if (selectionMode === 'weekwise' && hasWeekwisePattern) {
+      patternSummary = weekwiseSelection.map(item => `Week ${item.week} ${item.day}`).join(', ');
+    } else if (selectionMode === 'monthly' && hasMonthlyPattern) {
+      patternSummary = monthlyPattern.map(item => `${item.occurrence} ${item.day}`).join(', ');
+    } else if (hasSpecificDates) {
+      patternSummary = specificDates.join(', ');
+    }
+
+    if (!selectAllEmployees && selectedEmployees && selectedEmployees.length > 0) {
+      for (const emp of selectedEmployees) {
+        await Notification.create({
+          userId: emp.employeeId,
+          role: "employee",
+          title: "Week Off Assigned",
+          message: `You have been assigned week off: ${patternSummary || 'Scheduled week off'}`,
+          type: "attendance"
+        });
+        
+        sendPushToUser(emp.employeeId, {
+          title: "Week Off Assigned",
+          body: `Admin assigned you week off: ${patternSummary || 'Scheduled week off'}`,
+          url: "/employee/dashboard"
+        });
+      }
+    }
+
+    res.status(201).json({ 
+      success: true,
+      message: "Week off saved successfully", 
+      data: newWeekOff 
+    });
+  } catch (error) {
+    console.error("❌ SAVE WEEK OFF ERROR:", error);
+    res.status(500).json({ 
+      success: false,
+      message: "Server error",
+      error: error.message 
+    });
+  }
+};
+
+// ✅ 16. GET ALL WEEK OFF RECORDS
+exports.getWeekOffRecords = async (req, res) => {
+  try {
+    const weekOffRecords = await WeekOff.find().sort({ createdAt: -1 });
+
+    res.status(200).json({ 
+      success: true,
+      data: weekOffRecords
+    });
+  } catch (error) {
+    console.error("❌ GET WEEK OFF RECORDS ERROR:", error);
+    res.status(500).json({ 
+      success: false,
+      message: "Server error"
+    });
+  }
+};
+
+// ✅ 17. DELETE WEEK OFF RECORD
+exports.deleteWeekOff = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await WeekOff.findByIdAndDelete(id);
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Week off record not found"
+      });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Week off record deleted successfully"
+    });
+  } catch (error) {
+    console.error("❌ DELETE WEEK OFF RECORD ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message
+    });
+  }
+};
+
+// ✅ 18. GET EMPLOYEE WEEK-OFF DATES FOR A MONTH
+exports.getEmployeeWeekOffDates = async (req, res) => {
+  try {
+    const { employeeId, month } = req.query;
+
+    if (!employeeId || !month) {
+      return res.status(400).json({
+        success: false,
+        message: "employeeId and month (YYYY-MM) are required"
+      });
+    }
+
+    const generateWeeklyDates = (year, monthNum, weekOffDay) => {
+      const daysInMonth = new Date(year, monthNum, 0).getDate();
+      const targetDay = DAY_MAP[resolveDayName(weekOffDay)];
+      if (targetDay === undefined) return [];
+      const dates = [];
+      for (let day = 1; day <= daysInMonth; day++) {
+        const d = new Date(year, monthNum - 1, day);
+        if (d.getDay() === targetDay) {
+          dates.push(`${year}-${String(monthNum).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+        }
+      }
+      return dates;
+    };
+
+    const [year, monthNum] = month.split("-").map(Number);
+    if (isNaN(year) || isNaN(monthNum)) {
+      return res.status(400).json({ success: false, message: "Invalid month format. Use YYYY-MM" });
+    }
+
+    const employee = await Employee.findOne({ employeeId: String(employeeId) });
+    const fallbackWeekOffDay = employee?.weekOffDay || "Sunday";
+
+    const allRecords = await WeekOff.find().sort({ createdAt: -1 });
+    const empId = String(employeeId);
+
+    const specific = allRecords.find((rec) =>
+      !rec.selectAllEmployees &&
+      rec.selectedEmployees?.some((e) => String(e.employeeId) === empId)
+    );
+    const record = specific || allRecords.find((rec) => rec.selectAllEmployees === true);
+
+    if (!record) {
+      const fallbackDates = generateWeeklyDates(year, monthNum, fallbackWeekOffDay);
+      return res.json({
+        success: true,
+        employeeId,
+        month,
+        weekOffDates: fallbackDates,
+        source: "fallback",
+        selectionMode: "weekly",
+        weekOffDays: [fallbackWeekOffDay],
+        message: `No WeekOff assigned — using default ${fallbackWeekOffDay}`
+      });
+    }
+
+    const hasSpecificMonths =
+      Array.isArray(record.selectedMonths) && record.selectedMonths.length > 0;
+
+    let dates = [];
+
+    if (hasSpecificMonths && !record.selectedMonths.includes(month)) {
+      if (Array.isArray(record.specificDates)) {
+        dates = record.specificDates.filter((d) => d.startsWith(month));
+      }
+    } else {
+      const daysInMonth = new Date(year, monthNum, 0).getDate();
+
+      const pushDate = (day) => {
+        if (day >= 1 && day <= daysInMonth) {
+          dates.push(
+            `${year}-${String(monthNum).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+          );
+        }
+      };
+
+      if ((record.selectionMode === "weekly" || !record.selectionMode) &&
+          Array.isArray(record.weekOffDays)) {
+        record.weekOffDays.forEach((dayName) => {
+          const targetDay = DAY_MAP[resolveDayName(dayName)];
+          if (targetDay === undefined) return;
+          for (let day = 1; day <= daysInMonth; day++) {
+            const d = new Date(year, monthNum - 1, day);
+            if (d.getDay() === targetDay) pushDate(day);
+          }
+        });
+      }
+
+      if (record.selectionMode === "weekwise" && Array.isArray(record.weekwiseSelection)) {
+        record.weekwiseSelection.forEach(({ week, day }) => {
+          const targetDay = DAY_MAP[resolveDayName(day)];
+          if (targetDay === undefined) return;
+          const firstDayOfMonth = new Date(year, monthNum - 1, 1);
+          const offset = (targetDay - firstDayOfMonth.getDay() + 7) % 7;
+          pushDate(1 + offset + (week - 1) * 7);
+        });
+      }
+
+      if (record.selectionMode === "monthly" && Array.isArray(record.monthlyPattern)) {
+        record.monthlyPattern.forEach(({ occurrence, day }) => {
+          const targetDay = DAY_MAP[resolveDayName(day)];
+          if (targetDay === undefined) return;
+          const matching = [];
+          for (let d = 1; d <= daysInMonth; d++) {
+            if (new Date(year, monthNum - 1, d).getDay() === targetDay) matching.push(d);
+          }
+          const occMap = { "1st": 1, "2nd": 2, "3rd": 3, "4th": 4, "last": -1 };
+          const occ = occMap[occurrence];
+          if (occ === -1) pushDate(matching[matching.length - 1]);
+          else if (occ && matching[occ - 1]) pushDate(matching[occ - 1]);
+        });
+      }
+
+      if (Array.isArray(record.specificDates)) {
+        record.specificDates.forEach((d) => {
+          if (d.startsWith(month)) dates.push(d);
+        });
+      }
+    }
+
+    dates = Array.from(new Set(dates)).sort();
+
+    if (dates.length === 0) {
+      const fallbackDates = generateWeeklyDates(year, monthNum, fallbackWeekOffDay);
+      return res.json({
+        success: true,
+        employeeId,
+        month,
+        weekOffDates: fallbackDates,
+        source: "fallback",
+        selectionMode: "weekly",
+        weekOffDays: [fallbackWeekOffDay],
+        message: `No dates from WeekOff record — using default ${fallbackWeekOffDay}`
+      });
+    }
+
+    res.json({
+      success: true,
+      employeeId,
+      month,
+      weekOffDates: dates,
+      source: specific ? "employee" : "all",
+      selectionMode: record.selectionMode || "weekly",
+      weekOffDays: record.weekOffDays || []
+    });
+  } catch (error) {
+    console.error("❌ Error fetching employee week-off dates:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ 19. GET ELIGIBLE COMP-OFF DAYS (from WeekOff + Attendance)
+exports.getEligibleCompOffDays = async (req, res) => {
+  try {
+    const { employeeId, month } = req.query;
+
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        message: "employeeId is required"
+      });
+    }
+
+    const now = new Date();
+    const targetMonth = month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    console.log(`🔍 getEligibleCompOffDays: employeeId=${employeeId}, month=${targetMonth}`);
+
+    const data = await getWorkedWeekOffCombOffOptions(employeeId, targetMonth);
+
+    console.log(`✅ Found ${data.options.length} eligible days (out of ${data.weekOffDates.length} weekoffs)`);
+
+    res.json({
+      success: true,
+      employeeId,
+      month: targetMonth,
+      weekOffDates: data.weekOffDates || [],
+      hasWorkAssignment: data.hasWorkAssignment,
+      hasWeekOffPolicy: data.hasWeekOffPolicy,
+      options: data.options || [],
+      allWeekOffs: data.allWeekOffs || [],
+      workedCount: data.workedCount || 0
+    });
+  } catch (error) {
+    console.error("❌ Error fetching eligible comp-off days:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
