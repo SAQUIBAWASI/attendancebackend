@@ -3202,35 +3202,80 @@ exports.breakOut = async (req, res) => {
     });
   }
 };
-// ---------------- Employee Attendance ----------------
+/* ──────────────────────────────────────────────
+   HELPERS
+   ────────────────────────────────────────────── */
+const getAssignedShiftHours = (record) => {
+  return record.assignedShiftHours || 9;
+};
+
+const calculateOTHours = (record) => {
+  const totalHours = record.totalHours || record.hours || 0;
+  if (totalHours === 0) return 0;
+
+  const assignedShiftHours = getAssignedShiftHours(record);
+  if (!assignedShiftHours) return 0;
+
+  const ot = totalHours - assignedShiftHours;
+  // 30 minutes threshold (0.5 hours)
+  if (ot > 0.5) return Math.round(ot * 100) / 100;
+  return 0;
+};
+
+const formatDecimalHours = (decimalHours) => {
+  if (!decimalHours && decimalHours !== 0) return "0h 0m";
+  const hours = Math.floor(decimalHours);
+  const minutes = Math.round((decimalHours - hours) * 60);
+  if (minutes === 60) return `${hours + 1}h 0m`;
+  return `${hours}h ${minutes}m`;
+};
+
+/* ──────────────────────────────────────────────
+   GET EMPLOYEE ATTENDANCE (WITH STATS)
+   ────────────────────────────────────────────── */
+// ✅ getEmployeeAttendance — UPDATED (claimed OT removed)
 exports.getEmployeeAttendance = async (req, res) => {
   try {
     const { employeeId } = req.params;
-    if (!employeeId)
-      return res.status(400).json({ message: "Employee ID required" });
+    if (!employeeId) return res.status(400).json({ message: "Employee ID required" });
 
-    const records = await Attendance.find({ employeeId }).sort({
-      checkInTime: -1,
-    });
-
-    // ✅ Get employee name separately
-    const employee = await Employee.findOne({ employeeId });
+    const records = await Attendance.find({ employeeId }).sort({ checkInTime: -1 }).lean();
+    const employee = await Employee.findOne({ employeeId }).lean();
     const employeeName = employee ? employee.name : null;
 
-    res.status(200).json({
+    /* ── STATS ── */
+    const totalRecords = records.length;
+    const onsiteDays = records.filter((r) => r.onsite === true).length;
+    const checkedIn = records.filter((r) => r.status === "checked-in").length;
+    const fullDays = records.filter((r) => (r.totalHours || r.hours || 0) >= 8).length;
+
+    const totalOTHours = records.reduce((sum, r) => sum + calculateOTHours(r), 0);
+    const availableOTCount = records.filter((r) => calculateOTHours(r) > 0).length;
+    const totalOTAvailable = records.reduce((sum, r) => sum + calculateOTHours(r), 0);
+
+    return res.status(200).json({
       message: "Employee attendance fetched successfully",
       records,
-      employeeName: employeeName, // ✅ Return employee name
+      employeeName,
+      stats: {
+        totalRecords,
+        onsiteDays,
+        checkedIn,
+        fullDays,
+        otHours: Math.round(totalOTHours * 100) / 100,
+        otHoursFormatted: formatDecimalHours(totalOTHours),
+        availableOTCount,
+        totalOTAvailable: Math.round(totalOTAvailable * 100) / 100,
+        totalOTAvailableFormatted: formatDecimalHours(totalOTAvailable),
+
+        // ⚠️ claimedOT HATA DIYA — frontend khud handle kar raha hai
+      },
     });
   } catch (err) {
     console.error("Get Employee Attendance Error:", err);
-    res.status(500).json({
-      message: "Failed to fetch attendance",
-      error: err.message,
-    });
+    return res.status(500).json({ message: "Failed to fetch attendance", error: err.message });
   }
 };
-
 // ---------------- All Attendance ----------------
 // exports.getAllAttendance = async (req, res) => {
 //   try {

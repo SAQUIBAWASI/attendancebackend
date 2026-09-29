@@ -5757,53 +5757,136 @@ const deleteEmployeeDocument = async (req, res) => {
 
 
 
-// ✅ SINGLE DASHBOARD CONTROLLER — sirf employeeId param
+/* ────────── HELPER: shift start time ────────── */
+const getShiftStartTime = (shiftType) => {
+  const map = {
+    A: "10:00", B: "14:00", C: "18:00", D: "09:00",
+    E: "10:00", F: "14:00", G: "09:00", H: "09:00",
+    I: "07:00", BR: "07:00",
+  };
+  return map[shiftType] || "09:00";
+};
+
+/* ────────── HELPER: stats calculator ────────── */
+const calculateEmployeeStats = (attendance, profile, leaves, permissions) => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth() + 1;
+  const maxDayToCheck = today.getDate();
+
+  // Working days Mon–Sat
+  const workingDays = [];
+  const workingDayMap = {};
+  for (let day = 1; day <= maxDayToCheck; day++) {
+    const dow = new Date(year, month - 1, day).getDay();
+    if (dow >= 1 && dow <= 6) {
+      workingDays.push(day);
+      workingDayMap[day] = true;
+    }
+  }
+
+  const shiftStart = getShiftStartTime(profile?.shiftType || profile?.shift || "D");
+  const [sh, sm] = shiftStart.split(":").map(Number);
+
+  // unique present days (ek din me multiple check-in ho sakte hain)
+  const presentDays = new Set();
+  let lateDays = 0;
+
+  attendance.forEach((record) => {
+    if (!record.checkInTime) return;
+    const recDate = new Date(record.checkInTime);
+    if (recDate.getFullYear() !== year || recDate.getMonth() + 1 !== month) return;
+
+    const day = recDate.getDate();
+    const status = (record.status || "").toLowerCase();
+
+    if (status === "present" || status === "checked-in" || status === "checked-out") {
+      if (workingDayMap[day]) presentDays.add(day);
+
+      const shiftStartTime = new Date(recDate);
+      shiftStartTime.setHours(sh, sm, 0, 0);
+      const grace = new Date(shiftStartTime);
+      grace.setMinutes(grace.getMinutes() + 5);
+      if (recDate > grace) lateDays++;
+    }
+  });
+
+  let absentDays = 0;
+  workingDays.forEach((d) => {
+    if (!presentDays.has(d)) absentDays++;
+  });
+
+  const pendingLeaves = leaves.filter(
+    (l) => (l.status || "").toLowerCase() === "pending"
+  ).length;
+
+  const presentThisMonth = presentDays.size;
+  const totalWorkingDays = workingDays.length;
+  const attendanceRate = totalWorkingDays
+    ? Math.round((presentThisMonth / totalWorkingDays) * 100)
+    : 0;
+
+  // Approved leaves this month (day count)
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+  const leavesThisMonthDays = leaves
+    .filter((l) => (l.status || "").toLowerCase() === "approved")
+    .filter((l) => {
+      const start = new Date(l.startDate || l.date);
+      if (isNaN(start.getTime())) return false;
+      const end = new Date(l.endDate || l.startDate || l.date);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+      return start <= monthEnd && end >= monthStart;
+    })
+    .reduce((sum, l) => sum + (Number(l.days) || 1), 0);
+
+  return {
+    presentThisMonth,
+    absentThisMonth: absentDays,
+    lateThisMonth: lateDays,
+    totalWorkingDays,
+    attendanceRate,
+    leavesThisMonth: leavesThisMonthDays,
+    pendingLeaves,
+    permissions: permissions.length,
+  };
+};
+
+/* ────────── MAIN CONTROLLER ────────── */
 const employeeDashboard = async (req, res) => {
   try {
     const { employeeId } = req.params;
-
     if (!employeeId) {
-      return res.status(400).json({
-        success: false,
-        message: "employeeId is required",
-      });
+      return res.status(400).json({ success: false, message: "employeeId is required" });
     }
+
+    const today = new Date();
+    const todayMonth = today.getMonth() + 1;
+    const todayDate = today.getDate();
 
     // 1️⃣ PROFILE
     const profile = await Employee.findOne({ employeeId }).lean();
     if (!profile) {
-      return res.status(404).json({
-        success: false,
-        message: "Employee not found",
-      });
+      return res.status(404).json({ success: false, message: "Employee not found" });
     }
-
-    const targetId = employeeId;
     const department = profile.department || "";
 
     // 2️⃣ ATTENDANCE
-    const attendance = await Attendance.find({
-      $or: [
-        { employeeId: targetId },
-        { "employeeId.employeeId": targetId },
-      ],
+    const userAttendance = await Attendance.find({
+      $or: [{ employeeId }, { "employeeId.employeeId": employeeId }],
     })
       .sort({ checkInTime: -1 })
       .limit(500)
       .lean();
 
     // 3️⃣ LEAVES
-    const leaves = await Leave.find({ employeeId: targetId })
-      .sort({ createdAt: -1 })
-      .lean();
+    const leaves = await Leave.find({ employeeId }).sort({ createdAt: -1 }).lean();
 
-    // 4️⃣ PERMISSIONS (approved)
+    // 4️⃣ PERMISSIONS
     let permissions = [];
     try {
-      permissions = await Permission.find({
-        employeeId: targetId,
-        status: "APPROVED",
-      }).lean();
+      permissions = await Permission.find({ employeeId, status: "APPROVED" }).lean();
     } catch (e) {
       console.warn("Permissions fetch failed:", e.message);
     }
@@ -5811,12 +5894,9 @@ const employeeDashboard = async (req, res) => {
     // 5️⃣ LOCATION
     let locationName = "Not Assigned";
     try {
-      if (profile.location?.name) {
-        locationName = profile.location.name;
-      } else {
-        const locDoc = await Employee.findById(profile._id)
-          .populate("location")
-          .lean();
+      if (profile.location?.name) locationName = profile.location.name;
+      else {
+        const locDoc = await Employee.findById(profile._id).populate("location").lean();
         if (locDoc?.location?.name) locationName = locDoc.location.name;
       }
     } catch (e) {
@@ -5826,7 +5906,7 @@ const employeeDashboard = async (req, res) => {
     // 6️⃣ SHIFT
     let shiftData = null;
     try {
-      shiftData = await Shift.findOne({ employeeId: targetId }).lean();
+      shiftData = await Shift.findOne({ employeeId }).lean();
     } catch (e) {
       console.warn("Shift fetch failed:", e.message);
     }
@@ -5851,17 +5931,15 @@ const employeeDashboard = async (req, res) => {
           timeRange: scheduled.selectedTimeRange || "Not specified",
           description: scheduled.selectedDescription || "Shift timing",
           effectiveFrom: scheduled.effectiveFrom,
-          shiftCategory:
-            scheduled.shiftCategory || shiftData.shiftCategory || "Regular",
+          shiftCategory: scheduled.shiftCategory || shiftData.shiftCategory || "Regular",
         };
       }
     }
 
-    // 7️⃣ BIRTHDAYS TODAY
-    const today = new Date();
-    const todayMonth = today.getMonth() + 1;
-    const todayDate = today.getDate();
+    // 7️⃣ STATS
+    const stats = calculateEmployeeStats(userAttendance, profile, leaves, permissions);
 
+    // 8️⃣ BIRTHDAYS
     let birthdaysToday = [];
     try {
       birthdaysToday = await Employee.aggregate([
@@ -5876,20 +5954,11 @@ const employeeDashboard = async (req, res) => {
             },
           },
         },
-        {
-          $project: {
-            name: 1,
-            email: 1,
-            employeeName: "$name",
-            department: 1,
-          },
-        },
+        { $project: { name: 1, email: 1, employeeName: "$name", department: 1 } },
       ]);
-    } catch (e) {
-      console.warn("Birthdays fetch failed:", e.message);
-    }
+    } catch (e) { console.warn("Birthdays fetch failed:", e.message); }
 
-    // 8️⃣ ANNIVERSARIES TODAY
+    // 9️⃣ ANNIVERSARIES
     let anniversariesToday = [];
     try {
       anniversariesToday = await Employee.aggregate([
@@ -5906,93 +5975,123 @@ const employeeDashboard = async (req, res) => {
         },
         {
           $project: {
-            name: 1,
-            email: 1,
-            employeeName: "$name",
-            department: 1,
-            yearsOfService: {
-              $subtract: [today.getFullYear(), { $year: "$joiningDate" }],
-            },
+            name: 1, email: 1, employeeName: "$name", department: 1,
+            yearsOfService: { $subtract: [today.getFullYear(), { $year: "$joiningDate" }] },
           },
         },
       ]);
-    } catch (e) {
-      console.warn("Anniversaries fetch failed:", e.message);
-    }
+    } catch (e) { console.warn("Anniversaries fetch failed:", e.message); }
 
-    // 9️⃣ LEAVES TODAY (department-wise)
+    // 🔟 LEAVES TODAY
     let leavesToday = [];
     try {
-      const deptEmployeeIds = await Employee.find({ department }).distinct(
-        "employeeId"
-      );
-
+      const deptIds = await Employee.find({ department }).distinct("employeeId");
       leavesToday = await Leave.find({
         status: "approved",
-        employeeId: { $in: deptEmployeeIds },
+        employeeId: { $in: deptIds },
         startDate: { $lte: today },
         endDate: { $gte: today },
       }).lean();
-    } catch (e) {
-      console.warn("Leaves today fetch failed:", e.message);
-    }
+    } catch (e) { console.warn("Leaves today fetch failed:", e.message); }
 
-    // 🔟 PERFORMANCE
+    // 1️⃣1️⃣ HOLIDAYS
+    let holidays = [];
+    let upcomingHolidaysCount = 0;
+    let nextHolidayName = "";
+    try {
+      holidays = await Holiday.find().sort({ fromDate: 1 }).lean();
+      const todayStr = today.toISOString().split("T")[0];
+      const upcoming = holidays.filter((h) => (h.toDate || h.fromDate || "") >= todayStr);
+      upcomingHolidaysCount = upcoming.length;
+      nextHolidayName = upcoming[0]?.name || "";
+    } catch (e) { console.warn("Holidays fetch failed:", e.message); }
+
+    // 1️⃣2️⃣ PERFORMANCE
     let performanceData = null;
     try {
-      const currentMonth = today.getMonth() + 1;
-      const currentYear = today.getFullYear();
-      const perfRes = await require("../services/performanceService").getEmployeePerformance(
-        targetId,
-        currentMonth,
-        currentYear
+      performanceData = await performanceService.getEmployeePerformance(
+        employeeId, todayMonth, today.getFullYear()
       );
-      performanceData = perfRes;
-    } catch (e) {
-      console.warn("Performance fetch failed:", e.message);
-    }
+    } catch (e) { console.warn("Performance fetch failed:", e.message); }
 
-    // 1️⃣1️⃣ TOP PERFORMER
+    // 1️⃣3️⃣ TOP PERFORMER
     let topPerformer = null;
     try {
-      const currentMonth = today.getMonth() + 1;
-      const currentYear = today.getFullYear();
-      const topRes = await require("../services/performanceService").getTopPerformers(
-        currentMonth,
-        currentYear
-      );
+      const topRes = await performanceService.getTopPerformers(todayMonth, today.getFullYear());
       topPerformer = topRes?.[0] || null;
-    } catch (e) {
-      console.warn("Top performer fetch failed:", e.message);
-    }
+    } catch (e) { console.warn("Top performer fetch failed:", e.message); }
 
-    // ✅ RESPONSE
+    /* ────────────────────────────────────────
+       ✅ FINAL RESPONSE
+       stats ko TOP LEVEL pe rakha — cards ke liye
+       ──────────────────────────────────────── */
     return res.json({
       success: true,
+
+      // 🎯 YAHI WO OBJECT HAI JO CARDS MEIN DIKHANA HAI
+      stats: {
+        // Cards ke liye clean fields
+        present: performanceData?.presentDays ?? stats.presentThisMonth,
+        absent: performanceData?.absentDays ?? stats.absentThisMonth,
+        late: performanceData?.lateComingDays ?? stats.lateThisMonth,
+        leaves:
+          performanceData?.leavesDays ??
+          performanceData?.leaveDays ??
+          performanceData?.leaves ??
+          stats.leavesThisMonth,
+        performance:
+          performanceData?.performancePercentage ?? stats.attendanceRate,
+
+        // Extra info (frontend me kaam aayega)
+        totalWorkingDays: stats.totalWorkingDays,
+        pendingLeaves: stats.pendingLeaves,
+        permissions: stats.permissions,
+
+        // Purane naam bhi rakh diye (backward compatible)
+        presentThisMonth: stats.presentThisMonth,
+        absentThisMonth: stats.absentThisMonth,
+        lateThisMonth: stats.lateThisMonth,
+        leavesThisMonth: stats.leavesThisMonth,
+        attendanceRate: stats.attendanceRate,
+        performancePercentage:
+          performanceData?.performancePercentage ?? stats.attendanceRate,
+      },
+
+      // Quick actions ke liye counts
+      counts: {
+        attendanceLogs: userAttendance.length,
+        totalLeaves: leaves.length,
+        permissions: permissions.length,
+        holidays: holidays.length,
+        upcomingHolidays: upcomingHolidaysCount,
+        nextHoliday: nextHolidayName,
+      },
+
+      // Baaki saara data
       data: {
         profile,
-        attendance,
+        location: locationName,
+        shiftTiming,
+        currentShift: shiftData,
+        upcomingShift,
+
+        attendance: userAttendance,
         leaves,
         permissions,
-        location: locationName,
-        shift: {
-          shiftData,
-          shiftTiming,
-          upcomingShift,
-        },
+
         birthdaysToday,
         anniversariesToday,
         leavesToday,
+
+        holidays,
+
         performanceData,
         topPerformer,
       },
     });
   } catch (error) {
     console.error("Dashboard API error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
