@@ -719,7 +719,7 @@ router.get("/getallinactivebookings", async (req, res) => {
 
 
 // =============================================
-// 6. CREATE MANUAL CUSTOM SLOT (FIXED)
+// 6. CREATE MANUAL CUSTOM SLOT (FIXED with date)
 // =============================================
 router.post("/", async (req, res) => {
   try {
@@ -740,7 +740,7 @@ router.post("/", async (req, res) => {
       duration,
       gap,
       consultationFee,
-      date,
+      date,              // ✅ sirf date
       slotNumber,
       patientPhone,
       patientAge,
@@ -758,33 +758,82 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // Auto-generate slotId
-    const dayPrefix = dayOfWeek.substring(0, 3).toLowerCase();
-    const count = await AppointmentSlot.countDocuments({ dayOfWeek });
-    const slotId = `custom_${dayPrefix}_${count + 1}`;
+    /* ─────────────────────────────────────────
+       ✅ AUTO-DERIVE dayOfWeek from date (safety)
+       ───────────────────────────────────────── */
+    let finalDayOfWeek = dayOfWeek;
+    if (date) {
+      const d = new Date(date + "T00:00:00");
+      if (!isNaN(d.getTime())) {
+        finalDayOfWeek = d.toLocaleDateString("en-US", { weekday: "long" });
+      }
+    }
 
-    // Auto-calculate duration if not provided
+    /* ─────────────────────────────────────────
+       ✅ DUPLICATE CHECK
+       Same date + same time + same doctor → reject
+       ───────────────────────────────────────── */
+    const duplicateQuery = {
+      doctorId: doctorId || "default",
+      startTime,
+      endTime,
+      ...(date
+        ? { date }                              // date-based
+        : { dayOfWeek: finalDayOfWeek }         // recurring day-based
+      )
+    };
+
+    const existing = await AppointmentSlot.findOne(duplicateQuery);
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: date
+          ? `Slot already exists for ${date} at ${startTime} - ${endTime}`
+          : `Slot already exists for ${finalDayOfWeek} at ${startTime} - ${endTime}`,
+        existingSlotId: existing.slotId
+      });
+    }
+
+    /* ─────────────────────────────────────────
+       ✅ UNIQUE slotId GENERATION
+       ───────────────────────────────────────── */
+    let slotId;
+    if (date) {
+      const dateKey = date.replace(/-/g, "");
+      const timeKey = (startTime24 || startTime).replace(/[:\s]/g, "").substring(0, 4);
+      slotId = `slot_${dateKey}_${timeKey}_${Math.floor(Math.random() * 1000)}`;
+    } else {
+      const dayPrefix = finalDayOfWeek.substring(0, 3).toLowerCase();
+      const count = await AppointmentSlot.countDocuments({
+        dayOfWeek: finalDayOfWeek,
+        $or: [{ date: "" }, { date: null }, { date: { $exists: false } }]
+      });
+      slotId = `custom_${dayPrefix}_${count + 1}`;
+    }
+
+    /* ─────────────────────────────────────────
+       ✅ Auto-calculate duration
+       ───────────────────────────────────────── */
     let calculatedDuration = duration;
     if (!calculatedDuration && startTime24 && endTime24) {
-      const start = startTime24.split(':').map(Number);
-      const end = endTime24.split(':').map(Number);
-      const startMinutes = start[0] * 60 + start[1];
-      const endMinutes = end[0] * 60 + end[1];
-      calculatedDuration = endMinutes - startMinutes;
+      const [sh, sm] = startTime24.split(":").map(Number);
+      const [eh, em] = endTime24.split(":").map(Number);
+      calculatedDuration = (eh * 60 + em) - (sh * 60 + sm);
     }
-    if (!calculatedDuration) {
-      calculatedDuration = 20;
-    }
+    if (!calculatedDuration) calculatedDuration = 20;
 
+    /* ─────────────────────────────────────────
+       ✅ Create slot
+       ───────────────────────────────────────── */
     const newSlot = new AppointmentSlot({
-      slotId: slotId,
+      slotId,
       doctorId: doctorId || "default",
       doctorName: doctorName || "General OP Doctor",
       doctorSpecialization: doctorSpecialization || "",
-      dayOfWeek: dayOfWeek,
-      date: date || "",
-      startTime: startTime,
-      endTime: endTime,
+      dayOfWeek: finalDayOfWeek,
+      date: date || "",                    // ✅ sirf date
+      startTime,
+      endTime,
       startTime24: startTime24 || startTime,
       endTime24: endTime24 || endTime,
       duration: calculatedDuration,
@@ -809,7 +858,9 @@ router.post("/", async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Custom slot created successfully!",
+      message: date
+        ? `Slot created for ${date} at ${startTime} - ${endTime}`
+        : `Custom slot created for ${finalDayOfWeek}`,
       slot: newSlot
     });
   } catch (error) {
@@ -826,8 +877,6 @@ router.post("/", async (req, res) => {
     });
   }
 });
-
-
 // 7. UPDATE SLOT STATUS OR DETAILS
 router.put("/:id", async (req, res) => {
   try {
@@ -4033,18 +4082,36 @@ router.put("/reschedule/:appointmentId", async (req, res) => {
 
 
 // =============================================
-// RESET ALL BOOKED SLOTS TO AVAILABLE
+// RESET BOOKED SLOTS FOR A PARTICULAR DATE
 // =============================================
 router.patch("/reset-booked-slots", async (req, res) => {
   try {
+    const { date } = req.body;
+
+    // Validate date
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        message: "Date is required in request body."
+      });
+    }
+
     const result = await AppointmentSlot.updateMany(
-      { status: "booked" },
-      { $set: { status: "available" } }
+      {
+        date: date,
+        status: "booked"
+      },
+      {
+        $set: {
+          status: "available"
+        }
+      }
     );
 
     return res.status(200).json({
       success: true,
-      message: "All booked slots have been changed to available.",
+      message: `All booked slots for ${date} have been changed to available.`,
+      date: date,
       matchedCount: result.matchedCount,
       modifiedCount: result.modifiedCount
     });

@@ -22,6 +22,7 @@ const appointmentSlotSchema = new mongoose.Schema({
   gap: { type: Number, default: 5 }, // e.g. 5 mins
   shift: { type: String, default: "Morning" }, // Morning / Evening
   slotNumber: { type: Number, default: 0 },
+
   
   // =============================================
   // SLOT TYPE & STATUS
