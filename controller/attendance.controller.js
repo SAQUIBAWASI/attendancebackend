@@ -1195,6 +1195,7 @@ const { logActivity } = require("./userActivity.controller");
 const AttendanceSummary = require("../models/AttendanceSummary");
 const CompanyIP = require("../models/CompanyIP");
 const { sendToToken } = require("../services/notificationService");
+const ClaimedOT = require("../models/ClaimedOT");
 
 
 
@@ -3202,6 +3203,9 @@ exports.breakOut = async (req, res) => {
     });
   }
 };
+
+
+
 // ---------------- Employee Attendance ----------------
 exports.getEmployeeAttendance = async (req, res) => {
   try {
@@ -3914,6 +3918,130 @@ exports.getMyExtraDays = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Internal server error'
+    });
+  }
+};
+
+
+
+
+/* ────────── HELPERS ────────── */
+const getAssignedShiftHours = (record) => record.assignedShiftHours || 9;
+
+const calculateOTHours = (record) => {
+  const totalHours = record.totalHours || record.hours || 0;
+  if (totalHours === 0) return 0;
+  const assignedShiftHours = getAssignedShiftHours(record);
+  if (!assignedShiftHours) return 0;
+  const ot = totalHours - assignedShiftHours;
+  if (ot > 0.5) return Math.round(ot * 100) / 100;
+  return 0;
+};
+
+const formatDecimalHours = (decimalHours) => {
+  if (!decimalHours && decimalHours !== 0) return "0h 0m";
+  const hours = Math.floor(decimalHours);
+  const minutes = Math.round((decimalHours - hours) * 60);
+  if (minutes === 60) return `${hours + 1}h 0m`;
+  return `${hours}h ${minutes}m`;
+};
+
+/* ══════════════════════════════════════════════
+   GET MY ATTENDANCE FOR APP
+   GET /api/attendance/myattendanceforapp/:employeeId
+   ══════════════════════════════════════════════ */
+exports.getMyAttendanceForApp = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { status, fromDate, toDate } = req.query;
+
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee ID required",
+      });
+    }
+
+    // 1️⃣ Attendance records
+    const records = await Attendance.find({ employeeId })
+      .sort({ checkInTime: -1 })
+      .lean();
+
+    // 2️⃣ Employee
+    const employee = await Employee.findOne({ employeeId }).lean();
+    const employeeName = employee ? employee.name : null;
+
+    // 3️⃣ Claimed OT records
+    let claimFilter = { employeeId };
+    if (status) claimFilter.status = status;
+    if (fromDate || toDate) {
+      claimFilter.date = {};
+      if (fromDate) claimFilter.date.$gte = new Date(fromDate);
+      if (toDate) claimFilter.date.$lte = new Date(toDate);
+    }
+
+    const claims = await ClaimedOT.find(claimFilter)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // 4️⃣ Summary
+    const summary = {
+      totalClaims: claims.length,
+      totalOTHours: claims.reduce((s, c) => s + (c.otHours || 0), 0),
+      totalOTAmount: claims.reduce((s, c) => s + (c.otAmount || 0), 0),
+      pending: claims.filter((c) => c.status === "pending").length,
+      approved: claims.filter((c) => c.status === "approved").length,
+      rejected: claims.filter((c) => c.status === "rejected").length,
+    };
+
+    /* 5️⃣ STATS for cards */
+    const totalRecords = records.length;
+    const onsiteDays = records.filter((r) => r.onsite === true).length;
+    const checkedIn = records.filter((r) => r.status === "checked-in").length;
+    const fullDays = records.filter(
+      (r) => (r.totalHours || r.hours || 0) >= 8
+    ).length;
+
+    const totalOTHours = records.reduce(
+      (sum, r) => sum + calculateOTHours(r),
+      0
+    );
+
+    /* 6️⃣ RESPONSE */
+    return res.status(200).json({
+      success: true,
+      message: "My attendance fetched successfully",
+      employeeName,
+
+      // Cards ke liye
+      stats: {
+        totalRecords,
+        onsiteDays,
+        checkedIn,
+        fullDays,
+        otHours: Math.round(totalOTHours * 100) / 100,
+        otHoursFormatted: formatDecimalHours(totalOTHours),
+        claimedOT: summary.totalClaims,
+        // ❌ availableOTCount — HATA DIYA
+        // ❌ totalOTAvailable — HATA DIYA
+        // ❌ totalOTAvailableFormatted — HATA DIYA
+      },
+
+      // Raw records
+      records,
+
+      // Claimed OT detail
+      claims,
+
+      // Claimed OT summary
+      summary,
+    });
+  } catch (err) {
+    console.error("getMyAttendanceForApp Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch attendance",
+      error: err.message,
     });
   }
 };

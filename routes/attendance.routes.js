@@ -120,6 +120,9 @@ router.post("/break-out", attendanceController.breakOut);
 // Employee-specific
 router.get("/myattendance/:employeeId", attendanceController.getEmployeeAttendance);
 
+// Baaki routes ke saath — YE NAYA ROUTE ADD KARO
+router.get("/myattendanceforapp/:employeeId", attendanceController.getMyAttendanceForApp);
+
 // Admin routes
 router.get("/allattendance", attendanceController.getAllAttendance);
 router.get("/today", attendanceController.getTodayAttendance);
