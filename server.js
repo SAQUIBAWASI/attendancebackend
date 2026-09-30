@@ -118,6 +118,10 @@ app.use("/api/tasks", require("./routes/task.routes"));
 app.use("/api/employee/tasks", require("./routes/employeeTask.routes"));
 const patientRoutes = require("./routes/patients");
 const referralContactRoutes = require('./routes/referralContactRoutes');
+const timelyPlanRoutes = require("./routes/timelyPlanRoutes");
+const timelyClientRoutes = require("./routes/timelyClientRoutes");
+
+
 
 
 
@@ -178,6 +182,10 @@ app.use("/api/attendance-edit-requests", require("./routes/attendanceEditRequest
 
 // ✅ Password Reset
 app.use("/api/password-reset", require("./routes/passwordReset.routes"));
+
+
+app.use("/api/timely-plans", timelyPlanRoutes);
+app.use("/api/timely-clients", timelyClientRoutes);
 
 
 
