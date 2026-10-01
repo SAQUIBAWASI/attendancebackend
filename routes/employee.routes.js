@@ -342,6 +342,9 @@ const {
   employeeDashboard,
   getEmployeeSalarySummary
 } = require("../controller/employee.controller");
+const { sendLetter, saveLetterDraft, getLetterById, getLettersByEmployeeId } = require("../controller/adminLetter.controller");
+
+const { uploadLetterSingle } = require('../middleware/uploadLetter');
 
 const router = express.Router();
 
@@ -385,6 +388,7 @@ router.get('/allotclaimed', getAllOTClaimsWithDetails);
 router.put('/update-otclaimedstatus/:id', updateOTClaimStatus);
 router.get('/employeeotclaimed/:employeeId', getClaimedOTByEmployee);
 
+
 // ==================== ISSUE ROUTES ====================
 router.post("/raise-issue/:employeeId", raiseIssue);
 router.get("/get-all-issues", getAllIssues);
@@ -401,6 +405,13 @@ router.put('/update-location/:employeeId', updateLocation);
 router.get('/get-location/:employeeId', getLocation);
 router.get("/employee-locations", getAllEmployeeLocations);
 router.put('/update-image-capture', updateImageCaptureAttendance);
+
+
+router.post('/admin-letters/send', uploadLetterSingle, sendLetter);
+router.post('/admin-letters', uploadLetterSingle, saveLetterDraft);
+router.get("/admin-letters/:employeeId/:letterId", getLetterById);
+router.get('/admin-letters/:employeeId', getLettersByEmployeeId);
+
 
 // =====================================================
 // ✅ EMPLOYEE DOCUMENT ROUTES (PAN / Aadhaar)

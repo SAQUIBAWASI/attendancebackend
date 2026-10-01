@@ -198,6 +198,17 @@ const attendanceSchema = new mongoose.Schema(
       type: Date,
     },
 
+    // models/Attendance.js ke schema mein add karein
+checkoutReminders: [
+  {
+    sentAt: { type: Date, default: Date.now },
+    lateMinutes: { type: Number },
+    mobileNumber: { type: String },
+    status: { type: String, enum: ["sent", "failed"], default: "sent" },
+    error: { type: String },
+  },
+],
+
     status: {
       type: String,
       enum: [

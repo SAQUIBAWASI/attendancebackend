@@ -766,3 +766,27 @@ Error Stack: Error: Not allowed by CORS
 URL: /api/admin/login
 Method: OPTIONS
 ===========================
+
+=== GLOBAL SERVER ERROR ===
+Time: 2026-10-01T12:58:38.768Z
+Error Message: File too large
+Error Stack: MulterError: File too large
+    at abortWithCode (C:\ingrain\Attendance\backend\attendancebackend\node_modules\multer\lib\make-middleware.js:85:22)
+    at FileStream.<anonymous> (C:\ingrain\Attendance\backend\attendancebackend\node_modules\multer\lib\make-middleware.js:155:11)
+    at FileStream.emit (node:events:509:28)
+    at SBMH.ssCb [as _cb] (C:\ingrain\Attendance\backend\attendancebackend\node_modules\busboy\lib\types\multipart.js:479:32)
+    at feed (C:\ingrain\Attendance\backend\attendancebackend\node_modules\streamsearch\lib\sbmh.js:248:10)
+    at SBMH.push (C:\ingrain\Attendance\backend\attendancebackend\node_modules\streamsearch\lib\sbmh.js:104:16)
+    at Multipart._write (C:\ingrain\Attendance\backend\attendancebackend\node_modules\busboy\lib\types\multipart.js:567:19)
+    at writeOrBuffer (node:internal/streams/writable:570:12)
+    at _write (node:internal/streams/writable:499:10)
+    at Writable.write (node:internal/streams/writable:508:10)
+    at IncomingMessage.ondata (node:internal/streams/readable:1012:24)
+    at IncomingMessage.emit (node:events:509:28)
+    at Readable.read (node:internal/streams/readable:784:10)
+    at flow (node:internal/streams/readable:1290:53)
+    at resume_ (node:internal/streams/readable:1269:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+URL: /api/employees/admin-letters/send
+Method: POST
+===========================

@@ -22,6 +22,8 @@ const path = require("path");
 const taskRoutes = require("./routes/task.routes");
 const employeeTaskRoutes = require("./routes/employeeTask.routes");
 const { startMissedCheckInCron } = require("./services/missedCheckInCron");
+const { startCheckoutReminderCron } = require("./cron/checkoutReminderCron");
+const axios = require("axios");
 
 
 
@@ -38,7 +40,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // ✅ Middleware setup
 const allowedOrigins = ["http://localhost:5173", "http://localhost:3000", "http://localhost:3001", 'https://attendancefrontend.vercel.app', "https://bm-frontend-lyart.vercel.app", "https://www.timelyhealth.in",
-  "https://timelyhealth.in", "http://62.72.29.27:3045", "https://taskmanagement.iryax.com", "https://ingrainhire.ingrainsystems.com"];
+  "https://timelyhealth.in", "http://62.72.29.27:3045", "https://taskmanagement.iryax.com", "https://ingrainhire.ingrainsystems.com", "https://digital.timelyhealth.in"];
 
 app.use(
   cors({
@@ -87,6 +89,8 @@ mongoose
   .then(() => {
     console.log("✅ MongoDB Connected Successfully!");
     startMissedCheckInCron();
+    startCheckoutReminderCron();
+
     
   })
   .catch((err) => {
@@ -137,6 +141,8 @@ app.use("/api/notifications", require("./routes/notification.routes"));
 
 app.use("/api/appointment-slots", require("./routes/appointmentSlot.routes"));
 
+app.use("/api/consultation-leads", require("./routes/consultationLead.routes"));
+
 
 app.use("/api/teams", require("./routes/team.routes"));
 app.use("/api/partners", require("./routes/partner.routes"));
@@ -155,6 +161,92 @@ app.get("/api/ping-debug", (req, res) => {
     node_version: process.version,
     uptime: process.uptime()
   });
+});
+
+
+
+
+// ==========================================
+// 📤 DIRECT WHATSAPP TEST — Specific Number
+// ==========================================
+app.post("/send-test-whatsapp", async (req, res) => {
+  try {
+    const { mobileNumber, employeeName } = req.body;
+
+    if (!mobileNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "mobileNumber is required (e.g., 919876543210)",
+      });
+    }
+
+    // Number format clean karo
+    let formattedNumber = String(mobileNumber).replace(/\D/g, "");
+    if (formattedNumber.length === 10) {
+      formattedNumber = "91" + formattedNumber;
+    }
+
+    const MSG91_AUTH_KEY = "565249AxLd3LEpU17G6aae8ee2P1";
+    const MSG91_API_URL =
+      "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/";
+
+    const payload = {
+      integrated_number: "919010480303",
+      content_type: "template",
+      payload: {
+        messaging_product: "whatsapp",
+        type: "template",
+        template: {
+          // ⭐ YAHAN CHANGE KIYA HAI (checkout_reminder -> reminder_checkout)
+          name: "reminder_checkout", 
+          language: {
+            code: "en",
+            policy: "deterministic",
+          },
+          namespace: "dad418a7_c0d7_42c8_8f6e_1d6abee724f2",
+          to_and_components: [
+            {
+              to: [formattedNumber],
+              components: {
+                body_1: {
+                  type: "text",
+                  value: employeeName || "Test User",
+                },
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    console.log(`\n🧪 [TEST] Sending WhatsApp to: ${formattedNumber}`);
+    console.log("📤 Payload:", JSON.stringify(payload, null, 2));
+
+    const response = await axios.post(MSG91_API_URL, payload, {
+      headers: {
+        "Content-Type": "application/json",
+        authkey: MSG91_AUTH_KEY,
+      },
+    });
+
+    console.log("✅ [TEST] MSG91 Response:", response.data);
+
+    res.status(200).json({
+      success: true,
+      message: `WhatsApp sent to ${formattedNumber}`,
+      msg91Response: response.data,
+    });
+  } catch (error) {
+    console.error(
+      "❌ [TEST] Error:",
+      error.response?.data || error.message
+    );
+    res.status(500).json({
+      success: false,
+      message: "Failed to send WhatsApp",
+      error: error.response?.data || error.message,
+    });
+  }
 });
 
 app.use("/api/department", require("./routes/department.routes"));
