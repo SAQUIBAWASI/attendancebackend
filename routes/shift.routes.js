@@ -188,6 +188,7 @@ router.post('/create-defaults', shiftController.createDefaultShifts);
 // Week Off
 router.post('/week-off', shiftController.saveWeekOff);
 router.get('/week-off', shiftController.getWeekOffRecords);
+router.put('/week-off/:id', shiftController.updateWeekOff);
 router.delete('/week-off/:id', shiftController.deleteWeekOff);
 
 // ✅ Employee week-off dates for a month

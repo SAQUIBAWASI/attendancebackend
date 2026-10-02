@@ -553,7 +553,7 @@ router.get("/getallbookings", async (req, res) => {
       timeFilter,
     } = req.query;
 
-    // ✅ TIME FILTER — today / yesterday / thisWeek / thisMonth / lastMonth / thisYear
+    // ✅ TIME FILTER
     if (timeFilter && timeFilter !== "All" && !apptFrom && !apptTo && !month) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -624,7 +624,7 @@ router.get("/getallbookings", async (req, res) => {
       mongoQuery.createdAt = regFilter;
     }
 
-    // ✅ MONTH (appointment month)
+    // ✅ MONTH
     if (month && !apptFrom && !apptTo && (!timeFilter || timeFilter === "All")) {
       mongoQuery.appointmentDate = new RegExp(`^${month}`);
     }
@@ -775,7 +775,7 @@ router.get("/getallbookings", async (req, res) => {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 5️⃣ STATS (cards + revenue breakdown) — finalBookings se
+    // 5️⃣ STATS + CATEGORY BREAKDOWN
     // ═══════════════════════════════════════════════════════════
     const stats = {
       totalPatients: finalBookings.length,
@@ -799,6 +799,13 @@ router.get("/getallbookings", async (req, res) => {
       },
     };
 
+    // ✅ Category-wise breakdown with payment-mode split + footFall
+    const categoryBreakdown = {
+      clinic:   { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
+      lab:      { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
+      pharmacy: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
+    };
+
     finalBookings.forEach((b) => {
       // Active / Inactive
       if (b.isActive === false) stats.inactive++;
@@ -811,7 +818,7 @@ router.get("/getallbookings", async (req, res) => {
       else if (ps === "due") stats.due++;
       else stats.pending++;
 
-      // Clinic / Lab / Pharmacy revenue (billed)
+      // ─── Services breakdown ───
       const baseServices =
         (Array.isArray(b.services) && b.services.length > 0 && b.services) ||
         (Array.isArray(b.serviceItems) && b.serviceItems.length > 0 && b.serviceItems) ||
@@ -827,32 +834,82 @@ router.get("/getallbookings", async (req, res) => {
         else clinic += price;
       });
 
-      // review services = clinic
+      // Review services → clinic
       (Array.isArray(b.reviews) ? b.reviews : []).forEach((r) => {
         clinic += Number(r.price) || 0;
       });
 
-      // medicineTotal / labTotal — max lete hain to avoid double count
+      // Manual medicine / lab totals (max to avoid double)
       pharmacy = Math.max(pharmacy, Number(b.medicineTotal) || 0);
       lab = Math.max(lab, Number(b.labTotal) || 0);
 
+      // ─── Top-level revenue breakdown ───
       stats.revenueBreakdown.clinicRevenue += clinic;
       stats.revenueBreakdown.labRevenue += lab;
       stats.revenueBreakdown.pharmacyRevenue += pharmacy;
 
-      // Collected by payment type
       const paid = Number(b.amountPaid) || 0;
+      const due = Number(b.balanceAmount) || 0;
       const pt = (b.paymentType || "").toString().toLowerCase();
+
       if (pt === "cash") stats.revenueBreakdown.cashCollected += paid;
       else if (pt === "online") stats.revenueBreakdown.onlineCollected += paid;
       else if (pt === "card") stats.revenueBreakdown.cardCollected += paid;
       else if (pt === "insurance") stats.revenueBreakdown.insuranceCollected += paid;
 
       stats.revenueBreakdown.totalCollected += paid;
-      stats.revenueBreakdown.dueAmount += Number(b.balanceAmount) || 0;
+      stats.revenueBreakdown.dueAmount += due;
+
+      // ─── Category-wise proportional distribution ───
+      const catTotal = clinic + lab + pharmacy;
+      if (catTotal <= 0) return;
+
+      const clinicShare   = clinic / catTotal;
+      const labShare      = lab / catTotal;
+      const pharmacyShare = pharmacy / catTotal;
+
+      // ✅ FOOTFALL — count how many bookings have each category
+      if (clinic > 0)   categoryBreakdown.clinic.footFall   += 1;
+      if (lab > 0)      categoryBreakdown.lab.footFall      += 1;
+      if (pharmacy > 0) categoryBreakdown.pharmacy.footFall += 1;
+
+      // Clinic
+      categoryBreakdown.clinic.total += clinic;
+      categoryBreakdown.clinic.due   += due * clinicShare;
+      if (pt === "cash")            categoryBreakdown.clinic.cash      += paid * clinicShare;
+      else if (pt === "online")     categoryBreakdown.clinic.online    += paid * clinicShare;
+      else if (pt === "card")       categoryBreakdown.clinic.card      += paid * clinicShare;
+      else if (pt === "insurance")  categoryBreakdown.clinic.insurance += paid * clinicShare;
+
+      // Lab
+      categoryBreakdown.lab.total += lab;
+      categoryBreakdown.lab.due   += due * labShare;
+      if (pt === "cash")            categoryBreakdown.lab.cash      += paid * labShare;
+      else if (pt === "online")     categoryBreakdown.lab.online    += paid * labShare;
+      else if (pt === "card")       categoryBreakdown.lab.card      += paid * labShare;
+      else if (pt === "insurance")  categoryBreakdown.lab.insurance += paid * labShare;
+
+      // Pharmacy
+      categoryBreakdown.pharmacy.total += pharmacy;
+      categoryBreakdown.pharmacy.due   += due * pharmacyShare;
+      if (pt === "cash")            categoryBreakdown.pharmacy.cash      += paid * pharmacyShare;
+      else if (pt === "online")     categoryBreakdown.pharmacy.online    += paid * pharmacyShare;
+      else if (pt === "card")       categoryBreakdown.pharmacy.card      += paid * pharmacyShare;
+      else if (pt === "insurance")  categoryBreakdown.pharmacy.insurance += paid * pharmacyShare;
     });
 
     stats.totalRevenue = stats.revenueBreakdown.totalCollected;
+
+    // ✅ Round categoryBreakdown values (skip footFall — it's already integer)
+    Object.keys(categoryBreakdown).forEach((cat) => {
+      Object.keys(categoryBreakdown[cat]).forEach((k) => {
+        if (k === "footFall") {
+          categoryBreakdown[cat][k] = Number(categoryBreakdown[cat][k]) || 0;
+        } else {
+          categoryBreakdown[cat][k] = Math.round(categoryBreakdown[cat][k]);
+        }
+      });
+    });
 
     // ═══════════════════════════════════════════════════════════
     // 6️⃣ RESPONSE
@@ -861,6 +918,7 @@ router.get("/getallbookings", async (req, res) => {
       success: true,
       message: "All bookings fetched successfully",
       stats,
+      categoryBreakdown,
       count: finalBookings.length,
       timeFilter: timeFilter || "All",
       bookings: finalBookings,
@@ -874,9 +932,6 @@ router.get("/getallbookings", async (req, res) => {
     });
   }
 });
-
-
-
 
 // ✅ GET ALL INACTIVE BOOKINGS
 // Route: GET /getallinactivebookings

@@ -2333,6 +2333,101 @@ exports.deleteWeekOff = async (req, res) => {
   }
 };
 
+// ✅ 17B. UPDATE WEEK OFF RECORD
+exports.updateWeekOff = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { selectedEmployees, weekOffDays, specificDates, selectAllEmployees, selectedMonths, selectionMode, weekwiseSelection, monthlyPattern } = req.body;
+
+    const existingWeekOff = await WeekOff.findById(id);
+    if (!existingWeekOff) {
+      return res.status(404).json({
+        success: false,
+        message: "Week off record not found"
+      });
+    }
+
+    if (!selectAllEmployees && (!selectedEmployees || selectedEmployees.length === 0)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Please select at least one employee or choose 'Select All Employees'" 
+      });
+    }
+
+    const hasWeeklyPattern = Array.isArray(weekOffDays) && weekOffDays.length > 0;
+    const hasWeekwisePattern = Array.isArray(weekwiseSelection) && weekwiseSelection.length > 0;
+    const hasMonthlyPattern = Array.isArray(monthlyPattern) && monthlyPattern.length > 0;
+    const hasSpecificDates = Array.isArray(specificDates) && specificDates.length > 0;
+
+    if (!hasWeeklyPattern && !hasWeekwisePattern && !hasMonthlyPattern && !hasSpecificDates) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Please select at least one week-off pattern or specific date" 
+      });
+    }
+
+    const now = new Date();
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const monthsToSave = (Array.isArray(selectedMonths) && selectedMonths.length > 0)
+      ? selectedMonths
+      : (existingWeekOff.selectedMonths && existingWeekOff.selectedMonths.length > 0 ? existingWeekOff.selectedMonths : [currentMonthStr]);
+
+    existingWeekOff.selectedEmployees = selectedEmployees || [];
+    existingWeekOff.weekOffDays = weekOffDays || [];
+    existingWeekOff.specificDates = specificDates || [];
+    existingWeekOff.selectAllEmployees = selectAllEmployees || false;
+    existingWeekOff.selectedMonths = monthsToSave;
+    existingWeekOff.selectionMode = selectionMode || 'weekly';
+    existingWeekOff.weekwiseSelection = weekwiseSelection || [];
+    existingWeekOff.monthlyPattern = monthlyPattern || [];
+    existingWeekOff.updatedAt = new Date();
+
+    await existingWeekOff.save();
+
+    let patternSummary = "";
+    if (selectionMode === 'weekly' && hasWeeklyPattern) {
+      patternSummary = weekOffDays.join(', ');
+    } else if (selectionMode === 'weekwise' && hasWeekwisePattern) {
+      patternSummary = weekwiseSelection.map(item => `Week ${item.week} ${item.day}`).join(', ');
+    } else if (selectionMode === 'monthly' && hasMonthlyPattern) {
+      patternSummary = monthlyPattern.map(item => `${item.occurrence} ${item.day}`).join(', ');
+    } else if (hasSpecificDates) {
+      patternSummary = specificDates.join(', ');
+    }
+
+    if (!selectAllEmployees && selectedEmployees && selectedEmployees.length > 0) {
+      for (const emp of selectedEmployees) {
+        await Notification.create({
+          userId: emp.employeeId,
+          role: "employee",
+          title: "Week Off Updated",
+          message: `Your week off schedule was updated: ${patternSummary || 'Updated schedule'}`,
+          type: "attendance"
+        }).catch(() => {});
+        
+        sendPushToUser(emp.employeeId, {
+          title: "Week Off Updated",
+          body: `Admin updated your week off schedule: ${patternSummary || 'Updated schedule'}`,
+          url: "/employee/dashboard"
+        });
+      }
+    }
+
+    res.status(200).json({ 
+      success: true,
+      message: "Week off updated successfully", 
+      data: existingWeekOff 
+    });
+  } catch (error) {
+    console.error("❌ UPDATE WEEK OFF RECORD ERROR:", error);
+    res.status(500).json({ 
+      success: false,
+      message: "Server error",
+      error: error.message 
+    });
+  }
+};
+
 // ✅ 18. GET EMPLOYEE WEEK-OFF DATES FOR A MONTH
 exports.getEmployeeWeekOffDates = async (req, res) => {
   try {
