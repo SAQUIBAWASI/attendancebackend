@@ -530,33 +530,160 @@ router.put("/updatecharges/:id", async (req, res) => {
 });
 
 
-// ✅ GET ALL BOOKINGS
-// Route: GET /getallbookings
 router.get("/getallbookings", async (req, res) => {
   try {
-    const bookings = await Appointment.find({
-      isActive: { $ne: false }, // ✅ true ya undefined dono allow, sirf false skip
-    }).sort({ createdAt: -1 });
+    // ═══════════════════════════════════════════════════════════
+    // 1️⃣ BUILD MONGO QUERY from query params
+    // ═══════════════════════════════════════════════════════════
+    const mongoQuery = {
+      isActive: { $ne: false },
+    };
 
-    // ✅ Transform each booking — merge review total into finalPayable
+    const {
+      apptFrom,
+      apptTo,
+      regFrom,
+      regTo,
+      month,
+      doctor,
+      paymentType,
+      paymentStatus,
+      bookingType,
+      search,
+      timeFilter,
+    } = req.query;
+
+    // ✅ TIME FILTER — today / yesterday / thisWeek / thisMonth / lastMonth / thisYear
+    if (timeFilter && timeFilter !== "All" && !apptFrom && !apptTo && !month) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const pad = (n) => String(n).padStart(2, "0");
+      const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+      let from = null, to = null;
+
+      if (timeFilter === "today") {
+        from = fmt(today);
+        to = from;
+      } else if (timeFilter === "yesterday") {
+        const y = new Date(today);
+        y.setDate(y.getDate() - 1);
+        from = fmt(y);
+        to = from;
+      } else if (timeFilter === "thisWeek") {
+        const dow = today.getDay();
+        const diff = dow === 0 ? 6 : dow - 1;
+        const monday = new Date(today);
+        monday.setDate(monday.getDate() - diff);
+        from = fmt(monday);
+        to = fmt(today);
+      } else if (timeFilter === "thisMonth") {
+        const first = new Date(today.getFullYear(), today.getMonth(), 1);
+        const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        from = fmt(first);
+        to = fmt(last);
+      } else if (timeFilter === "lastMonth") {
+        const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const last = new Date(today.getFullYear(), today.getMonth(), 0);
+        from = fmt(first);
+        to = fmt(last);
+      } else if (timeFilter === "thisYear") {
+        const first = new Date(today.getFullYear(), 0, 1);
+        const last = new Date(today.getFullYear(), 11, 31);
+        from = fmt(first);
+        to = fmt(last);
+      }
+
+      if (from && to) {
+        mongoQuery.appointmentDate = { $gte: from, $lte: to };
+      }
+    }
+
+    // ✅ APPOINTMENT DATE range — manual
+    if (apptFrom || apptTo) {
+      const dateFilter = {};
+      if (apptFrom) dateFilter.$gte = apptFrom;
+      if (apptTo)   dateFilter.$lte = apptTo;
+      mongoQuery.appointmentDate = dateFilter;
+    }
+
+    // ✅ REGISTERED DATE (createdAt) range
+    if (regFrom || regTo) {
+      const regFilter = {};
+      if (regFrom) {
+        const from = new Date(regFrom);
+        from.setHours(0, 0, 0, 0);
+        regFilter.$gte = from;
+      }
+      if (regTo) {
+        const to = new Date(regTo);
+        to.setHours(23, 59, 59, 999);
+        regFilter.$lte = to;
+      }
+      mongoQuery.createdAt = regFilter;
+    }
+
+    // ✅ MONTH (appointment month)
+    if (month && !apptFrom && !apptTo && (!timeFilter || timeFilter === "All")) {
+      mongoQuery.appointmentDate = new RegExp(`^${month}`);
+    }
+
+    // ✅ DOCTOR
+    if (doctor && doctor !== "All") {
+      mongoQuery["slotDetails.doctorName"] = doctor;
+    }
+
+    // ✅ PAYMENT TYPE
+    if (paymentType && paymentType !== "All") {
+      mongoQuery.paymentType = paymentType.toLowerCase();
+    }
+
+    // ✅ PAYMENT STATUS
+    if (paymentStatus && paymentStatus !== "All") {
+      mongoQuery.paymentStatus = paymentStatus;
+    }
+
+    // ✅ BOOKING TYPE
+    if (bookingType && bookingType !== "All") {
+      if (bookingType === "Walk-In") mongoQuery.isOP = true;
+      else if (bookingType === "Online") mongoQuery.isOP = { $ne: true };
+    }
+
+    // ✅ SEARCH
+    if (search && search.trim()) {
+      const q = search.trim();
+      const rx = new RegExp(q, "i");
+      mongoQuery.$or = [
+        { patientName: rx },
+        { patientPhone: rx },
+        { purpose: rx },
+      ];
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 2️⃣ FETCH from DB
+    // ═══════════════════════════════════════════════════════════
+    const bookings = await Appointment.find(mongoQuery).sort({ createdAt: -1 });
+
+    // ═══════════════════════════════════════════════════════════
+    // 3️⃣ TRANSFORM (merge review total)
+    // ═══════════════════════════════════════════════════════════
     const transformedBookings = bookings.map((booking) => {
       const b = booking.toObject ? booking.toObject() : booking;
 
-      // ✅ Calculate review services total
       const reviewsArray = Array.isArray(b.reviews) ? b.reviews : [];
       const reviewServicesTotal = reviewsArray.reduce(
         (sum, r) => sum + (Number(r.price) || 0),
         0
       );
 
-      // ✅ Calculate services total
       const servicesArray = Array.isArray(b.services) ? b.services : [];
       const servicesTotal = servicesArray.reduce(
         (sum, s) => sum + (Number(s.price) || 0),
         0
       );
 
-      // ✅ Calculate original totals
       const originalFinalPayable =
         Number(b.finalPayable) ||
         Number(b.finalPayableAmount) ||
@@ -565,17 +692,14 @@ router.get("/getallbookings", async (req, res) => {
         servicesTotal ||
         0;
 
-      // ✅ NEW Total = original finalPayable + review services total
       const newFinalPayable = originalFinalPayable + reviewServicesTotal;
       const newTotalAmount = Number(b.totalAmount || 0) + reviewServicesTotal;
       const newGrandTotal = Number(b.grandTotal || 0) + reviewServicesTotal;
       const newSubtotal = Number(b.subtotal || 0) + reviewServicesTotal;
 
-      // ✅ Recalculate balance
       const amountPaid = Number(b.amountPaid) || 0;
       const newBalanceAmount = Math.max(0, newFinalPayable - amountPaid);
 
-      // ✅ Recalculate payment status based on new total
       let newPaymentStatus = b.paymentStatus || "Pending";
       if (newFinalPayable > 0 && amountPaid >= newFinalPayable) {
         newPaymentStatus = "Paid";
@@ -585,14 +709,10 @@ router.get("/getallbookings", async (req, res) => {
         newPaymentStatus = b.paymentStatus === "Due" ? "Due" : "Pending";
       }
 
-      // ✅ Return updated booking with merged amounts
       return {
         ...b,
-        // Original values
         _originalFinalPayable: originalFinalPayable,
         _reviewServicesTotal: reviewServicesTotal,
-
-        // Updated values (with review total merged)
         finalPayable: newFinalPayable,
         finalPayableAmount: newFinalPayable,
         grandTotal: newGrandTotal,
@@ -600,20 +720,153 @@ router.get("/getallbookings", async (req, res) => {
         subtotal: newSubtotal,
         balanceAmount: newBalanceAmount,
         paymentStatus: newPaymentStatus,
-        reviewServicesTotal, // ensure this is set
+        reviewServicesTotal,
       };
     });
 
-    return res.status(200).json({
-      success: true,
-      count: transformedBookings.length,
-      message: "All bookings fetched successfully",
-      bookings: transformedBookings,
+    // ═══════════════════════════════════════════════════════════
+    // 4️⃣ REVENUE CATEGORY FILTER (post-process)
+    // ═══════════════════════════════════════════════════════════
+    const classifyService = (svc) => {
+      if (!svc) return "clinic";
+      const cat = (svc.category || svc.serviceCategory || svc.type || "")
+        .toString()
+        .toLowerCase();
+      const name = (svc.name || "").toString().toLowerCase();
+      if (cat.includes("pharm") || cat.includes("medic") || name.includes("pharm") || name.includes("medic")) return "pharmacy";
+      if (cat.includes("lab") || cat.includes("test") || cat.includes("diagnos") || name.includes("lab") || name.includes("test")) return "lab";
+      return "clinic";
+    };
+
+    const { revenueCategory } = req.query;
+    let finalBookings = transformedBookings;
+
+    if (revenueCategory && revenueCategory !== "All") {
+      finalBookings = transformedBookings.filter((b) => {
+        const baseServices =
+          (Array.isArray(b.services) && b.services.length > 0 && b.services) ||
+          (Array.isArray(b.serviceItems) && b.serviceItems.length > 0 && b.serviceItems) ||
+          [];
+        const reviewServices = Array.isArray(b.reviews) ? b.reviews : [];
+        const allServices = [
+          ...baseServices.map((s) => ({ ...s, isReviewService: false })),
+          ...reviewServices.map((r) => ({ ...r, isReviewService: true, category: "clinic" })),
+        ];
+
+        let hasClinic = false, hasLab = false, hasPharmacy = false;
+
+        allServices.forEach((s) => {
+          const cat = s.isReviewService ? "clinic" : classifyService(s);
+          const price = Number(s.price) || 0;
+          if (price <= 0) return;
+          if (cat === "lab") hasLab = true;
+          else if (cat === "pharmacy") hasPharmacy = true;
+          else hasClinic = true;
+        });
+
+        if (Number(b.medicineTotal) > 0) hasPharmacy = true;
+        if (Number(b.labTotal) > 0) hasLab = true;
+
+        if (revenueCategory === "clinic") return hasClinic;
+        if (revenueCategory === "lab") return hasLab;
+        if (revenueCategory === "pharmacy") return hasPharmacy;
+        return true;
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 5️⃣ STATS (cards + revenue breakdown) — finalBookings se
+    // ═══════════════════════════════════════════════════════════
+    const stats = {
+      totalPatients: finalBookings.length,
+      active: 0,
+      inactive: 0,
+      paid: 0,
+      partial: 0,
+      pending: 0,
+      due: 0,
+      totalRevenue: 0,
+      revenueBreakdown: {
+        clinicRevenue: 0,
+        labRevenue: 0,
+        pharmacyRevenue: 0,
+        cashCollected: 0,
+        onlineCollected: 0,
+        cardCollected: 0,
+        insuranceCollected: 0,
+        totalCollected: 0,
+        dueAmount: 0,
+      },
+    };
+
+    finalBookings.forEach((b) => {
+      // Active / Inactive
+      if (b.isActive === false) stats.inactive++;
+      else stats.active++;
+
+      // Payment status counts
+      const ps = (b.paymentStatus || "Pending").toString().toLowerCase();
+      if (ps === "paid") stats.paid++;
+      else if (ps === "partial") stats.partial++;
+      else if (ps === "due") stats.due++;
+      else stats.pending++;
+
+      // Clinic / Lab / Pharmacy revenue (billed)
+      const baseServices =
+        (Array.isArray(b.services) && b.services.length > 0 && b.services) ||
+        (Array.isArray(b.serviceItems) && b.serviceItems.length > 0 && b.serviceItems) ||
+        [];
+
+      let clinic = 0, lab = 0, pharmacy = 0;
+      baseServices.forEach((s) => {
+        const price = Number(s.price) || 0;
+        if (price <= 0) return;
+        const cat = classifyService(s);
+        if (cat === "lab") lab += price;
+        else if (cat === "pharmacy") pharmacy += price;
+        else clinic += price;
+      });
+
+      // review services = clinic
+      (Array.isArray(b.reviews) ? b.reviews : []).forEach((r) => {
+        clinic += Number(r.price) || 0;
+      });
+
+      // medicineTotal / labTotal — max lete hain to avoid double count
+      pharmacy = Math.max(pharmacy, Number(b.medicineTotal) || 0);
+      lab = Math.max(lab, Number(b.labTotal) || 0);
+
+      stats.revenueBreakdown.clinicRevenue += clinic;
+      stats.revenueBreakdown.labRevenue += lab;
+      stats.revenueBreakdown.pharmacyRevenue += pharmacy;
+
+      // Collected by payment type
+      const paid = Number(b.amountPaid) || 0;
+      const pt = (b.paymentType || "").toString().toLowerCase();
+      if (pt === "cash") stats.revenueBreakdown.cashCollected += paid;
+      else if (pt === "online") stats.revenueBreakdown.onlineCollected += paid;
+      else if (pt === "card") stats.revenueBreakdown.cardCollected += paid;
+      else if (pt === "insurance") stats.revenueBreakdown.insuranceCollected += paid;
+
+      stats.revenueBreakdown.totalCollected += paid;
+      stats.revenueBreakdown.dueAmount += Number(b.balanceAmount) || 0;
     });
 
+    stats.totalRevenue = stats.revenueBreakdown.totalCollected;
+
+    // ═══════════════════════════════════════════════════════════
+    // 6️⃣ RESPONSE
+    // ═══════════════════════════════════════════════════════════
+    return res.status(200).json({
+      success: true,
+      message: "All bookings fetched successfully",
+      stats,
+      count: finalBookings.length,
+      timeFilter: timeFilter || "All",
+      bookings: finalBookings,
+    });
   } catch (error) {
     console.error("Error fetching all bookings:", error);
-
     return res.status(500).json({
       success: false,
       message: "Failed to fetch bookings",
