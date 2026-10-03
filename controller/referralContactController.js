@@ -44,20 +44,33 @@ const addReferralContact = async (req, res) => {
   try {
     const {
       referralType,
+      // Customer
       customerName,
       customerPhone,
       customerAddress,
+      customerOrganization,        // ✅ NEW
+      // Doctor
       doctorName,
       doctorOrganization,
       doctorPhone,
       doctorSpecialization,
+      doctorAddress,               // ✅ NEW
+      // Commission
       clinicCommission,
       pharmacyCommission,
       labCommission,
-      referralDate,
+      // Dates & notes
+      onboardDate,                 // ✅ NEW
+      referralDate,                // fallback (purana)
       referralNotes,
       status,
-      offers // ✅ NEW — optional offers array from frontend
+      // Discounts (Special Offers)
+      discountFees,                // ✅ NEW
+      discountFeesType,            // ✅ NEW
+      discountLab,                 // ✅ NEW
+      discountLabType,             // ✅ NEW
+      // Offers array (legacy)
+      offers
     } = req.body;
 
     // Auto-calculate total commission
@@ -66,7 +79,7 @@ const addReferralContact = async (req, res) => {
       (parseFloat(pharmacyCommission) || 0) +
       (parseFloat(labCommission) || 0);
 
-    // ✅ Normalize offers (array of { offerName, offerAmount })
+    // Normalize offers
     let normalizedOffers = [];
     if (Array.isArray(offers)) {
       normalizedOffers = offers
@@ -77,31 +90,60 @@ const addReferralContact = async (req, res) => {
         }));
     }
 
+    // Normalize discount types
+    const normalizedFeesType = discountFeesType === '₹' ? '₹' : '%';
+    const normalizedLabType = discountLabType === '₹' ? '₹' : '%';
+
+    // onboardDate fallback to referralDate (backward compat)
+    const finalOnboardDate = onboardDate || referralDate || "";
+
     const contact = new ReferralContact({
       referralType,
+
+      // Customer
       customerName,
       customerPhone,
       customerAddress,
+      customerOrganization: customerOrganization || "",
+
+      // Doctor
       doctorName,
       doctorOrganization,
       doctorPhone,
       doctorSpecialization,
+      doctorAddress: doctorAddress || "",
+
+      // Commission
       clinicCommission: parseFloat(clinicCommission) || 0,
       pharmacyCommission: parseFloat(pharmacyCommission) || 0,
       labCommission: parseFloat(labCommission) || 0,
       totalCommission,
-      referralDate,
+
+      // Dates
+      onboardDate: finalOnboardDate,
+      referralDate: referralDate || finalOnboardDate, // keep old field synced
       referralNotes,
-      status,
-      offers: normalizedOffers, // ✅ save offers if provided
+
+      // Discounts
+      discountFees: parseFloat(discountFees) || 0,
+      discountFeesType: normalizedFeesType,
+      discountLab: parseFloat(discountLab) || 0,
+      discountLabType: normalizedLabType,
+
+      // Offers
+      offers: normalizedOffers,
+
+      status
     });
 
     await contact.save();
+
     res.status(201).json({
       success: true,
       data: contact,
     });
   } catch (error) {
+    console.error("addReferralContact error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
@@ -112,16 +154,44 @@ const addReferralContact = async (req, res) => {
 const updateReferralContact = async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
+    const updateData = { ...req.body };
 
-    // Auto-calculate total commission if commission fields are updated
-    if (updateData.clinicCommission !== undefined || 
-        updateData.pharmacyCommission !== undefined || 
-        updateData.labCommission !== undefined) {
+    // 🔹 Auto-calculate total commission
+    if (
+      updateData.clinicCommission !== undefined ||
+      updateData.pharmacyCommission !== undefined ||
+      updateData.labCommission !== undefined
+    ) {
       const clinic = parseFloat(updateData.clinicCommission) || 0;
       const pharmacy = parseFloat(updateData.pharmacyCommission) || 0;
       const lab = parseFloat(updateData.labCommission) || 0;
       updateData.totalCommission = clinic + pharmacy + lab;
+    }
+
+    // 🔹 Normalize discount types
+    if (updateData.discountFeesType !== undefined) {
+      updateData.discountFeesType = updateData.discountFeesType === '₹' ? '₹' : '%';
+    }
+    if (updateData.discountLabType !== undefined) {
+      updateData.discountLabType = updateData.discountLabType === '₹' ? '₹' : '%';
+    }
+
+    // 🔹 Normalize discount numbers
+    if (updateData.discountFees !== undefined) {
+      updateData.discountFees = parseFloat(updateData.discountFees) || 0;
+    }
+    if (updateData.discountLab !== undefined) {
+      updateData.discountLab = parseFloat(updateData.discountLab) || 0;
+    }
+
+    // 🔹 onboardDate / referralDate sync
+    // Agar frontend sirf onboardDate bhej raha hai to referralDate bhi sync karo (backward compat)
+    if (updateData.onboardDate !== undefined && updateData.referralDate === undefined) {
+      updateData.referralDate = updateData.onboardDate;
+    }
+    // Agar sirf referralDate bhej raha hai to onboardDate bhi set kar do
+    if (updateData.referralDate !== undefined && updateData.onboardDate === undefined) {
+      updateData.onboardDate = updateData.referralDate;
     }
 
     const contact = await ReferralContact.findByIdAndUpdate(
@@ -142,13 +212,13 @@ const updateReferralContact = async (req, res) => {
       data: contact
     });
   } catch (error) {
+    console.error("updateReferralContact error:", error);
     res.status(500).json({
       success: false,
       message: error.message
     });
   }
 };
-
 // ==================== DELETE ====================
 const deleteReferralContact = async (req, res) => {
   try {

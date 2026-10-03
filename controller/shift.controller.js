@@ -2617,3 +2617,170 @@ exports.getEligibleCompOffDays = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// ✅ 20. GET MY WEEK-OFF (Employee view — apna week-off dekhe)
+exports.getMyWeekOff = async (req, res) => {
+  try {
+    const { employeeId, month } = req.query;
+
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        message: "employeeId is required"
+      });
+    }
+
+    // Default current month agar month nahi diya
+    const now = new Date();
+    const targetMonth =
+      month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    const [year, monthNum] = targetMonth.split("-").map(Number);
+    if (isNaN(year) || isNaN(monthNum)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid month format. Use YYYY-MM"
+      });
+    }
+
+    // Employee ka default weekOffDay fallback ke liye
+    const employee = await Employee.findOne({ employeeId: String(employeeId) });
+    const fallbackWeekOffDay = employee?.weekOffDay || "Sunday";
+
+    // Saare WeekOff records (latest first)
+    const allRecords = await WeekOff.find().sort({ createdAt: -1 });
+    const empId = String(employeeId);
+
+    // Pehle specific employee ka record dhundo, warna "select all" wala
+    const specific = allRecords.find(
+      (rec) =>
+        !rec.selectAllEmployees &&
+        rec.selectedEmployees?.some((e) => String(e.employeeId) === empId)
+    );
+    const record = specific || allRecords.find((rec) => rec.selectAllEmployees === true);
+
+    const daysInMonth = new Date(year, monthNum, 0).getDate();
+
+    const pushDate = (day, arr) => {
+      if (day >= 1 && day <= daysInMonth) {
+        arr.push(
+          `${year}-${String(monthNum).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+        );
+      }
+    };
+
+    const generateWeeklyDates = (dayName) => {
+      const targetDay = DAY_MAP[resolveDayName(dayName)];
+      const arr = [];
+      if (targetDay === undefined) return arr;
+      for (let day = 1; day <= daysInMonth; day++) {
+        if (new Date(year, monthNum - 1, day).getDay() === targetDay) {
+          pushDate(day, arr);
+        }
+      }
+      return arr;
+    };
+
+    let dates = [];
+    let source = "fallback";
+    let selectionMode = "weekly";
+    let weekOffDays = [fallbackWeekOffDay];
+
+    if (record) {
+      const hasSpecificMonths =
+        Array.isArray(record.selectedMonths) && record.selectedMonths.length > 0;
+
+      if (hasSpecificMonths && !record.selectedMonths.includes(targetMonth)) {
+        // Agar is month ke liye record nahi hai, sirf specificDates check karo
+        if (Array.isArray(record.specificDates)) {
+          dates = record.specificDates.filter((d) => d.startsWith(targetMonth));
+        }
+      } else {
+        selectionMode = record.selectionMode || "weekly";
+        weekOffDays = record.weekOffDays || [];
+
+        // Weekly
+        if (
+          (selectionMode === "weekly" || !record.selectionMode) &&
+          Array.isArray(record.weekOffDays)
+        ) {
+          record.weekOffDays.forEach((dayName) => {
+            dates.push(...generateWeeklyDates(dayName));
+          });
+        }
+
+        // Weekwise
+        if (selectionMode === "weekwise" && Array.isArray(record.weekwiseSelection)) {
+          record.weekwiseSelection.forEach(({ week, day }) => {
+            const targetDay = DAY_MAP[resolveDayName(day)];
+            if (targetDay === undefined) return;
+            const firstDayOfMonth = new Date(year, monthNum - 1, 1);
+            const offset = (targetDay - firstDayOfMonth.getDay() + 7) % 7;
+            pushDate(1 + offset + (week - 1) * 7, dates);
+          });
+        }
+
+        // Monthly
+        if (selectionMode === "monthly" && Array.isArray(record.monthlyPattern)) {
+          record.monthlyPattern.forEach(({ occurrence, day }) => {
+            const targetDay = DAY_MAP[resolveDayName(day)];
+            if (targetDay === undefined) return;
+            const matching = [];
+            for (let d = 1; d <= daysInMonth; d++) {
+              if (new Date(year, monthNum - 1, d).getDay() === targetDay) matching.push(d);
+            }
+            const occMap = { "1st": 1, "2nd": 2, "3rd": 3, "4th": 4, last: -1 };
+            const occ = occMap[occurrence];
+            if (occ === -1) pushDate(matching[matching.length - 1], dates);
+            else if (occ && matching[occ - 1]) pushDate(matching[occ - 1], dates);
+          });
+        }
+
+        // Specific dates
+        if (Array.isArray(record.specificDates)) {
+          record.specificDates.forEach((d) => {
+            if (d.startsWith(targetMonth)) dates.push(d);
+          });
+        }
+      }
+
+      source = specific ? "employee" : "all";
+    }
+
+    dates = Array.from(new Set(dates)).sort();
+
+    // Agar kuch nahi mila to fallback (default weekOffDay)
+    if (dates.length === 0) {
+      dates = generateWeeklyDates(fallbackWeekOffDay);
+      source = "fallback";
+      selectionMode = "weekly";
+      weekOffDays = [fallbackWeekOffDay];
+    }
+
+    // Formatted response with day labels
+    const weekOffList = dates.map((dateStr) => ({
+      date: dateStr,
+      day: new Date(`${dateStr}T00:00:00`).toLocaleDateString("en-IN", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric"
+      })
+    }));
+
+    res.status(200).json({
+      success: true,
+      employeeId,
+      month: targetMonth,
+      totalWeekOffs: weekOffList.length,
+      weekOffDates: dates,     // simple array (YYYY-MM-DD)
+      weekOffList,             // formatted [{date, day}]
+      source,
+      selectionMode,
+      weekOffDays
+    });
+  } catch (error) {
+    console.error("❌ GET MY WEEK-OFF ERROR:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

@@ -11,23 +11,22 @@ const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || "565249AxLd3LEpU17G6aae8ee2
 const MSG91_API_URL = "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/";
 const INTEGRATED_NUMBER = "919010480303";
 
-// ⭐ YAHAN CHANGE KIYA HAI (checkout_reminder -> reminder_checkout)
-const TEMPLATE_NAME = "reminder_checkout"; 
+const TEMPLATE_NAME = "reminder_checkout";
 const TEMPLATE_NAMESPACE = "dad418a7_c0d7_42c8_8f6e_1d6abee724f2";
 const TEMPLATE_LANG = "en";
 
-// Kitne minute late hone par reminder bhejna hai
+// ✅ 5 min late hone par reminder bhejna
 const LATE_THRESHOLD_MINUTES = 5;
-
-// Ek employee ko ek din mein max kitne reminder (spam se bachne ke liye)
+// ✅ Ek din me max 3 reminder (spam se bachne ke liye)
 const MAX_REMINDERS_PER_DAY = 3;
+// ✅ Do reminders ke beech minimum gap (cooldown)
+const COOLDOWN_MINUTES = 30;
 
 // ==========================================
 // 📤 WHATSAPP SEND FUNCTION
 // ==========================================
 const sendWhatsAppReminder = async (mobileNumber, employeeName) => {
   try {
-    // Mobile number format: 91XXXXXXXXXX (without +)
     let formattedNumber = String(mobileNumber).replace(/\D/g, "");
     if (formattedNumber.length === 10) {
       formattedNumber = "91" + formattedNumber;
@@ -69,7 +68,7 @@ const sendWhatsAppReminder = async (mobileNumber, employeeName) => {
     });
 
     console.log(
-      `✅ [WHATSAPP] Reminder sent to ${employeeName} (${formattedNumber}) | Response:`,
+      `✅ [WHATSAPP] Sent to ${employeeName} (${formattedNumber})`,
       response.data
     );
     return { success: true, data: response.data };
@@ -83,7 +82,41 @@ const sendWhatsAppReminder = async (mobileNumber, employeeName) => {
 };
 
 // ==========================================
-// ⏰ MAIN CRON LOGIC
+// 🔧 HELPERS
+// ==========================================
+const getEmployeeMap = async (employeeIds) => {
+  if (!employeeIds || employeeIds.length === 0) return new Map();
+
+  const employees = await Employee.find({
+    employeeId: { $in: employeeIds },
+  }).lean();
+
+  return new Map(employees.map((e) => [e.employeeId, e]));
+};
+
+const getEmpId = (attendance) => {
+  if (!attendance.employeeId) return null;
+  if (typeof attendance.employeeId === "object") {
+    return attendance.employeeId.employeeId || null;
+  }
+  return String(attendance.employeeId);
+};
+
+const getMobile = (employee) => {
+  if (!employee) return null;
+  return (
+    employee.phone ||
+    employee.mobileNumber ||
+    employee.mobile ||
+    employee.alternateNumber ||
+    null
+  );
+};
+
+// ==========================================
+// ⏰ MAIN CRON LOGIC (production)
+// ✅ Har 5 min chalta hai
+// ✅ Sirf unhe bhejta hai jinho ne 5+ min se checkout nahi kiya
 // ==========================================
 const checkAndSendCheckoutReminders = async () => {
   const now = new Date();
@@ -93,11 +126,11 @@ const checkAndSendCheckoutReminders = async () => {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    // 1️⃣ Aaj ke saare active (checked-in / on-break) attendance records
+    // ✅ Aaj ke active check-ins (checked-in ya on-break) jo checkout nahi kiye
     const activeAttendances = await Attendance.find({
       checkInTime: { $gte: startOfToday },
       status: { $in: ["checked-in", "on-break"] },
-    }).populate("employeeId");
+    }).lean();
 
     if (activeAttendances.length === 0) {
       console.log("ℹ️ [CRON] No active check-ins found.");
@@ -106,97 +139,119 @@ const checkAndSendCheckoutReminders = async () => {
 
     console.log(`📊 [CRON] Found ${activeAttendances.length} active check-in(s)`);
 
+    // ✅ Unique empIds → employees fetch
+    const empIds = [
+      ...new Set(activeAttendances.map(getEmpId).filter(Boolean)),
+    ];
+    const employeeMap = await getEmployeeMap(empIds);
+
+    let sent = 0;
+    let skipped = 0;
+
     for (const attendance of activeAttendances) {
       try {
-        const employee = attendance.employeeId;
+        const empId = getEmpId(attendance);
+        const employee = employeeMap.get(empId);
+
         if (!employee) {
-          console.log("⚠️ [CRON] Employee not found for attendance:", attendance._id);
+          console.log(`⚠️ [CRON] Employee not found in DB: ${empId}`);
+          skipped++;
           continue;
         }
 
-        // 2️⃣ Employee ka shift end time calculate karein
-        const shiftHours = employee.shiftHours || attendance.assignedShiftHours || 8;
+        // ✅ Expected checkout time = checkInTime + shiftHours
+        const shiftHours =
+          employee.shiftHours || attendance.assignedShiftHours || 8;
         const checkInTime = new Date(attendance.checkInTime);
         const expectedCheckOutTime = new Date(
           checkInTime.getTime() + shiftHours * 60 * 60 * 1000
         );
 
-        // 3️⃣ Late minutes calculate karein
+        // ✅ Kitne min late ho gaye
         const lateMinutes = Math.floor(
           (now.getTime() - expectedCheckOutTime.getTime()) / (1000 * 60)
         );
 
-        // Agar 5 minute se kam late hai toh skip
+        // ⏭️ 5 min se kam late → skip
         if (lateMinutes < LATE_THRESHOLD_MINUTES) {
+          console.log(
+            `⏭️ [CRON] ${employee.name} | Late: ${lateMinutes} min (< ${LATE_THRESHOLD_MINUTES} min) → skip`
+          );
+          skipped++;
           continue;
         }
 
-        console.log(
-          `👤 [CRON] ${employee.name} | Late by ${lateMinutes} min | Shift: ${shiftHours}h`
+        const mobileNumber = getMobile(employee);
+        if (!mobileNumber) {
+          console.log(`⚠️ [CRON] No mobile for: ${employee.name} (${empId})`);
+          skipped++;
+          continue;
+        }
+
+        // ===== Spam prevention =====
+        const todayReminders = (attendance.checkoutReminders || []).filter(
+          (r) => {
+            const reminderDate = new Date(r.sentAt);
+            return reminderDate >= startOfToday;
+          }
         );
 
-        // 4️⃣ Employee ka mobile number check
-        const mobileNumber =
-          employee.mobileNumber || employee.phone || employee.mobile;
-        if (!mobileNumber) {
-          console.log(`⚠️ [CRON] No mobile number for ${employee.name}`);
-          continue;
-        }
-
-        // 5️⃣ Spam prevention - aaj kitne reminders bheje?
-        const todayReminders = (attendance.checkoutReminders || []).filter((r) => {
-          const reminderDate = new Date(r.sentAt);
-          return reminderDate >= startOfToday;
-        });
-
+        // ✅ Max 3 per day
         if (todayReminders.length >= MAX_REMINDERS_PER_DAY) {
           console.log(
-            `🚫 [CRON] ${employee.name} already received ${MAX_REMINDERS_PER_DAY} reminders today. Skipping.`
+            `🚫 [CRON] ${employee.name} already got ${MAX_REMINDERS_PER_DAY} reminders today → skip`
           );
+          skipped++;
           continue;
         }
 
-        // 6️⃣ Last reminder 30 min se pehle bheja tha? (cooldown)
+        // ✅ Cooldown: last reminder ke 30 min baad hi naya bhejo
         const lastReminder = todayReminders[todayReminders.length - 1];
         if (lastReminder) {
           const minutesSinceLast =
-            (now.getTime() - new Date(lastReminder.sentAt).getTime()) / (1000 * 60);
-          if (minutesSinceLast < 30) {
+            (now.getTime() - new Date(lastReminder.sentAt).getTime()) /
+            (1000 * 60);
+          if (minutesSinceLast < COOLDOWN_MINUTES) {
             console.log(
-              `⏸️ [CRON] Last reminder sent ${Math.round(minutesSinceLast)} min ago. Cooldown active.`
+              `⏸️ [CRON] ${employee.name} | Last reminder ${Math.round(minutesSinceLast)} min ago (cooldown ${COOLDOWN_MINUTES} min) → skip`
             );
+            skipped++;
             continue;
           }
         }
 
-        // 7️⃣ WhatsApp reminder bhejein
-        const result = await sendWhatsAppReminder(mobileNumber, employee.name);
+        // ✅ Send WhatsApp
+        console.log(
+          `📤 [CRON] Sending to ${employee.name} (${mobileNumber}) | Late: ${lateMinutes} min | Shift: ${shiftHours}h`
+        );
 
-        // 8️⃣ Attendance record mein reminder log save karein
-        if (result.success) {
-          if (!attendance.checkoutReminders) attendance.checkoutReminders = [];
-          attendance.checkoutReminders.push({
-            sentAt: new Date(),
-            lateMinutes,
-            mobileNumber: String(mobileNumber),
-            status: "sent",
-          });
-          await attendance.save();
-        } else {
-          if (!attendance.checkoutReminders) attendance.checkoutReminders = [];
-          attendance.checkoutReminders.push({
-            sentAt: new Date(),
-            lateMinutes,
-            mobileNumber: String(mobileNumber),
-            status: "failed",
-            error: result.error,
-          });
-          await attendance.save();
-        }
+        const result = await sendWhatsAppReminder(
+          mobileNumber,
+          employee.name
+        );
+
+        // ✅ Log reminder
+        await Attendance.findByIdAndUpdate(attendance._id, {
+          $push: {
+            checkoutReminders: {
+              sentAt: new Date(),
+              lateMinutes,
+              mobileNumber: String(mobileNumber),
+              status: result.success ? "sent" : "failed",
+              error: result.success ? undefined : result.error,
+            },
+          },
+        });
+
+        if (result.success) sent++;
       } catch (empErr) {
         console.error("❌ [CRON] Error processing employee:", empErr.message);
       }
     }
+
+    console.log(
+      `📊 [CRON] Done — Sent: ${sent}, Skipped: ${skipped}, Total: ${activeAttendances.length}`
+    );
   } catch (err) {
     console.error("❌ [CRON] Fatal error:", err.message);
   }
@@ -204,15 +259,21 @@ const checkAndSendCheckoutReminders = async () => {
 
 // ==========================================
 // 🚀 CRON SCHEDULE
+// ✅ Har 5 min chalta hai (*/5 * * * *)
 // ==========================================
 const startCheckoutReminderCron = () => {
-  // Har minute chale (production mein har 1 min best hai)
-  cron.schedule("* * * * *", checkAndSendCheckoutReminders, {
+  cron.schedule("*/5 * * * *", checkAndSendCheckoutReminders, {
     scheduled: true,
-    timezone: "Asia/Kolkata", // India timezone
+    timezone: "Asia/Kolkata",
   });
 
-  console.log("✅ [CRON] Checkout reminder cron job started (every 1 min)");
+  console.log(
+    "✅ [CRON] Checkout reminder cron started (every 5 min, IST) — threshold: 5 min late, cooldown: 30 min, max 3/day"
+  );
 };
 
-module.exports = { startCheckoutReminderCron, checkAndSendCheckoutReminders };
+module.exports = {
+  startCheckoutReminderCron,
+  checkAndSendCheckoutReminders,
+  sendWhatsAppReminder,
+};

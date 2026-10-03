@@ -10847,3 +10847,275 @@ exports.getEditedAttendanceRecords = async (req, res) => {
     res.status(500).json({ success: false, message: 'Error fetching edited records', error: error.message });
   }
 };
+
+// ============================================================================
+// 🚀 BULK PAYROLL DATA API
+// ============================================================================
+exports.getBulkPayrollData = async (req, res) => {
+  try {
+    const { month } = req.query;
+
+    if (!month || !month.match(/^\d{4}-\d{2}$/)) {
+      return res.status(400).json({ success: false, message: "Valid month required (YYYY-MM)" });
+    }
+
+    const [year, monthNum] = month.split("-").map(Number);
+    const startDate = new Date(year, monthNum - 1, 1);
+    const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
+    const daysInMonth = new Date(year, monthNum, 0).getDate();
+
+    const Employee = require("../models/Employee");
+    const Attendance = require("../models/Attendance");
+    const Leave = require("../models/Leave");
+    const Holiday = require("../models/Holiday");
+    const AttendanceSummary = require("../models/AttendanceSummary");
+    const WeekOff = require("../models/WeekOff"); // ✅ WeekOff model
+
+    // Parallel fetch — WeekOff records bhi include
+    const [employees, attendanceRecords, leaves, holidays, summaries, compOffs, weekOffRecords] = await Promise.all([
+      Employee.find({}).lean(),
+      Attendance.find({ checkInTime: { $gte: startDate, $lte: endDate } }).lean(),
+      Leave.find({
+        status: "approved",
+        $or: [
+          { startDate: { $regex: `^${month}` } },
+          { endDate: { $regex: `^${month}` } }
+        ]
+      }).lean(),
+      Holiday.find({
+        isActive: { $ne: false },
+        $or: [
+          { fromDate: { $regex: `^${month}` } },
+          { toDate: { $regex: `^${month}` } }
+        ]
+      }).lean(),
+      AttendanceSummary.find({ month }).lean(),
+      (async () => {
+        try {
+          const CompOff = require("../models/CompOff");
+          return await CompOff.find({
+            status: "approved",
+            workDate: { $regex: `^${month}` }
+          }).lean();
+        } catch (e) {
+          return [];
+        }
+      })(),
+      // ✅ WeekOff records fetch (latest first — getMyWeekOff jaisa)
+      WeekOff.find().sort({ createdAt: -1 }).lean()
+    ]);
+
+    // ============================================================================
+    // 🚀 WEEK OFF DATES CALCULATION
+    // Employee ke liye best matching WeekOff record dhundo → dates calculate karo
+    // Fallback: employee.weekOffDay (default Sunday)
+    // ============================================================================
+    const WEEK_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const DAY_MAP = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+
+    const resolveDayName = (dayName) => {
+      if (!dayName) return "";
+      if (dayName.length === 3) {
+        return WEEK_DAYS.find((d) => d.startsWith(dayName)) || dayName;
+      }
+      return dayName;
+    };
+
+    // Helper: Weekly dates generate karo
+    const generateWeeklyDates = (yearVal, monthVal, dayName) => {
+      const daysInM = new Date(yearVal, monthVal, 0).getDate();
+      const targetDay = DAY_MAP[resolveDayName(dayName)];
+      if (targetDay === undefined) return [];
+      const dates = [];
+      for (let day = 1; day <= daysInM; day++) {
+        const d = new Date(yearVal, monthVal - 1, day);
+        if (d.getDay() === targetDay) {
+          dates.push(`${yearVal}-${String(monthVal).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+        }
+      }
+      return dates;
+    };
+
+    // Helper: WeekOff record se dates calculate karo (getMyWeekOff jaisa exact logic)
+    const calculateWeekOffDatesFromRecord = (record, targetMonth) => {
+      const [y, m] = targetMonth.split("-").map(Number);
+      const daysInM = new Date(y, m, 0).getDate();
+      const dates = [];
+
+      const pushDate = (day) => {
+        if (day >= 1 && day <= daysInM) {
+          dates.push(`${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+        }
+      };
+
+      const hasSpecificMonths =
+        Array.isArray(record.selectedMonths) && record.selectedMonths.length > 0;
+
+      // Agar specific months hain aur target month unme nahi
+      if (hasSpecificMonths && !record.selectedMonths.includes(targetMonth)) {
+        if (Array.isArray(record.specificDates)) {
+          return record.specificDates.filter((d) => d.startsWith(targetMonth));
+        }
+        return [];
+      }
+
+      const selectionMode = record.selectionMode || "weekly";
+
+      // Weekly
+      if (selectionMode === "weekly" && Array.isArray(record.weekOffDays)) {
+        record.weekOffDays.forEach((dayName) => {
+          const targetDay = DAY_MAP[resolveDayName(dayName)];
+          if (targetDay === undefined) return;
+          for (let day = 1; day <= daysInM; day++) {
+            const d = new Date(y, m - 1, day);
+            if (d.getDay() === targetDay) pushDate(day);
+          }
+        });
+      }
+
+      // Weekwise
+      if (selectionMode === "weekwise" && Array.isArray(record.weekwiseSelection)) {
+        record.weekwiseSelection.forEach(({ week, day }) => {
+          const targetDay = DAY_MAP[resolveDayName(day)];
+          if (targetDay === undefined) return;
+          const firstDayOfMonth = new Date(y, m - 1, 1);
+          const offset = (targetDay - firstDayOfMonth.getDay() + 7) % 7;
+          pushDate(1 + offset + (week - 1) * 7);
+        });
+      }
+
+      // Monthly
+      if (selectionMode === "monthly" && Array.isArray(record.monthlyPattern)) {
+        record.monthlyPattern.forEach(({ occurrence, day }) => {
+          const targetDay = DAY_MAP[resolveDayName(day)];
+          if (targetDay === undefined) return;
+          const matching = [];
+          for (let d = 1; d <= daysInM; d++) {
+            if (new Date(y, m - 1, d).getDay() === targetDay) matching.push(d);
+          }
+          const occMap = { "1st": 1, "2nd": 2, "3rd": 3, "4th": 4, last: -1 };
+          const occ = occMap[occurrence];
+          if (occ === -1) pushDate(matching[matching.length - 1]);
+          else if (occ && matching[occ - 1]) pushDate(matching[occ - 1]);
+        });
+      }
+
+      // Specific Dates
+      if (Array.isArray(record.specificDates)) {
+        record.specificDates.forEach((d) => {
+          if (d.startsWith(targetMonth)) dates.push(d);
+        });
+      }
+
+      return Array.from(new Set(dates)).sort();
+    };
+
+    const weekOffDatesMap = {};
+
+    employees.forEach(emp => {
+      const empId = String(emp.employeeId);
+      const fallbackWeekOffDay = emp.weekOffDay || "Sunday";
+
+      // Specific employee ka record dhundo, warna "selectAllEmployees" wala
+      const specific = weekOffRecords.find((rec) =>
+        !rec.selectAllEmployees &&
+        rec.selectedEmployees?.some((e) => String(e.employeeId) === empId)
+      );
+      const record = specific || weekOffRecords.find((rec) => rec.selectAllEmployees === true);
+
+      let dates = [];
+
+      if (record) {
+        dates = calculateWeekOffDatesFromRecord(record, month);
+      }
+
+      // ✅ Fallback: Agar record nahi mila ya koi date nahi mili → default Sunday
+      if (!dates || dates.length === 0) {
+        dates = generateWeeklyDates(year, monthNum, fallbackWeekOffDay);
+      }
+
+      weekOffDatesMap[emp.employeeId] = dates;
+    });
+
+    // ============================================================================
+    // 🚀 Group data by employee
+    // ============================================================================
+    const attendanceByEmployee = {};
+    attendanceRecords.forEach(rec => {
+      if (!rec.employeeId) return;
+      if (!attendanceByEmployee[rec.employeeId]) attendanceByEmployee[rec.employeeId] = [];
+      attendanceByEmployee[rec.employeeId].push(rec);
+    });
+
+    const leavesByEmployee = {};
+    leaves.forEach(leave => {
+      if (!leave.employeeId) return;
+      if (!leavesByEmployee[leave.employeeId]) leavesByEmployee[leave.employeeId] = [];
+      leavesByEmployee[leave.employeeId].push(leave);
+    });
+
+    const compOffsByEmployee = {};
+    compOffs.forEach(co => {
+      if (!co.employeeId) return;
+      if (!compOffsByEmployee[co.employeeId]) compOffsByEmployee[co.employeeId] = [];
+      compOffsByEmployee[co.employeeId].push(co);
+    });
+
+    const summaryMap = {};
+    summaries.forEach(s => {
+      summaryMap[s.employeeId] = s;
+    });
+
+    res.json({
+      success: true,
+      month,
+      daysInMonth,
+      data: {
+        employees: employees.map(emp => ({
+          _id: emp._id,
+          employeeId: emp.employeeId,
+          name: emp.name,
+          department: emp.department || "",
+          role: emp.role || emp.designation || "",
+          designation: emp.designation || emp.role || "",
+          joinDate: emp.joinDate || emp.joiningDate || "",
+          salaryPerMonth: emp.salaryPerMonth || 0,
+          originalSalary: emp.originalSalary || emp.salaryPerMonth || 0,
+          shiftHours: emp.shiftHours || 9,
+          weekOffDay: emp.weekOffDay || "Sunday",
+          weekOffPerMonth: emp.weekOffPerMonth || 4,
+          weekOffType: emp.weekOffType || "0+4",
+          bankAccount: emp.bankAccount || emp.bankAccountNo || "",
+          panCard: emp.panCard || emp.panNumber || "",
+          pfNo: emp.pfNumber || emp.pfNo || "",
+          uanNo: emp.uanNumber || emp.uanNo || "",
+          esicNo: emp.esicNumber || emp.esicNo || "",
+          branch: emp.branch || "",
+          basicPay: emp.basicPay || 0,
+          hra: emp.hra || 0,
+          conveyanceAllowance: emp.conveyanceAllowance || 0,
+          medicalAllowance: emp.medicalAllowance || 0,
+          performanceAllowance: emp.performanceAllowance || 0,
+          specialAllowance: emp.specialAllowance || 0,
+          gmc: emp.gmc || emp.gmcAmount || 0,
+          profTax: emp.ptax || emp.profTax || 0,
+          otherDeductions: emp.otherDeductions || 0,
+          status: emp.status || "active",
+          isActive: emp.isActive !== false,
+          salaryIncrements: emp.salaryIncrements || []
+        })),
+        attendanceByEmployee,
+        leavesByEmployee,
+        compOffsByEmployee,
+        weekOffDatesMap,
+        summaryMap,
+        holidays,
+        shifts: []
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Bulk payroll error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

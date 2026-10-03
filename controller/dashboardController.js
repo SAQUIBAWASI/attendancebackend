@@ -2,11 +2,8 @@ const mongoose = require("mongoose");
 const Employee = require("../models/Employee");
 const Attendance = require("../models/Attendance");
 const Shift = require("../models/Shift");
+const Leave = require("../models/Leave");
 
-
-// ======================================================
-// GET TOP PERFORMERS
-// ======================================================
 
 // ======================================================
 // GET TOP PERFORMERS
@@ -22,51 +19,15 @@ const getTopPerformers = async (req, res) => {
     const year =
       Number(req.query.year) || now.getFullYear();
 
-    // ==================================================
-    // MONTH DATE RANGE
-    // ==================================================
+    const startDate = new Date(year, month - 1, 1);
+    startDate.setHours(0, 0, 0, 0);
 
-    const startDate = new Date(
-      year,
-      month - 1,
-      1
-    );
+    const endDate = new Date(year, month, 0);
+    endDate.setHours(23, 59, 59, 999);
 
-    startDate.setHours(
-      0,
-      0,
-      0,
-      0
-    );
+    const totalDays = new Date(year, month, 0).getDate();
 
-    const endDate = new Date(
-      year,
-      month,
-      0
-    );
-
-    endDate.setHours(
-      23,
-      59,
-      59,
-      999
-    );
-
-    const totalDays =
-      new Date(
-        year,
-        month,
-        0
-      ).getDate();
-
-    // ==================================================
-    // GET ACTIVE EMPLOYEES
-    // ==================================================
-
-    const employees =
-      await Employee.find({
-        status: "active",
-      }).lean();
+    const employees = await Employee.find({ status: "active" }).lean();
 
     if (!employees.length) {
       return res.status(200).json({
@@ -78,888 +39,247 @@ const getTopPerformers = async (req, res) => {
       });
     }
 
-    // ==================================================
-    // GET ATTENDANCE
-    // ==================================================
+    const attendanceRecords = await Attendance.find({
+      createdAt: { $gte: startDate, $lte: endDate },
+    }).lean();
 
-    const attendanceRecords =
-      await Attendance.find({
-        createdAt: {
-          $gte: startDate,
-          $lte: endDate,
-        },
-      }).lean();
+    const shifts = await Shift.find({ isActive: true }).lean();
 
-    // ==================================================
-    // GET ACTIVE SHIFTS
-    // ==================================================
+    const performers = employees.map((employee) => {
 
-    const shifts =
-      await Shift.find({
-        isActive: true,
-      }).lean();
+      const employeeId = String(employee.employeeId);
 
-    // ==================================================
-    // CALCULATE PERFORMANCE
-    // ==================================================
-
-    const performers =
-      employees.map(
-        (employee) => {
-
-          const employeeId =
-            String(
-              employee.employeeId
-            );
-
-          // =============================================
-          // EMPLOYEE ATTENDANCE
-          // =============================================
-
-          const employeeAttendance =
-            attendanceRecords.filter(
-              (attendance) =>
-                String(
-                  attendance.employeeId
-                ) === employeeId
-            );
-
-          // =============================================
-          // SHIFT HOURS
-          // =============================================
-
-          let shiftHours =
-            Number(
-              employee.shiftHours
-            );
-
-          if (
-            !shiftHours ||
-            shiftHours <= 0
-          ) {
-            shiftHours = 8;
-          }
-
-          // =============================================
-          // WEEK OFF
-          // =============================================
-
-          let weekOffCount =
-            Number(
-              employee.weekOffCount
-            ) || 0;
-
-          weekOffCount =
-            Math.min(
-              Math.max(
-                weekOffCount,
-                0
-              ),
-              totalDays
-            );
-
-          // =============================================
-          // EXPECTED WORKING DAYS
-          // =============================================
-
-          const expectedWorkingDays =
-            Math.max(
-              totalDays -
-              weekOffCount,
-              0
-            );
-
-          // =============================================
-          // PRESENT DATES
-          // =============================================
-
-          const presentDates =
-            new Set();
-
-          employeeAttendance.forEach(
-            (attendance) => {
-
-              if (
-                attendance.checkInTime ||
-                attendance.checkOutTime ||
-                attendance.status ===
-                  "checked-in" ||
-                attendance.status ===
-                  "checked-out" ||
-                attendance.status ===
-                  "on-break"
-              ) {
-
-                const attendanceDate =
-                  new Date(
-                    attendance.checkInTime ||
-                    attendance.checkOutTime ||
-                    attendance.createdAt
-                  );
-
-                const dateKey =
-                  `${attendanceDate.getFullYear()}-${String(
-                    attendanceDate.getMonth() + 1
-                  ).padStart(2, "0")}-${String(
-                    attendanceDate.getDate()
-                  ).padStart(2, "0")}`;
-
-                presentDates.add(
-                  dateKey
-                );
-              }
-            }
-          );
-
-          const presentDays =
-            presentDates.size;
-
-          // =============================================
-          // ABSENT DAYS
-          // =============================================
-
-          const absentDays =
-            Math.max(
-              expectedWorkingDays -
-              presentDays,
-              0
-            );
-
-          // =============================================
-          // ATTENDANCE SCORE
-          // =============================================
-
-          let workingDaysScore = 0;
-
-          if (
-            expectedWorkingDays > 0
-          ) {
-
-            workingDaysScore =
-              (
-                presentDays /
-                expectedWorkingDays
-              ) * 100;
-          }
-
-          workingDaysScore =
-            Math.min(
-              Math.max(
-                workingDaysScore,
-                0
-              ),
-              100
-            );
-
-          // =============================================
-          // ACTUAL WORKING HOURS
-          // =============================================
-
-          let actualWorkingHours = 0;
-
-          employeeAttendance.forEach(
-            (attendance) => {
-
-              actualWorkingHours +=
-                Number(
-                  attendance.workingHours
-                ) || 0;
-            }
-          );
-
-          // =============================================
-          // EXPECTED WORKING HOURS
-          // =============================================
-
-          const expectedWorkingHours =
-            expectedWorkingDays *
-            shiftHours;
-
-          // =============================================
-          // WORKING HOURS SCORE
-          // =============================================
-
-          let workingHoursScore = 0;
-
-          if (
-            expectedWorkingHours > 0
-          ) {
-
-            workingHoursScore =
-              (
-                actualWorkingHours /
-                expectedWorkingHours
-              ) * 100;
-          }
-
-          workingHoursScore =
-            Math.min(
-              Math.max(
-                workingHoursScore,
-                0
-              ),
-              100
-            );
-
-          // =============================================
-          // FIND ALL EMPLOYEE SHIFTS
-          // =============================================
-
-          const employeeShifts =
-            shifts.filter(
-              (shift) =>
-                String(
-                  shift.employeeAssignment
-                    ?.employeeId
-                ) === employeeId ||
-
-                String(
-                  shift.employeeId
-                ) === employeeId
-            );
-
-          // =============================================
-          // SHIFT TIME FUNCTION
-          // =============================================
-
-          const getShiftTimes =
-            (shift) => {
-
-              let startTime = null;
-              let endTime = null;
-
-              if (!shift) {
-                return {
-                  startTime,
-                  endTime,
-                };
-              }
-
-              // -----------------------------------------
-              // New assignment structure
-              // -----------------------------------------
-
-              startTime =
-                shift.employeeAssignment
-                  ?.startTime ||
-                null;
-
-              endTime =
-                shift.employeeAssignment
-                  ?.endTime ||
-                null;
-
-              // -----------------------------------------
-              // timeSlots
-              // -----------------------------------------
-
-              if (!startTime) {
-                startTime =
-                  shift.timeSlots?.[0]
-                    ?.startTime ||
-                  null;
-              }
-
-              if (!endTime) {
-                endTime =
-                  shift.timeSlots?.[0]
-                    ?.endTime ||
-                  null;
-              }
-
-              // -----------------------------------------
-              // Legacy
-              // -----------------------------------------
-
-              if (!startTime) {
-                startTime =
-                  shift.startTime ||
-                  null;
-              }
-
-              if (!endTime) {
-                endTime =
-                  shift.endTime ||
-                  null;
-              }
-
-              return {
-                startTime,
-                endTime,
-              };
-            };
-
-          // =============================================
-          // DEFAULT SHIFT
-          // =============================================
-
-          const defaultShift =
-            employeeShifts[0] ||
-            null;
-
-          const defaultShiftTimes =
-            getShiftTimes(
-              defaultShift
-            );
-
-          // =============================================
-          // LATE COMING
-          // =============================================
-
-          let lateComingDays = 0;
-
-          const lateComingDetails =
-            [];
-
-          const checkedLateDates =
-            new Set();
-
-          // =============================================
-          // PROCESS EACH ATTENDANCE DATE
-          // =============================================
-
-          employeeAttendance.forEach(
-            (attendance) => {
-
-              if (
-                !attendance.checkInTime
-              ) {
-                return;
-              }
-
-              const checkIn =
-                new Date(
-                  attendance.checkInTime
-                );
-
-              // -----------------------------------------
-              // DATE KEY
-              // -----------------------------------------
-
-              const dateKey =
-                `${checkIn.getFullYear()}-${String(
-                  checkIn.getMonth() + 1
-                ).padStart(2, "0")}-${String(
-                  checkIn.getDate()
-                ).padStart(2, "0")}`;
-
-              // -----------------------------------------
-              // DUPLICATE DATE
-              // -----------------------------------------
-
-              if (
-                checkedLateDates.has(
-                  dateKey
-                )
-              ) {
-                return;
-              }
-
-              checkedLateDates.add(
-                dateKey
-              );
-
-              // -----------------------------------------
-              // FIND DATE-WISE SHIFT
-              // -----------------------------------------
-
-              let selectedShift =
-                defaultShift;
-
-              const matchingShifts =
-                employeeShifts
-                  .filter(
-                    (shift) => {
-
-                      const effectiveFrom =
-                        shift
-                          .employeeAssignment
-                          ?.effectiveFrom;
-
-                      if (
-                        !effectiveFrom
-                      ) {
-                        return false;
-                      }
-
-                      const effectiveDate =
-                        new Date(
-                          effectiveFrom
-                        );
-
-                      return (
-                        effectiveDate <=
-                        checkIn
-                      );
-                    }
-                  )
-                  .sort(
-                    (a, b) => {
-
-                      const dateA =
-                        new Date(
-                          a
-                            .employeeAssignment
-                            ?.effectiveFrom ||
-                          0
-                        );
-
-                      const dateB =
-                        new Date(
-                          b
-                            .employeeAssignment
-                            ?.effectiveFrom ||
-                          0
-                        );
-
-                      return (
-                        dateB -
-                        dateA
-                      );
-                    }
-                  );
-
-              if (
-                matchingShifts.length
-              ) {
-                selectedShift =
-                  matchingShifts[0];
-              }
-
-              // -----------------------------------------
-              // GET SHIFT TIME
-              // -----------------------------------------
-
-              const {
-                startTime,
-                endTime,
-              } =
-                getShiftTimes(
-                  selectedShift
-                );
-
-              // -----------------------------------------
-              // SHIFT NOT FOUND
-              // -----------------------------------------
-
-              if (!startTime) {
-
-                console.log(
-                  "⚠️ SHIFT START NOT FOUND:",
-                  {
-                    employeeId,
-                    employeeName:
-                      employee.name,
-                    date:
-                      dateKey,
-                    selectedShift,
-                  }
-                );
-
-                return;
-              }
-
-              // -----------------------------------------
-              // PARSE SHIFT TIME
-              // -----------------------------------------
-
-              const timeParts =
-                String(
-                  startTime
-                )
-                  .split(":")
-                  .map(Number);
-
-              if (
-                timeParts.length < 2 ||
-                Number.isNaN(
-                  timeParts[0]
-                ) ||
-                Number.isNaN(
-                  timeParts[1]
-                )
-              ) {
-
-                console.log(
-                  "⚠️ INVALID SHIFT TIME:",
-                  {
-                    employeeId,
-                    date:
-                      dateKey,
-                    startTime,
-                  }
-                );
-
-                return;
-              }
-
-              // -----------------------------------------
-              // SHIFT START
-              // -----------------------------------------
-
-              const shiftStart =
-                new Date(checkIn);
-
-              shiftStart.setHours(
-                timeParts[0],
-                timeParts[1],
-                0,
-                0
-              );
-
-              // -----------------------------------------
-              // 5 MINUTE GRACE
-              // -----------------------------------------
-
-              const graceTime =
-                new Date(
-                  shiftStart.getTime() +
-                  5 * 60 * 1000
-                );
-
-              // -----------------------------------------
-              // LATE CHECK
-              // -----------------------------------------
-
-              if (
-                checkIn >
-                shiftStart
-              ) {
-
-                lateComingDays++;
-
-                const lateByMinutes =
-                  Math.floor(
-                    (
-                      checkIn -
-                      shiftStart
-                    ) / 60000
-                  );
-
-                const lateDetails = {
-
-                  date:
-                    dateKey,
-
-                  shiftType:
-                    selectedShift?.shiftType ||
-                    employee.shiftType ||
-                    null,
-
-                  shiftName:
-                    selectedShift?.shiftName ||
-                    null,
-
-                  shiftStartTime:
-                    startTime,
-
-                  shiftEndTime:
-                    endTime,
-
-                  shiftStart:
-                    shiftStart.toISOString(),
-
-                  graceTime:
-                    graceTime.toISOString(),
-
-                  checkInTime:
-                    checkIn.toISOString(),
-
-                  lateByMinutes,
-
-                };
-
-                lateComingDetails.push(
-                  lateDetails
-                );
-
-                console.log(
-                  "🔴 LATE COMING:",
-                  {
-                    employeeId,
-                    employeeName:
-                      employee.name,
-                    ...lateDetails,
-                  }
-                );
-              }
-            }
-          );
-
-          // =============================================
-          // LATE COMING SCORE
-          // =============================================
-
-          let lateComingScore = 100;
-
-          if (
-            expectedWorkingDays > 0
-          ) {
-
-            lateComingScore =
-              (
-                (
-                  expectedWorkingDays -
-                  lateComingDays
-                ) /
-                expectedWorkingDays
-              ) * 100;
-          }
-
-          lateComingScore =
-            Math.max(
-              0,
-              Math.min(
-                lateComingScore,
-                100
-              )
-            );
-
-          // =============================================
-          // TOTAL SCORE
-          // =============================================
-
-          const totalScore =
-            lateComingScore +
-            workingDaysScore +
-            workingHoursScore;
-
-          // =============================================
-          // PERFORMANCE %
-          // =============================================
-
-          const performancePercentage =
-            totalScore / 3;
-
-          // =============================================
-          // RETURN DATA
-          // =============================================
-
-          return {
-
-            employeeId:
-              employee._id,
-
-            employeeCode:
-              employee.employeeId,
-
-            name:
-              employee.name,
-
-            email:
-              employee.email,
-
-            department:
-              employee.department,
-
-            // -----------------------------------------
-            // SHIFT
-            // -----------------------------------------
-
-            shiftType:
-              employee.shiftType,
-
-            shiftHours,
-
-            shiftStartTime:
-              defaultShiftTimes.startTime,
-
-            shiftEndTime:
-              defaultShiftTimes.endTime,
-
-            // -----------------------------------------
-            // MONTH
-            // -----------------------------------------
-
-            month,
-            year,
-
-            totalDays,
-
-            // -----------------------------------------
-            // DAYS
-            // -----------------------------------------
-
-            weekOffCount,
-
-            expectedWorkingDays,
-
-            presentDays,
-
-            absentDays,
-
-            // -----------------------------------------
-            // LATE
-            // -----------------------------------------
-
-            lateComingDays,
-
-            lateComingDetails,
-
-            // -----------------------------------------
-            // HOURS
-            // -----------------------------------------
-
-            expectedWorkingHours:
-              Number(
-                expectedWorkingHours.toFixed(
-                  2
-                )
-              ),
-
-            actualWorkingHours:
-              Number(
-                actualWorkingHours.toFixed(
-                  2
-                )
-              ),
-
-            // -----------------------------------------
-            // SCORES
-            // -----------------------------------------
-
-            lateComingScore:
-              Number(
-                lateComingScore.toFixed(
-                  2
-                )
-              ),
-
-            workingDaysScore:
-              Number(
-                workingDaysScore.toFixed(
-                  2
-                )
-              ),
-
-            workingHoursScore:
-              Number(
-                workingHoursScore.toFixed(
-                  2
-                )
-              ),
-
-            // -----------------------------------------
-            // TOTAL
-            // -----------------------------------------
-
-            totalScore:
-              Number(
-                totalScore.toFixed(
-                  2
-                )
-              ),
-
-            performancePercentage:
-              Number(
-                performancePercentage.toFixed(
-                  2
-                )
-              ),
-          };
-        }
+      const employeeAttendance = attendanceRecords.filter(
+        (attendance) => String(attendance.employeeId) === employeeId
       );
 
-    // ==================================================
-    // SORT
-    // ==================================================
-
-    performers.sort(
-      (a, b) => {
-
-        // 1️⃣ Highest performance
-        if (
-          b.performancePercentage !==
-          a.performancePercentage
-        ) {
-
-          return (
-            b.performancePercentage -
-            a.performancePercentage
-          );
-        }
-
-        // 2️⃣ Highest attendance
-        if (
-          b.presentDays !==
-          a.presentDays
-        ) {
-
-          return (
-            b.presentDays -
-            a.presentDays
-          );
-        }
-
-        // 3️⃣ Highest working hours
-        if (
-          b.actualWorkingHours !==
-          a.actualWorkingHours
-        ) {
-
-          return (
-            b.actualWorkingHours -
-            a.actualWorkingHours
-          );
-        }
-
-        // 4️⃣ Lowest late coming
-        return (
-          a.lateComingDays -
-          b.lateComingDays
-        );
+      let shiftHours = Number(employee.shiftHours);
+      if (!shiftHours || shiftHours <= 0) {
+        shiftHours = 8;
       }
-    );
 
-    // ==================================================
-    // TOP 5
-    // ==================================================
+      let weekOffCount = Number(employee.weekOffCount) || 0;
+      weekOffCount = Math.min(Math.max(weekOffCount, 0), totalDays);
 
-    const topPerformers =
-      performers.slice(
-        0,
-        5
+      const expectedWorkingDays = Math.max(totalDays - weekOffCount, 0);
+
+      const presentDates = new Set();
+
+      employeeAttendance.forEach((attendance) => {
+        if (
+          attendance.checkInTime ||
+          attendance.checkOutTime ||
+          attendance.status === "checked-in" ||
+          attendance.status === "checked-out" ||
+          attendance.status === "on-break"
+        ) {
+          const attendanceDate = new Date(
+            attendance.checkInTime ||
+            attendance.checkOutTime ||
+            attendance.createdAt
+          );
+
+          const dateKey = `${attendanceDate.getFullYear()}-${String(
+            attendanceDate.getMonth() + 1
+          ).padStart(2, "0")}-${String(
+            attendanceDate.getDate()
+          ).padStart(2, "0")}`;
+
+          presentDates.add(dateKey);
+        }
+      });
+
+      const presentDays = presentDates.size;
+
+      const absentDays = Math.max(expectedWorkingDays - presentDays, 0);
+
+      let workingDaysScore = 0;
+      if (expectedWorkingDays > 0) {
+        workingDaysScore = (presentDays / expectedWorkingDays) * 100;
+      }
+      workingDaysScore = Math.min(Math.max(workingDaysScore, 0), 100);
+
+      let actualWorkingHours = 0;
+      employeeAttendance.forEach((attendance) => {
+        actualWorkingHours += Number(attendance.workingHours) || 0;
+      });
+
+      const expectedWorkingHours = expectedWorkingDays * shiftHours;
+
+      let workingHoursScore = 0;
+      if (expectedWorkingHours > 0) {
+        workingHoursScore = (actualWorkingHours / expectedWorkingHours) * 100;
+      }
+      workingHoursScore = Math.min(Math.max(workingHoursScore, 0), 100);
+
+      const employeeShifts = shifts.filter(
+        (shift) =>
+          String(shift.employeeAssignment?.employeeId) === employeeId ||
+          String(shift.employeeId) === employeeId
       );
 
-    // ==================================================
-    // RESPONSE
-    // ==================================================
+      const getShiftTimes = (shift) => {
+        let startTime = null;
+        let endTime = null;
+
+        if (!shift) return { startTime, endTime };
+
+        startTime = shift.employeeAssignment?.startTime || null;
+        endTime = shift.employeeAssignment?.endTime || null;
+
+        if (!startTime) startTime = shift.timeSlots?.[0]?.startTime || null;
+        if (!endTime) endTime = shift.timeSlots?.[0]?.endTime || null;
+
+        if (!startTime) startTime = shift.startTime || null;
+        if (!endTime) endTime = shift.endTime || null;
+
+        return { startTime, endTime };
+      };
+
+      const defaultShift = employeeShifts[0] || null;
+      const defaultShiftTimes = getShiftTimes(defaultShift);
+
+      let lateComingDays = 0;
+      const lateComingDetails = [];
+      const checkedLateDates = new Set();
+
+      employeeAttendance.forEach((attendance) => {
+        if (!attendance.checkInTime) return;
+
+        const checkIn = new Date(attendance.checkInTime);
+
+        const dateKey = `${checkIn.getFullYear()}-${String(
+          checkIn.getMonth() + 1
+        ).padStart(2, "0")}-${String(checkIn.getDate()).padStart(2, "0")}`;
+
+        if (checkedLateDates.has(dateKey)) return;
+        checkedLateDates.add(dateKey);
+
+        let selectedShift = defaultShift;
+
+        const matchingShifts = employeeShifts
+          .filter((shift) => {
+            const effectiveFrom = shift.employeeAssignment?.effectiveFrom;
+            if (!effectiveFrom) return false;
+            return new Date(effectiveFrom) <= checkIn;
+          })
+          .sort((a, b) => {
+            const dateA = new Date(a.employeeAssignment?.effectiveFrom || 0);
+            const dateB = new Date(b.employeeAssignment?.effectiveFrom || 0);
+            return dateB - dateA;
+          });
+
+        if (matchingShifts.length) {
+          selectedShift = matchingShifts[0];
+        }
+
+        const { startTime, endTime } = getShiftTimes(selectedShift);
+
+        if (!startTime) return;
+
+        const timeParts = String(startTime).split(":").map(Number);
+        if (
+          timeParts.length < 2 ||
+          Number.isNaN(timeParts[0]) ||
+          Number.isNaN(timeParts[1])
+        ) return;
+
+        const shiftStart = new Date(checkIn);
+        shiftStart.setHours(timeParts[0], timeParts[1], 0, 0);
+
+        const graceTime = new Date(shiftStart.getTime() + 5 * 60 * 1000);
+
+        if (checkIn > shiftStart) {
+          lateComingDays++;
+
+          const lateByMinutes = Math.floor((checkIn - shiftStart) / 60000);
+
+          lateComingDetails.push({
+            date: dateKey,
+            shiftType: selectedShift?.shiftType || employee.shiftType || null,
+            shiftName: selectedShift?.shiftName || null,
+            shiftStartTime: startTime,
+            shiftEndTime: endTime,
+            shiftStart: shiftStart.toISOString(),
+            graceTime: graceTime.toISOString(),
+            checkInTime: checkIn.toISOString(),
+            lateByMinutes,
+          });
+        }
+      });
+
+      let lateComingScore = 100;
+      if (expectedWorkingDays > 0) {
+        lateComingScore =
+          ((expectedWorkingDays - lateComingDays) / expectedWorkingDays) * 100;
+      }
+      lateComingScore = Math.max(0, Math.min(lateComingScore, 100));
+
+      const totalScore = lateComingScore + workingDaysScore + workingHoursScore;
+      const performancePercentage = totalScore / 3;
+
+      return {
+        employeeId: employee._id,
+        employeeCode: employee.employeeId,
+        name: employee.name,
+        email: employee.email,
+        department: employee.department,
+        shiftType: employee.shiftType,
+        shiftHours,
+        shiftStartTime: defaultShiftTimes.startTime,
+        shiftEndTime: defaultShiftTimes.endTime,
+        month,
+        year,
+        totalDays,
+        weekOffCount,
+        expectedWorkingDays,
+        presentDays,
+        absentDays,
+        lateComingDays,
+        lateComingDetails,
+        expectedWorkingHours: Number(expectedWorkingHours.toFixed(2)),
+        actualWorkingHours: Number(actualWorkingHours.toFixed(2)),
+        lateComingScore: Number(lateComingScore.toFixed(2)),
+        workingDaysScore: Number(workingDaysScore.toFixed(2)),
+        workingHoursScore: Number(workingHoursScore.toFixed(2)),
+        totalScore: Number(totalScore.toFixed(2)),
+        performancePercentage: Number(performancePercentage.toFixed(2)),
+      };
+    });
+
+    performers.sort((a, b) => {
+      if (b.performancePercentage !== a.performancePercentage) {
+        return b.performancePercentage - a.performancePercentage;
+      }
+      if (b.presentDays !== a.presentDays) {
+        return b.presentDays - a.presentDays;
+      }
+      if (b.actualWorkingHours !== a.actualWorkingHours) {
+        return b.actualWorkingHours - a.actualWorkingHours;
+      }
+      return a.lateComingDays - b.lateComingDays;
+    });
+
+    const topPerformers = performers.slice(0, 5);
 
     return res.status(200).json({
-
       success: true,
-
       month,
       year,
-
-      totalEmployees:
-        employees.length,
-
-      performers:
-        topPerformers,
-
+      totalEmployees: employees.length,
+      performers: topPerformers,
     });
 
   } catch (error) {
-
-    console.error(
-      "Top Performers Error:",
-      error
-    );
-
+    console.error("Top Performers Error:", error);
     return res.status(500).json({
-
       success: false,
-
-      message:
-        "Failed to calculate top performers",
-
-      error:
-        error.message,
-
+      message: "Failed to calculate top performers",
+      error: error.message,
     });
   }
 };
+
 
 // ======================================================
 // GET ALL PERFORMERS
@@ -968,16 +288,8 @@ const getTopPerformers = async (req, res) => {
 const getAllPerformers = async (req, res) => {
   try {
     const now = new Date();
-
-    const month =
-      Number(req.query.month) || now.getMonth() + 1;
-
-    const year =
-      Number(req.query.year) || now.getFullYear();
-
-    // ==================================================
-    // MONTH DATE RANGE
-    // ==================================================
+    const month = Number(req.query.month) || now.getMonth() + 1;
+    const year = Number(req.query.year) || now.getFullYear();
 
     const startDate = new Date(year, month - 1, 1);
     startDate.setHours(0, 0, 0, 0);
@@ -985,19 +297,9 @@ const getAllPerformers = async (req, res) => {
     const endDate = new Date(year, month, 0);
     endDate.setHours(23, 59, 59, 999);
 
-    const totalDays = new Date(
-      year,
-      month,
-      0
-    ).getDate();
+    const totalDays = new Date(year, month, 0).getDate();
 
-    // ==================================================
-    // GET ACTIVE EMPLOYEES
-    // ==================================================
-
-    const employees = await Employee.find({
-      status: "active",
-    }).lean();
+    const employees = await Employee.find({ status: "active" }).lean();
 
     if (!employees.length) {
       return res.status(200).json({
@@ -1009,909 +311,408 @@ const getAllPerformers = async (req, res) => {
       });
     }
 
-    // ==================================================
-    // GET ATTENDANCE
-    // ==================================================
-
     const attendanceRecords = await Attendance.find({
-      createdAt: {
-        $gte: startDate,
-        $lte: endDate,
-      },
+      createdAt: { $gte: startDate, $lte: endDate },
     }).lean();
 
-    // ==================================================
-    // GET ACTIVE SHIFTS
-    // ==================================================
-
-    const shifts = await Shift.find({
-      isActive: true,
-    }).lean();
-
-    // ==================================================
-    // CALCULATE PERFORMANCE
-    // ==================================================
+    const shifts = await Shift.find({ isActive: true }).lean();
 
     const performers = employees.map((employee) => {
 
-      const employeeId =
-        String(employee.employeeId);
+      const employeeId = String(employee.employeeId);
 
-      // =================================================
-      // EMPLOYEE ATTENDANCE
-      // =================================================
-
-      const employeeAttendance =
-        attendanceRecords.filter(
-          (attendance) =>
-            String(attendance.employeeId) ===
-            employeeId
-        );
-
-      // =================================================
-      // SHIFT HOURS
-      // =================================================
-
-      let shiftHours =
-        Number(employee.shiftHours);
-
-      if (!shiftHours || shiftHours <= 0) {
-        shiftHours = 8;
-      }
-
-      // =================================================
-      // WEEK OFF
-      // =================================================
-
-      let weekOffCount =
-        Number(employee.weekOffCount) || 0;
-
-      weekOffCount = Math.min(
-        Math.max(
-          weekOffCount,
-          0
-        ),
-        totalDays
+      const employeeAttendance = attendanceRecords.filter(
+        (attendance) => String(attendance.employeeId) === employeeId
       );
 
-      // =================================================
-      // EXPECTED WORKING DAYS
-      // =================================================
+      let shiftHours = Number(employee.shiftHours);
+      if (!shiftHours || shiftHours <= 0) shiftHours = 8;
 
-      const expectedWorkingDays =
-        Math.max(
-          totalDays -
-          weekOffCount,
-          0
-        );
+      let weekOffCount = Number(employee.weekOffCount) || 0;
+      weekOffCount = Math.min(Math.max(weekOffCount, 0), totalDays);
 
-      // =================================================
-      // PRESENT DATES
-      // =================================================
+      const expectedWorkingDays = Math.max(totalDays - weekOffCount, 0);
 
       const presentDates = new Set();
 
-      employeeAttendance.forEach(
-        (attendance) => {
-
-          if (
+      employeeAttendance.forEach((attendance) => {
+        if (
+          attendance.checkInTime ||
+          attendance.checkOutTime ||
+          attendance.status === "checked-in" ||
+          attendance.status === "checked-out" ||
+          attendance.status === "on-break"
+        ) {
+          const attendanceDate = new Date(
             attendance.checkInTime ||
             attendance.checkOutTime ||
-            attendance.status === "checked-in" ||
-            attendance.status === "checked-out" ||
-            attendance.status === "on-break"
-          ) {
+            attendance.createdAt
+          );
 
-            const attendanceDate =
-              new Date(
-                attendance.checkInTime ||
-                attendance.checkOutTime ||
-                attendance.createdAt
-              );
+          const dateKey = `${attendanceDate.getFullYear()}-${String(
+            attendanceDate.getMonth() + 1
+          ).padStart(2, "0")}-${String(attendanceDate.getDate()).padStart(2, "0")}`;
 
-            const dateKey =
-              `${attendanceDate.getFullYear()}-${String(
-                attendanceDate.getMonth() + 1
-              ).padStart(2, "0")}-${String(
-                attendanceDate.getDate()
-              ).padStart(2, "0")}`;
-
-            presentDates.add(dateKey);
-          }
+          presentDates.add(dateKey);
         }
-      );
+      });
 
-      const presentDays =
-        presentDates.size;
+      const presentDays = presentDates.size;
 
-      // =================================================
-      // ABSENT DAYS
-      // =================================================
-
-      const absentDays =
-        Math.max(
-          expectedWorkingDays -
-          presentDays,
-          0
-        );
-
-      // =================================================
-      // ATTENDANCE SCORE
-      // =================================================
+      const absentDays = Math.max(expectedWorkingDays - presentDays, 0);
 
       let workingDaysScore = 0;
-
-      if (
-        expectedWorkingDays > 0
-      ) {
-
-        workingDaysScore =
-          (
-            presentDays /
-            expectedWorkingDays
-          ) * 100;
+      if (expectedWorkingDays > 0) {
+        workingDaysScore = (presentDays / expectedWorkingDays) * 100;
       }
-
-      workingDaysScore =
-        Math.min(
-          Math.max(
-            workingDaysScore,
-            0
-          ),
-          100
-        );
-
-      // =================================================
-      // ACTUAL WORKING HOURS
-      // =================================================
+      workingDaysScore = Math.min(Math.max(workingDaysScore, 0), 100);
 
       let actualWorkingHours = 0;
+      employeeAttendance.forEach((attendance) => {
+        actualWorkingHours += Number(attendance.workingHours) || 0;
+      });
 
-      employeeAttendance.forEach(
-        (attendance) => {
-
-          actualWorkingHours +=
-            Number(
-              attendance.workingHours
-            ) || 0;
-        }
-      );
-
-      // =================================================
-      // EXPECTED WORKING HOURS
-      // =================================================
-
-      const expectedWorkingHours =
-        expectedWorkingDays *
-        shiftHours;
-
-      // =================================================
-      // WORKING HOURS SCORE
-      // =================================================
+      const expectedWorkingHours = expectedWorkingDays * shiftHours;
 
       let workingHoursScore = 0;
-
-      if (
-        expectedWorkingHours > 0
-      ) {
-
-        workingHoursScore =
-          (
-            actualWorkingHours /
-            expectedWorkingHours
-          ) * 100;
+      if (expectedWorkingHours > 0) {
+        workingHoursScore = (actualWorkingHours / expectedWorkingHours) * 100;
       }
+      workingHoursScore = Math.min(Math.max(workingHoursScore, 0), 100);
 
-      workingHoursScore =
-        Math.min(
-          Math.max(
-            workingHoursScore,
-            0
-          ),
-          100
-        );
-
-      // =================================================
-      // FIND EMPLOYEE SHIFTS
-      // =================================================
-      //
-      // Employee ke liye jitne bhi shift records hain
-      // unko collect karenge.
-      //
-      // =================================================
-
-      const employeeShifts =
-        shifts.filter(
-          (shift) =>
-            String(
-              shift.employeeAssignment?.employeeId
-            ) === employeeId ||
-            String(
-              shift.employeeId
-            ) === employeeId
-        );
-
-      // =================================================
-      // SHIFT DEBUG
-      // =================================================
-
-      console.log(
-        "EMPLOYEE SHIFT DEBUG:",
-        {
-          employeeId,
-          employeeName:
-            employee.name,
-          shiftCount:
-            employeeShifts.length,
-          shifts:
-            employeeShifts.map(
-              (shift) => ({
-                shiftType:
-                  shift.shiftType,
-
-                shiftName:
-                  shift.shiftName,
-
-                assignment:
-                  shift.employeeAssignment,
-
-                timeSlots:
-                  shift.timeSlots,
-              })
-            ),
-        }
+      const employeeShifts = shifts.filter(
+        (shift) =>
+          String(shift.employeeAssignment?.employeeId) === employeeId ||
+          String(shift.employeeId) === employeeId
       );
-
-      // =================================================
-      // FUNCTION TO GET SHIFT TIME
-      // =================================================
 
       const getShiftTimes = (shift) => {
-
         let startTime = null;
         let endTime = null;
+        if (!shift) return { startTime, endTime };
 
-        if (!shift) {
-          return {
-            startTime,
-            endTime,
-          };
-        }
+        startTime = shift.employeeAssignment?.startTime || null;
+        endTime = shift.employeeAssignment?.endTime || null;
 
-        // ---------------------------------------------
-        // 1. Employee assignment
-        // ---------------------------------------------
+        if (!startTime) startTime = shift.timeSlots?.[0]?.startTime || null;
+        if (!endTime) endTime = shift.timeSlots?.[0]?.endTime || null;
 
-        startTime =
-          shift.employeeAssignment?.startTime ||
-          null;
+        if (!startTime) startTime = shift.startTime || null;
+        if (!endTime) endTime = shift.endTime || null;
 
-        endTime =
-          shift.employeeAssignment?.endTime ||
-          null;
-
-        // ---------------------------------------------
-        // 2. Time slots
-        // ---------------------------------------------
-
-        if (!startTime) {
-
-          startTime =
-            shift.timeSlots?.[0]?.startTime ||
-            null;
-        }
-
-        if (!endTime) {
-
-          endTime =
-            shift.timeSlots?.[0]?.endTime ||
-            null;
-        }
-
-        // ---------------------------------------------
-        // 3. Legacy
-        // ---------------------------------------------
-
-        if (!startTime) {
-          startTime =
-            shift.startTime ||
-            null;
-        }
-
-        if (!endTime) {
-          endTime =
-            shift.endTime ||
-            null;
-        }
-
-        return {
-          startTime,
-          endTime,
-        };
+        return { startTime, endTime };
       };
 
-      // =================================================
-      // GET EMPLOYEE DEFAULT SHIFT
-      // =================================================
-
-      let defaultShift =
-        employeeShifts[0] || null;
-
-      let defaultShiftTimes =
-        getShiftTimes(
-          defaultShift
-        );
-
-      // =================================================
-      // DATE-WISE LATE DATA
-      // =================================================
+      const defaultShift = employeeShifts[0] || null;
+      const defaultShiftTimes = getShiftTimes(defaultShift);
 
       let lateComingDays = 0;
-
       const lateComingDetails = [];
+      const checkedLateDates = new Set();
 
-      // Prevent duplicate date
-      const checkedLateDates =
-        new Set();
+      employeeAttendance.forEach((attendance) => {
+        if (!attendance.checkInTime) return;
 
-      // =================================================
-      // PROCESS EVERY ATTENDANCE
-      // =================================================
+        const checkIn = new Date(attendance.checkInTime);
 
-      employeeAttendance.forEach(
-        (attendance) => {
+        const dateKey = `${checkIn.getFullYear()}-${String(
+          checkIn.getMonth() + 1
+        ).padStart(2, "0")}-${String(checkIn.getDate()).padStart(2, "0")}`;
 
-          // ---------------------------------------------
-          // Need check-in
-          // ---------------------------------------------
+        if (checkedLateDates.has(dateKey)) return;
+        checkedLateDates.add(dateKey);
 
-          if (
-            !attendance.checkInTime
-          ) {
-            return;
-          }
+        let selectedShift = defaultShift;
 
-          const checkIn =
-            new Date(
-              attendance.checkInTime
-            );
+        const matchingShift = employeeShifts
+          .filter((shift) => {
+            const effectiveFrom = shift.employeeAssignment?.effectiveFrom;
+            if (!effectiveFrom) return false;
+            return new Date(effectiveFrom) <= checkIn;
+          })
+          .sort((a, b) => {
+            const dateA = new Date(a.employeeAssignment?.effectiveFrom || 0);
+            const dateB = new Date(b.employeeAssignment?.effectiveFrom || 0);
+            return dateB - dateA;
+          });
 
-          // ---------------------------------------------
-          // DATE KEY
-          // ---------------------------------------------
-
-          const dateKey =
-            `${checkIn.getFullYear()}-${String(
-              checkIn.getMonth() + 1
-            ).padStart(2, "0")}-${String(
-              checkIn.getDate()
-            ).padStart(2, "0")}`;
-
-          // ---------------------------------------------
-          // DUPLICATE DATE
-          // ---------------------------------------------
-
-          if (
-            checkedLateDates.has(
-              dateKey
-            )
-          ) {
-            return;
-          }
-
-          checkedLateDates.add(
-            dateKey
-          );
-
-          // ---------------------------------------------
-          // FIND SHIFT FOR DATE
-          // ---------------------------------------------
-
-          let selectedShift =
-            defaultShift;
-
-          // ---------------------------------------------
-          // Check effectiveFrom
-          // ---------------------------------------------
-
-          const matchingShift =
-            employeeShifts
-              .filter((shift) => {
-
-                const effectiveFrom =
-                  shift.employeeAssignment
-                    ?.effectiveFrom;
-
-                if (!effectiveFrom) {
-                  return false;
-                }
-
-                const effectiveDate =
-                  new Date(
-                    effectiveFrom
-                  );
-
-                return (
-                  effectiveDate <=
-                  checkIn
-                );
-              })
-              .sort(
-                (a, b) => {
-
-                  const dateA =
-                    new Date(
-                      a.employeeAssignment
-                        ?.effectiveFrom ||
-                      0
-                    );
-
-                  const dateB =
-                    new Date(
-                      b.employeeAssignment
-                        ?.effectiveFrom ||
-                      0
-                    );
-
-                  return (
-                    dateB -
-                    dateA
-                  );
-                }
-              );
-
-          if (
-            matchingShift.length > 0
-          ) {
-
-            selectedShift =
-              matchingShift[0];
-          }
-
-          // ---------------------------------------------
-          // GET SHIFT TIME
-          // ---------------------------------------------
-
-          const {
-            startTime,
-            endTime,
-          } =
-            getShiftTimes(
-              selectedShift
-            );
-
-          // ---------------------------------------------
-          // NO SHIFT START TIME
-          // ---------------------------------------------
-
-          if (!startTime) {
-
-            console.log(
-              "⚠️ SHIFT START NOT FOUND:",
-              {
-                employeeId,
-                employeeName:
-                  employee.name,
-                date:
-                  dateKey,
-                selectedShift,
-              }
-            );
-
-            return;
-          }
-
-          // ---------------------------------------------
-          // TIME PARTS
-          // ---------------------------------------------
-
-          const timeParts =
-            String(
-              startTime
-            )
-              .split(":")
-              .map(Number);
-
-          if (
-            timeParts.length < 2 ||
-            Number.isNaN(
-              timeParts[0]
-            ) ||
-            Number.isNaN(
-              timeParts[1]
-            )
-          ) {
-
-            console.log(
-              "⚠️ INVALID SHIFT TIME:",
-              {
-                employeeId,
-                date:
-                  dateKey,
-                startTime,
-              }
-            );
-
-            return;
-          }
-
-          // ---------------------------------------------
-          // SHIFT START DATE
-          // ---------------------------------------------
-
-          const shiftStart =
-            new Date(checkIn);
-
-          shiftStart.setHours(
-            timeParts[0],
-            timeParts[1],
-            0,
-            0
-          );
-
-          // ---------------------------------------------
-          // 5 MINUTE GRACE
-          // ---------------------------------------------
-
-          const graceTime =
-            new Date(
-              shiftStart.getTime() +
-              5 * 60 * 1000
-            );
-
-          // ---------------------------------------------
-          // LATE CHECK
-          // ---------------------------------------------
-
-          if (
-            checkIn >
-            shiftStart
-          ) {
-
-            lateComingDays++;
-
-            const lateByMinutes =
-              Math.floor(
-                (
-                  checkIn -
-                  shiftStart
-                ) / 60000
-              );
-
-            const lateDetails = {
-
-              date:
-                dateKey,
-
-              shiftType:
-                selectedShift?.shiftType ||
-                employee.shiftType ||
-                null,
-
-              shiftName:
-                selectedShift?.shiftName ||
-                null,
-
-              shiftStartTime:
-                startTime,
-
-              shiftEndTime:
-                endTime,
-
-              shiftStart:
-                shiftStart.toISOString(),
-
-              graceTime:
-                graceTime.toISOString(),
-
-              checkInTime:
-                checkIn.toISOString(),
-
-              lateByMinutes,
-
-            };
-
-            lateComingDetails.push(
-              lateDetails
-            );
-
-            // -------------------------------------------
-            // DEBUG
-            // -------------------------------------------
-
-            console.log(
-              "🔴 LATE COMING:",
-              {
-                employeeId,
-                employeeName:
-                  employee.name,
-                ...lateDetails,
-              }
-            );
-          }
+        if (matchingShift.length > 0) {
+          selectedShift = matchingShift[0];
         }
-      );
 
-      // =================================================
-      // LATE COMING SCORE
-      // =================================================
+        const { startTime, endTime } = getShiftTimes(selectedShift);
+
+        if (!startTime) return;
+
+        const timeParts = String(startTime).split(":").map(Number);
+        if (
+          timeParts.length < 2 ||
+          Number.isNaN(timeParts[0]) ||
+          Number.isNaN(timeParts[1])
+        ) return;
+
+        const shiftStart = new Date(checkIn);
+        shiftStart.setHours(timeParts[0], timeParts[1], 0, 0);
+
+        const graceTime = new Date(shiftStart.getTime() + 5 * 60 * 1000);
+
+        if (checkIn > shiftStart) {
+          lateComingDays++;
+
+          const lateByMinutes = Math.floor((checkIn - shiftStart) / 60000);
+
+          lateComingDetails.push({
+            date: dateKey,
+            shiftType: selectedShift?.shiftType || employee.shiftType || null,
+            shiftName: selectedShift?.shiftName || null,
+            shiftStartTime: startTime,
+            shiftEndTime: endTime,
+            shiftStart: shiftStart.toISOString(),
+            graceTime: graceTime.toISOString(),
+            checkInTime: checkIn.toISOString(),
+            lateByMinutes,
+          });
+        }
+      });
 
       let lateComingScore = 100;
-
-      if (
-        expectedWorkingDays > 0
-      ) {
-
+      if (expectedWorkingDays > 0) {
         lateComingScore =
-          (
-            (
-              expectedWorkingDays -
-              lateComingDays
-            ) /
-            expectedWorkingDays
-          ) * 100;
+          ((expectedWorkingDays - lateComingDays) / expectedWorkingDays) * 100;
       }
+      lateComingScore = Math.max(0, Math.min(lateComingScore, 100));
 
-      lateComingScore =
-        Math.max(
-          0,
-          Math.min(
-            lateComingScore,
-            100
-          )
-        );
-
-      // =================================================
-      // TOTAL SCORE
-      // =================================================
-
-      const totalScore =
-        lateComingScore +
-        workingDaysScore +
-        workingHoursScore;
-
-      // =================================================
-      // FINAL PERFORMANCE
-      // =================================================
-
-      const performancePercentage =
-        totalScore / 3;
-
-      // =================================================
-      // RETURN EMPLOYEE
-      // =================================================
+      const totalScore = lateComingScore + workingDaysScore + workingHoursScore;
+      const performancePercentage = totalScore / 3;
 
       return {
-
-        employeeId:
-          employee._id,
-
-        employeeCode:
-          employee.employeeId,
-
-        name:
-          employee.name,
-
-        email:
-          employee.email,
-
-        department:
-          employee.department,
-
-        // ---------------------------------------------
-        // SHIFT
-        // ---------------------------------------------
-
-        shiftType:
-          employee.shiftType,
-
+        employeeId: employee._id,
+        employeeCode: employee.employeeId,
+        name: employee.name,
+        email: employee.email,
+        department: employee.department,
+        shiftType: employee.shiftType,
         shiftHours,
-
-        shiftStartTime:
-          defaultShiftTimes.startTime,
-
-        shiftEndTime:
-          defaultShiftTimes.endTime,
-
-        // ---------------------------------------------
-        // MONTH
-        // ---------------------------------------------
-
+        shiftStartTime: defaultShiftTimes.startTime,
+        shiftEndTime: defaultShiftTimes.endTime,
         month,
         year,
-
         totalDays,
-
-        // ---------------------------------------------
-        // DAYS
-        // ---------------------------------------------
-
         weekOffCount,
-
         expectedWorkingDays,
-
         presentDays,
-
         absentDays,
-
-        // ---------------------------------------------
-        // LATE
-        // ---------------------------------------------
-
         lateComingDays,
-
         lateComingDetails,
-
-        // ---------------------------------------------
-        // HOURS
-        // ---------------------------------------------
-
-        expectedWorkingHours:
-          Number(
-            expectedWorkingHours.toFixed(
-              2
-            )
-          ),
-
-        actualWorkingHours:
-          Number(
-            actualWorkingHours.toFixed(
-              2
-            )
-          ),
-
-        // ---------------------------------------------
-        // SCORES
-        // ---------------------------------------------
-
-        lateComingScore:
-          Number(
-            lateComingScore.toFixed(
-              2
-            )
-          ),
-
-        workingDaysScore:
-          Number(
-            workingDaysScore.toFixed(
-              2
-            )
-          ),
-
-        workingHoursScore:
-          Number(
-            workingHoursScore.toFixed(
-              2
-            )
-          ),
-
-        // ---------------------------------------------
-        // TOTAL
-        // ---------------------------------------------
-
-        totalScore:
-          Number(
-            totalScore.toFixed(
-              2
-            )
-          ),
-
-        performancePercentage:
-          Number(
-            performancePercentage.toFixed(
-              2
-            )
-          ),
+        expectedWorkingHours: Number(expectedWorkingHours.toFixed(2)),
+        actualWorkingHours: Number(actualWorkingHours.toFixed(2)),
+        lateComingScore: Number(lateComingScore.toFixed(2)),
+        workingDaysScore: Number(workingDaysScore.toFixed(2)),
+        workingHoursScore: Number(workingHoursScore.toFixed(2)),
+        totalScore: Number(totalScore.toFixed(2)),
+        performancePercentage: Number(performancePercentage.toFixed(2)),
       };
     });
 
-    // ==================================================
-    // SORT
-    // ==================================================
-
-    performers.sort(
-      (a, b) => {
-
-        // 1️⃣ Performance
-        if (
-          b.performancePercentage !==
-          a.performancePercentage
-        ) {
-
-          return (
-            b.performancePercentage -
-            a.performancePercentage
-          );
-        }
-
-        // 2️⃣ Present Days
-        if (
-          b.presentDays !==
-          a.presentDays
-        ) {
-
-          return (
-            b.presentDays -
-            a.presentDays
-          );
-        }
-
-        // 3️⃣ Working Hours
-        if (
-          b.actualWorkingHours !==
-          a.actualWorkingHours
-        ) {
-
-          return (
-            b.actualWorkingHours -
-            a.actualWorkingHours
-          );
-        }
-
-        // 4️⃣ Lowest Late
-        return (
-          a.lateComingDays -
-          b.lateComingDays
-        );
+    performers.sort((a, b) => {
+      if (b.performancePercentage !== a.performancePercentage) {
+        return b.performancePercentage - a.performancePercentage;
       }
-    );
-
-    // ==================================================
-    // RESPONSE
-    // ==================================================
+      if (b.presentDays !== a.presentDays) {
+        return b.presentDays - a.presentDays;
+      }
+      if (b.actualWorkingHours !== a.actualWorkingHours) {
+        return b.actualWorkingHours - a.actualWorkingHours;
+      }
+      return a.lateComingDays - b.lateComingDays;
+    });
 
     return res.status(200).json({
-
       success: true,
-
       month,
-
       year,
-
-      totalEmployees:
-        employees.length,
-
+      totalEmployees: employees.length,
       performers,
-
     });
 
   } catch (error) {
-
-    console.error(
-      "Get All Performers Error:",
-      error
-    );
-
+    console.error("Get All Performers Error:", error);
     return res.status(500).json({
-
       success: false,
-
-      message:
-        "Failed to get all performers",
-
-      error:
-        error.message,
-
+      message: "Failed to get all performers",
+      error: error.message,
     });
   }
 };
+
+
 // ======================================================
-// DEPARTMENT PERFORMANCE
+// DEPARTMENT PERFORMANCE (helper — summary me use hoga)
+// ======================================================
+
+const calculateDepartmentPerformance = (employees, attendanceRecords, shifts, month, year) => {
+  const totalDays = new Date(year, month, 0).getDate();
+
+  const departmentMap = {};
+
+  employees.forEach((employee) => {
+    const department = employee.department || "Other";
+    if (!departmentMap[department]) {
+      departmentMap[department] = [];
+    }
+    departmentMap[department].push(employee);
+  });
+
+  const departmentPerformance = Object.entries(departmentMap).map(
+    ([departmentName, departmentEmployees]) => {
+
+      let totalDepartmentScore = 0;
+      const totalDepartmentEmployees = departmentEmployees.length;
+      let totalPresentDays = 0;
+      let totalExpectedDays = 0;
+      let totalActualHours = 0;
+      let totalExpectedHours = 0;
+      let totalLateDays = 0;
+
+      departmentEmployees.forEach((employee) => {
+
+        const employeeId = String(employee.employeeId);
+
+        const employeeAttendance = attendanceRecords.filter(
+          (attendance) => String(attendance.employeeId) === employeeId
+        );
+
+        const shiftHours = Number(employee.shiftHours) > 0
+          ? Number(employee.shiftHours)
+          : 8;
+
+        let weekOffCount = Number(employee.weekOffCount) || 0;
+        weekOffCount = Math.min(Math.max(weekOffCount, 0), totalDays);
+
+        const expectedWorkingDays = Math.max(totalDays - weekOffCount, 0);
+
+        const presentDates = new Set();
+
+        employeeAttendance.forEach((attendance) => {
+          if (attendance.checkInTime || attendance.checkOutTime) {
+            const date = new Date(
+              attendance.checkInTime || attendance.checkOutTime
+            );
+            const dateKey = `${date.getFullYear()}-${String(
+              date.getMonth() + 1
+            ).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+            presentDates.add(dateKey);
+          }
+        });
+
+        const presentDays = presentDates.size;
+
+        let workingDaysScore = 0;
+        if (expectedWorkingDays > 0) {
+          workingDaysScore = (presentDays / expectedWorkingDays) * 100;
+        }
+        workingDaysScore = Math.min(workingDaysScore, 100);
+
+        let actualWorkingHours = 0;
+        employeeAttendance.forEach((attendance) => {
+          actualWorkingHours += Number(attendance.workingHours) || 0;
+        });
+
+        const expectedWorkingHours = expectedWorkingDays * shiftHours;
+
+        let workingHoursScore = 0;
+        if (expectedWorkingHours > 0) {
+          workingHoursScore = (actualWorkingHours / expectedWorkingHours) * 100;
+        }
+        workingHoursScore = Math.min(workingHoursScore, 100);
+
+        const employeeShift = shifts.find(
+          (shift) =>
+            String(shift.employeeAssignment?.employeeId) === employeeId ||
+            String(shift.employeeId) === employeeId
+        );
+
+        let shiftStartTime = null;
+        if (employeeShift) {
+          shiftStartTime =
+            employeeShift.employeeAssignment?.startTime ||
+            employeeShift.startTime ||
+            null;
+        }
+
+        let lateComingDays = 0;
+        if (shiftStartTime) {
+          employeeAttendance.forEach((attendance) => {
+            if (!attendance.checkInTime) return;
+
+            const checkIn = new Date(attendance.checkInTime);
+            const timeParts = shiftStartTime.split(":").map(Number);
+
+            const shiftStart = new Date(checkIn);
+            shiftStart.setHours(timeParts[0] || 0, timeParts[1] || 0, 0, 0);
+
+            if (checkIn > shiftStart) lateComingDays++;
+          });
+        }
+
+        let lateComingScore = 100;
+        if (expectedWorkingDays > 0) {
+          lateComingScore =
+            ((expectedWorkingDays - lateComingDays) / expectedWorkingDays) * 100;
+        }
+        lateComingScore = Math.max(0, Math.min(lateComingScore, 100));
+
+        const employeeTotalScore =
+          lateComingScore + workingDaysScore + workingHoursScore;
+
+        const employeePercentage = employeeTotalScore / 3;
+
+        totalDepartmentScore += employeePercentage;
+        totalPresentDays += presentDays;
+        totalExpectedDays += expectedWorkingDays;
+        totalActualHours += actualWorkingHours;
+        totalExpectedHours += expectedWorkingHours;
+        totalLateDays += lateComingDays;
+      });
+
+      const departmentRate = totalDepartmentEmployees > 0
+        ? totalDepartmentScore / totalDepartmentEmployees
+        : 0;
+
+      let color = "#10b981";
+      if (departmentRate >= 90) color = "#10b981";
+      else if (departmentRate >= 75) color = "#34d399";
+      else if (departmentRate >= 60) color = "#facc15";
+      else color = "#f97316";
+
+      return {
+        name: departmentName,
+        rate: Number(departmentRate.toFixed(2)),
+        color,
+        employeeCount: totalDepartmentEmployees,
+        presentDays: totalPresentDays,
+        expectedWorkingDays: totalExpectedDays,
+        actualWorkingHours: Number(totalActualHours.toFixed(2)),
+        expectedWorkingHours: Number(totalExpectedHours.toFixed(2)),
+        lateComingDays: totalLateDays,
+      };
+    }
+  );
+
+  departmentPerformance.sort((a, b) => b.rate - a.rate);
+  return departmentPerformance;
+};
+
+
+// ======================================================
+// GET DEPARTMENT PERFORMANCE (route ke liye — standalone)
 // ======================================================
 
 const getDepartmentPerformance = async (req, res) => {
   try {
     const now = new Date();
-
-    const month =
-      Number(req.query.month) || now.getMonth() + 1;
-
-    const year =
-      Number(req.query.year) || now.getFullYear();
-
-    // --------------------------------------------------
-    // DATE RANGE
-    // --------------------------------------------------
+    const month = Number(req.query.month) || now.getMonth() + 1;
+    const year = Number(req.query.year) || now.getFullYear();
 
     const startDate = new Date(year, month - 1, 1);
     startDate.setHours(0, 0, 0, 0);
@@ -1919,454 +720,39 @@ const getDepartmentPerformance = async (req, res) => {
     const endDate = new Date(year, month, 0);
     endDate.setHours(23, 59, 59, 999);
 
-    const totalDays = new Date(
-      year,
-      month,
-      0
-    ).getDate();
-
-    // --------------------------------------------------
-    // GET EMPLOYEES
-    // --------------------------------------------------
-
-    const employees = await Employee.find({
-      status: "active",
-    }).lean();
-
-    // --------------------------------------------------
-    // GET ATTENDANCE
-    // --------------------------------------------------
+    const employees = await Employee.find({ status: "active" }).lean();
 
     const attendanceRecords = await Attendance.find({
-      createdAt: {
-        $gte: startDate,
-        $lte: endDate,
-      },
+      createdAt: { $gte: startDate, $lte: endDate },
     }).lean();
 
-    // --------------------------------------------------
-    // GET SHIFTS
-    // --------------------------------------------------
-
-    const shifts = await Shift.find({
-      isActive: true,
-    }).lean();
-
-    // --------------------------------------------------
-    // GROUP EMPLOYEES BY DEPARTMENT
-    // --------------------------------------------------
-
-    const departmentMap = {};
-
-    employees.forEach((employee) => {
-      const department =
-        employee.department || "Other";
-
-      if (!departmentMap[department]) {
-        departmentMap[department] = [];
-      }
-
-      departmentMap[department].push(employee);
-    });
-
-    // --------------------------------------------------
-    // CALCULATE DEPARTMENT PERFORMANCE
-    // --------------------------------------------------
-
-    const departmentPerformance =
-      Object.entries(departmentMap).map(
-        ([departmentName, departmentEmployees]) => {
-
-          let totalDepartmentScore = 0;
-
-          let totalDepartmentEmployees =
-            departmentEmployees.length;
-
-          let totalPresentDays = 0;
-
-          let totalExpectedDays = 0;
-
-          let totalActualHours = 0;
-
-          let totalExpectedHours = 0;
-
-          let totalLateDays = 0;
-
-          // --------------------------------------------
-          // EACH EMPLOYEE
-          // --------------------------------------------
-
-          departmentEmployees.forEach((employee) => {
-
-            const employeeId =
-              String(employee.employeeId);
-
-            // Employee attendance
-            const employeeAttendance =
-              attendanceRecords.filter(
-                (attendance) =>
-                  String(attendance.employeeId) ===
-                  employeeId
-              );
-
-            // ------------------------------------------
-            // SHIFT HOURS
-            // ------------------------------------------
-
-            const shiftHours =
-              Number(employee.shiftHours) > 0
-                ? Number(employee.shiftHours)
-                : 8;
-
-            // ------------------------------------------
-            // WEEK OFF
-            // ------------------------------------------
-
-            let weekOffCount =
-              Number(employee.weekOffCount) || 0;
-
-            weekOffCount = Math.min(
-              Math.max(weekOffCount, 0),
-              totalDays
-            );
-
-            // ------------------------------------------
-            // EXPECTED WORKING DAYS
-            // ------------------------------------------
-
-            const expectedWorkingDays =
-              Math.max(
-                totalDays - weekOffCount,
-                0
-              );
-
-            // ------------------------------------------
-            // PRESENT DAYS
-            // ------------------------------------------
-
-            const presentDates = new Set();
-
-            employeeAttendance.forEach(
-              (attendance) => {
-
-                if (
-                  attendance.checkInTime ||
-                  attendance.checkOutTime
-                ) {
-                  const date = new Date(
-                    attendance.checkInTime ||
-                    attendance.checkOutTime
-                  );
-
-                  const dateKey =
-                    `${date.getFullYear()}-${String(
-                      date.getMonth() + 1
-                    ).padStart(2, "0")}-${String(
-                      date.getDate()
-                    ).padStart(2, "0")}`;
-
-                  presentDates.add(dateKey);
-                }
-              }
-            );
-
-            const presentDays =
-              presentDates.size;
-
-            // ------------------------------------------
-            // WORKING DAYS SCORE
-            // ------------------------------------------
-
-            let workingDaysScore = 0;
-
-            if (expectedWorkingDays > 0) {
-              workingDaysScore =
-                (presentDays /
-                  expectedWorkingDays) *
-                100;
-            }
-
-            workingDaysScore =
-              Math.min(
-                workingDaysScore,
-                100
-              );
-
-            // ------------------------------------------
-            // ACTUAL WORKING HOURS
-            // ------------------------------------------
-
-            let actualWorkingHours = 0;
-
-            employeeAttendance.forEach(
-              (attendance) => {
-                actualWorkingHours +=
-                  Number(
-                    attendance.workingHours
-                  ) || 0;
-              }
-            );
-
-            // ------------------------------------------
-            // EXPECTED WORKING HOURS
-            // ------------------------------------------
-
-            const expectedWorkingHours =
-              expectedWorkingDays *
-              shiftHours;
-
-            // ------------------------------------------
-            // WORKING HOURS SCORE
-            // ------------------------------------------
-
-            let workingHoursScore = 0;
-
-            if (expectedWorkingHours > 0) {
-              workingHoursScore =
-                (actualWorkingHours /
-                  expectedWorkingHours) *
-                100;
-            }
-
-            workingHoursScore =
-              Math.min(
-                workingHoursScore,
-                100
-              );
-
-            // ------------------------------------------
-            // FIND EMPLOYEE SHIFT
-            // ------------------------------------------
-
-            const employeeShift =
-              shifts.find(
-                (shift) =>
-                  String(
-                    shift.employeeAssignment
-                      ?.employeeId
-                  ) === employeeId ||
-                  String(
-                    shift.employeeId
-                  ) === employeeId
-              );
-
-            let shiftStartTime = null;
-
-            if (employeeShift) {
-              shiftStartTime =
-                employeeShift
-                  .employeeAssignment
-                  ?.startTime ||
-                employeeShift.startTime ||
-                null;
-            }
-
-            // ------------------------------------------
-            // LATE COMING
-            // ------------------------------------------
-
-            let lateComingDays = 0;
-
-            if (shiftStartTime) {
-
-              employeeAttendance.forEach(
-                (attendance) => {
-
-                  if (
-                    !attendance.checkInTime
-                  ) {
-                    return;
-                  }
-
-                  const checkIn =
-                    new Date(
-                      attendance.checkInTime
-                    );
-
-                  const timeParts =
-                    shiftStartTime
-                      .split(":")
-                      .map(Number);
-
-                  const shiftStart =
-                    new Date(checkIn);
-
-                  shiftStart.setHours(
-                    timeParts[0] || 0,
-                    timeParts[1] || 0,
-                    0,
-                    0
-                  );
-
-                  if (
-                    checkIn > shiftStart
-                  ) {
-                    lateComingDays++;
-                  }
-                }
-              );
-            }
-
-            // ------------------------------------------
-            // LATE SCORE
-            // ------------------------------------------
-
-            let lateComingScore = 100;
-
-            if (
-              expectedWorkingDays > 0
-            ) {
-              lateComingScore =
-                (
-                  (
-                    expectedWorkingDays -
-                    lateComingDays
-                  ) /
-                  expectedWorkingDays
-                ) *
-                100;
-            }
-
-            lateComingScore =
-              Math.max(
-                0,
-                Math.min(
-                  lateComingScore,
-                  100
-                )
-              );
-
-            // ------------------------------------------
-            // EMPLOYEE TOTAL SCORE
-            // ------------------------------------------
-
-            const employeeTotalScore =
-              lateComingScore +
-              workingDaysScore +
-              workingHoursScore;
-
-            const employeePercentage =
-              employeeTotalScore / 3;
-
-            // ------------------------------------------
-            // DEPARTMENT TOTALS
-            // ------------------------------------------
-
-            totalDepartmentScore +=
-              employeePercentage;
-
-            totalPresentDays +=
-              presentDays;
-
-            totalExpectedDays +=
-              expectedWorkingDays;
-
-            totalActualHours +=
-              actualWorkingHours;
-
-            totalExpectedHours +=
-              expectedWorkingHours;
-
-            totalLateDays +=
-              lateComingDays;
-          });
-
-          // --------------------------------------------
-          // DEPARTMENT FINAL RATE
-          // --------------------------------------------
-
-          const departmentRate =
-            totalDepartmentEmployees > 0
-              ? totalDepartmentScore /
-                totalDepartmentEmployees
-              : 0;
-
-          // --------------------------------------------
-          // COLOR
-          // --------------------------------------------
-
-          let color = "#10b981";
-
-          if (departmentRate >= 90) {
-            color = "#10b981";
-          } else if (departmentRate >= 75) {
-            color = "#34d399";
-          } else if (departmentRate >= 60) {
-            color = "#facc15";
-          } else {
-            color = "#f97316";
-          }
-
-          return {
-            name: departmentName,
-
-            rate: Number(
-              departmentRate.toFixed(2)
-            ),
-
-            color,
-
-            employeeCount:
-              totalDepartmentEmployees,
-
-            presentDays:
-              totalPresentDays,
-
-            expectedWorkingDays:
-              totalExpectedDays,
-
-            actualWorkingHours:
-              Number(
-                totalActualHours.toFixed(2)
-              ),
-
-            expectedWorkingHours:
-              Number(
-                totalExpectedHours.toFixed(2)
-              ),
-
-            lateComingDays:
-              totalLateDays,
-          };
-        }
-      );
-
-    // --------------------------------------------------
-    // SORT HIGH → LOW
-    // --------------------------------------------------
-
-    departmentPerformance.sort(
-      (a, b) => b.rate - a.rate
+    const shifts = await Shift.find({ isActive: true }).lean();
+
+    const departmentPerformance = calculateDepartmentPerformance(
+      employees,
+      attendanceRecords,
+      shifts,
+      month,
+      year
     );
-
-    // --------------------------------------------------
-    // RESPONSE
-    // --------------------------------------------------
 
     return res.status(200).json({
       success: true,
-
       month,
       year,
-
       departmentPerformance,
     });
 
   } catch (error) {
-
-    console.error(
-      "Department Performance Error:",
-      error
-    );
-
+    console.error("Department Performance Error:", error);
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to calculate department performance",
+      message: "Failed to calculate department performance",
       error: error.message,
     });
   }
 };
+
 
 // ======================================================
 // GET ALL DEPARTMENTS
@@ -2376,16 +762,10 @@ const getAllDepartment = async (req, res) => {
   try {
     const departments = await Employee.distinct("department", {
       status: "active",
-      department: {
-        $exists: true,
-        $ne: "",
-        $ne: null,
-      },
+      department: { $exists: true, $ne: "", $ne: null },
     });
 
-    const allDepartments = departments
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b));
+    const allDepartments = departments.filter(Boolean).sort((a, b) => a.localeCompare(b));
 
     return res.status(200).json({
       success: true,
@@ -2394,11 +774,7 @@ const getAllDepartment = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(
-      "Get All Departments Error:",
-      error
-    );
-
+    console.error("Get All Departments Error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to get departments",
@@ -2407,399 +783,168 @@ const getAllDepartment = async (req, res) => {
   }
 };
 
+
+// ======================================================
+// GET EMPLOYEE PERFORMANCE
+// ======================================================
+
 const getEmployeePerformance = async (req, res) => {
   try {
     const { employeeId } = req.params;
-
     if (!employeeId) {
-      return res.status(400).json({
-        success: false,
-        message: "Employee ID is required",
-      });
+      return res.status(400).json({ success: false, message: "Employee ID is required" });
     }
 
     const now = new Date();
+    const month = Number(req.query.month) || now.getMonth() + 1;
+    const year = Number(req.query.year) || now.getFullYear();
 
-    const month =
-      Number(req.query.month) || now.getMonth() + 1;
-
-    const year =
-      Number(req.query.year) || now.getFullYear();
-
-    // ================================
-    // DATE RANGE
-    // ================================
     const startDate = new Date(year, month - 1, 1);
     startDate.setHours(0, 0, 0, 0);
 
     const endDate = new Date(year, month, 0);
     endDate.setHours(23, 59, 59, 999);
 
-    const totalDays = new Date(
-      year,
-      month,
-      0
-    ).getDate();
+    const totalDays = new Date(year, month, 0).getDate();
 
-    // ================================
-    // FIND EMPLOYEE
-    // Supports Mongo _id OR employeeId
-    // ================================
     let employee = null;
-
     if (mongoose.Types.ObjectId.isValid(employeeId)) {
       employee = await Employee.findById(employeeId).lean();
     }
-
     if (!employee) {
-      employee = await Employee.findOne({
-        employeeId: employeeId,
-      }).lean();
+      employee = await Employee.findOne({ employeeId }).lean();
+    }
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found" });
     }
 
-    if (!employee) {
-      return res.status(404).json({
-        success: false,
-        message: "Employee not found",
-      });
-    }
-
-    // ================================
-    // ATTENDANCE
-    // ================================
     const attendanceRecords = await Attendance.find({
-      createdAt: {
-        $gte: startDate,
-        $lte: endDate,
-      },
+      createdAt: { $gte: startDate, $lte: endDate },
     }).lean();
 
-    // ================================
-    // SHIFTS
-    // ================================
-    const shifts = await Shift.find({
-      isActive: true,
-    }).lean();
+    const shifts = await Shift.find({ isActive: true }).lean();
 
-    const employeeCode = String(
-      employee.employeeId
-    );
+    const employeeCode = String(employee.employeeId);
+    const employeeMongoId = String(employee._id);
 
-    const employeeMongoId = String(
-      employee._id
-    );
-
-    // ================================
-    // EMPLOYEE ATTENDANCE
-    // ================================
-    const employeeAttendance =
-      attendanceRecords.filter((attendance) => {
-
-        const attendanceEmployeeId =
-          String(attendance.employeeId);
-
-        return (
-          attendanceEmployeeId === employeeCode ||
-          attendanceEmployeeId === employeeMongoId
-        );
-      });
-
-    // ================================
-    // SHIFT HOURS
-    // ================================
-    let shiftHours =
-      Number(employee.shiftHours);
-
-    if (!shiftHours || shiftHours <= 0) {
-      shiftHours = 8;
-    }
-
-    // ================================
-    // WEEK OFF
-    // ================================
-    let weekOffCount =
-      Number(employee.weekOffCount) || 0;
-
-    weekOffCount = Math.min(
-      Math.max(weekOffCount, 0),
-      totalDays
-    );
-
-    // ================================
-    // EXPECTED WORKING DAYS
-    // ================================
-    const expectedWorkingDays =
-      Math.max(
-        totalDays - weekOffCount,
-        0
+    const employeeAttendance = attendanceRecords.filter((attendance) => {
+      const attendanceEmployeeId = String(attendance.employeeId);
+      return (
+        attendanceEmployeeId === employeeCode ||
+        attendanceEmployeeId === employeeMongoId
       );
+    });
 
-    // ================================
-    // PRESENT DAYS
-    // ================================
+    let shiftHours = Number(employee.shiftHours);
+    if (!shiftHours || shiftHours <= 0) shiftHours = 8;
+
+    let weekOffCount = Number(employee.weekOffCount) || 0;
+    weekOffCount = Math.min(Math.max(weekOffCount, 0), totalDays);
+
+    const expectedWorkingDays = Math.max(totalDays - weekOffCount, 0);
+
     const presentDates = new Set();
 
-    employeeAttendance.forEach(
-      (attendance) => {
-
-        if (
+    employeeAttendance.forEach((attendance) => {
+      if (
+        attendance.checkInTime ||
+        attendance.checkOutTime ||
+        attendance.status === "checked-in" ||
+        attendance.status === "checked-out" ||
+        attendance.status === "on-break"
+      ) {
+        const attendanceDate = new Date(
           attendance.checkInTime ||
           attendance.checkOutTime ||
-          attendance.status === "checked-in" ||
-          attendance.status === "checked-out" ||
-          attendance.status === "on-break"
-        ) {
+          attendance.createdAt
+        );
 
-          const attendanceDate =
-            new Date(
-              attendance.checkInTime ||
-              attendance.checkOutTime ||
-              attendance.createdAt
-            );
+        const dateKey = `${attendanceDate.getFullYear()}-${String(
+          attendanceDate.getMonth() + 1
+        ).padStart(2, "0")}-${String(attendanceDate.getDate()).padStart(2, "0")}`;
 
-          const dateKey =
-            `${attendanceDate.getFullYear()}-${String(
-              attendanceDate.getMonth() + 1
-            ).padStart(2, "0")}-${String(
-              attendanceDate.getDate()
-            ).padStart(2, "0")}`;
-
-          presentDates.add(dateKey);
-        }
+        presentDates.add(dateKey);
       }
-    );
+    });
 
-    const presentDays =
-      presentDates.size;
+    const presentDays = presentDates.size;
+    const absentDays = Math.max(expectedWorkingDays - presentDays, 0);
 
-    // ================================
-    // ABSENT DAYS
-    // ================================
-    const absentDays =
-      Math.max(
-        expectedWorkingDays - presentDays,
-        0
-      );
-
-    // ================================
-    // ATTENDANCE SCORE
-    // ================================
     let workingDaysScore = 0;
-
     if (expectedWorkingDays > 0) {
-      workingDaysScore =
-        (
-          presentDays /
-          expectedWorkingDays
-        ) * 100;
+      workingDaysScore = (presentDays / expectedWorkingDays) * 100;
     }
+    workingDaysScore = Math.min(Math.max(workingDaysScore, 0), 100);
 
-    workingDaysScore =
-      Math.min(
-        Math.max(
-          workingDaysScore,
-          0
-        ),
-        100
-      );
-
-    // ================================
-    // ACTUAL WORKING HOURS
-    // ================================
     let actualWorkingHours = 0;
+    employeeAttendance.forEach((attendance) => {
+      actualWorkingHours += Number(attendance.workingHours) || 0;
+    });
 
-    employeeAttendance.forEach(
-      (attendance) => {
-        actualWorkingHours +=
-          Number(
-            attendance.workingHours
-          ) || 0;
-      }
-    );
+    const expectedWorkingHours = expectedWorkingDays * shiftHours;
 
-    // ================================
-    // EXPECTED WORKING HOURS
-    // ================================
-    const expectedWorkingHours =
-      expectedWorkingDays *
-      shiftHours;
-
-    // ================================
-    // WORKING HOURS SCORE
-    // ================================
     let workingHoursScore = 0;
-
     if (expectedWorkingHours > 0) {
-      workingHoursScore =
-        (
-          actualWorkingHours /
-          expectedWorkingHours
-        ) * 100;
+      workingHoursScore = (actualWorkingHours / expectedWorkingHours) * 100;
     }
+    workingHoursScore = Math.min(Math.max(workingHoursScore, 0), 100);
 
-    workingHoursScore =
-      Math.min(
-        Math.max(
-          workingHoursScore,
-          0
-        ),
-        100
+    const employeeShift = shifts.find((shift) => {
+      const assignedEmployee = String(shift.employeeAssignment?.employeeId);
+      const shiftEmployee = String(shift.employeeId);
+      return (
+        assignedEmployee === employeeCode ||
+        assignedEmployee === employeeMongoId ||
+        shiftEmployee === employeeCode ||
+        shiftEmployee === employeeMongoId
       );
+    });
 
-    // ================================
-    // FIND SHIFT
-    // ================================
-    const employeeShift =
-      shifts.find(
-        (shift) => {
-
-          const assignedEmployee =
-            String(
-              shift.employeeAssignment
-                ?.employeeId
-            );
-
-          const shiftEmployee =
-            String(
-              shift.employeeId
-            );
-
-          return (
-            assignedEmployee ===
-              employeeCode ||
-            assignedEmployee ===
-              employeeMongoId ||
-            shiftEmployee ===
-              employeeCode ||
-            shiftEmployee ===
-              employeeMongoId
-          );
-        }
-      );
-
-    // ================================
-    // SHIFT START
-    // ================================
     let shiftStartTime = null;
-
     if (employeeShift) {
       shiftStartTime =
-        employeeShift
-          .employeeAssignment
-          ?.startTime ||
+        employeeShift.employeeAssignment?.startTime ||
         employeeShift.startTime ||
         null;
     }
 
-    // ================================
-    // LATE COMING
-    // ================================
     let lateComingDays = 0;
-
-    const checkedLateDates =
-      new Set();
+    const checkedLateDates = new Set();
 
     if (shiftStartTime) {
+      employeeAttendance.forEach((attendance) => {
+        if (!attendance.checkInTime) return;
 
-      employeeAttendance.forEach(
-        (attendance) => {
+        const checkIn = new Date(attendance.checkInTime);
 
-          if (!attendance.checkInTime) {
-            return;
-          }
+        const dateKey = `${checkIn.getFullYear()}-${String(
+          checkIn.getMonth() + 1
+        ).padStart(2, "0")}-${String(checkIn.getDate()).padStart(2, "0")}`;
 
-          const checkIn =
-            new Date(
-              attendance.checkInTime
-            );
+        if (checkedLateDates.has(dateKey)) return;
+        checkedLateDates.add(dateKey);
 
-          const dateKey =
-            `${checkIn.getFullYear()}-${String(
-              checkIn.getMonth() + 1
-            ).padStart(2, "0")}-${String(
-              checkIn.getDate()
-            ).padStart(2, "0")}`;
+        const timeParts = String(shiftStartTime).split(":").map(Number);
 
-          if (
-            checkedLateDates.has(
-              dateKey
-            )
-          ) {
-            return;
-          }
+        const shiftStart = new Date(checkIn);
+        shiftStart.setHours(timeParts[0] || 0, timeParts[1] || 0, 0, 0);
 
-          checkedLateDates.add(
-            dateKey
-          );
-
-          const timeParts =
-            String(
-              shiftStartTime
-            )
-              .split(":")
-              .map(Number);
-
-          const shiftStart =
-            new Date(checkIn);
-
-          shiftStart.setHours(
-            timeParts[0] || 0,
-            timeParts[1] || 0,
-            0,
-            0
-          );
-
-          if (
-            checkIn > shiftStart
-          ) {
-            lateComingDays++;
-          }
-        }
-      );
+        if (checkIn > shiftStart) lateComingDays++;
+      });
     }
 
-    // ================================
-    // LATE SCORE
-    // ================================
     let lateComingScore = 100;
-
     if (expectedWorkingDays > 0) {
       lateComingScore =
-        (
-          (
-            expectedWorkingDays -
-            lateComingDays
-          ) /
-          expectedWorkingDays
-        ) * 100;
+        ((expectedWorkingDays - lateComingDays) / expectedWorkingDays) * 100;
     }
+    lateComingScore = Math.max(0, Math.min(lateComingScore, 100));
 
-    lateComingScore =
-      Math.max(
-        0,
-        Math.min(
-          lateComingScore,
-          100
-        )
-      );
+    const totalScore = lateComingScore + workingDaysScore + workingHoursScore;
+    const performancePercentage = totalScore / 3;
 
-    // ================================
-    // TOTAL SCORE
-    // ================================
-    const totalScore =
-      lateComingScore +
-      workingDaysScore +
-      workingHoursScore;
-
-    const performancePercentage =
-      totalScore / 3;
-
-    // ================================
-    // RESPONSE
-    // ================================
     return res.status(200).json({
       success: true,
-
       employee: {
         employeeId: employee._id,
         employeeCode: employee.employeeId,
@@ -2807,80 +952,484 @@ const getEmployeePerformance = async (req, res) => {
         email: employee.email,
         department: employee.department,
       },
-
       month,
       year,
-
       totalDays,
-
       weekOffCount,
-
       expectedWorkingDays,
-
       presentDays,
-
       absentDays,
-
       lateComingDays,
-
-      expectedWorkingHours:
-        Number(
-          expectedWorkingHours.toFixed(2)
-        ),
-
-      actualWorkingHours:
-        Number(
-          actualWorkingHours.toFixed(2)
-        ),
-
-      lateComingScore:
-        Number(
-          lateComingScore.toFixed(2)
-        ),
-
-      workingDaysScore:
-        Number(
-          workingDaysScore.toFixed(2)
-        ),
-
-      workingHoursScore:
-        Number(
-          workingHoursScore.toFixed(2)
-        ),
-
-      totalScore:
-        Number(
-          totalScore.toFixed(2)
-        ),
-
-      performancePercentage:
-        Number(
-          performancePercentage.toFixed(2)
-        ),
-
-      shiftType:
-        employee.shiftType,
-
+      expectedWorkingHours: Number(expectedWorkingHours.toFixed(2)),
+      actualWorkingHours: Number(actualWorkingHours.toFixed(2)),
+      lateComingScore: Number(lateComingScore.toFixed(2)),
+      workingDaysScore: Number(workingDaysScore.toFixed(2)),
+      workingHoursScore: Number(workingHoursScore.toFixed(2)),
+      totalScore: Number(totalScore.toFixed(2)),
+      performancePercentage: Number(performancePercentage.toFixed(2)),
+      shiftType: employee.shiftType,
       shiftHours,
-
       shiftStartTime,
     });
 
   } catch (error) {
-
-    console.error(
-      "Get Employee Performance Error:",
-      error
-    );
-
+    console.error("Get Employee Performance Error:", error);
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to fetch employee performance",
+      message: "Failed to fetch employee performance",
       error: error.message,
     });
   }
 };
+
+
+// ======================================================
+// ✅ COMBINED DASHBOARD SUMMARY — ek hi API me SAB data
+// ======================================================
+
+const getDashboardSummary = async (req, res) => {
+  try {
+    const now = new Date();
+    const month = Number(req.query.month) || now.getMonth() + 1;
+    const year = Number(req.query.year) || now.getFullYear();
+
+    // Month range (Date objects — Attendance ke liye)
+    const startOfMonth = new Date(year, month - 1, 1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const endOfMonth = new Date(year, month, 0);
+    endOfMonth.setHours(23, 59, 59, 999);
+
+    const totalDays = new Date(year, month, 0).getDate();
+
+    // ─── PARALLEL FETCH ALL DATA ───
+    const [
+      employees,
+      masterShifts,
+      assignments,
+      attendanceRecords,
+      leaves,
+      allActiveShifts
+    ] = await Promise.all([
+      Employee.find({ status: "active" }).lean(),
+      Shift.find({ isMasterShift: true, isActive: true }).lean(),
+      Shift.find({
+        isMasterShift: false,
+        isActive: true,
+        "employeeAssignment.employeeId": { $exists: true }
+      }).lean(),
+      Attendance.find({
+        createdAt: { $gte: startOfMonth, $lte: endOfMonth }
+      }).lean(),
+      // ✅ SIMPLE: Saari leaves laao (jaise /leaves/leaves endpoint me hota hai)
+      Leave.find({}).sort({ createdAt: -1 }).lean(),
+      Shift.find({ isActive: true }).lean()
+    ]);
+
+    console.log(`✅ [SUMMARY] Leaves fetched: ${leaves.length}`);
+
+    // ─── HELPER: date key ───
+    const toDateKey = (d) => {
+      if (!d) return "";
+      const date = new Date(d);
+      if (isNaN(date.getTime())) return "";
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    };
+
+    // ─── HELPER: employee shift timing ───
+    const getEmployeeShift = (employeeId) => {
+      const assignment = assignments.find(
+        (a) => String(a.employeeAssignment?.employeeId) === String(employeeId)
+      );
+      if (!assignment) return { start: "09:00", end: "18:00", grace: 5 };
+
+      const master = masterShifts.find((m) => m.shiftType === assignment.shiftType);
+      if (!master || !master.timeSlots?.length) {
+        return { start: "09:00", end: "18:00", grace: 5 };
+      }
+
+      const slot = master.timeSlots[0];
+      const [start, end] = (slot.timeRange || "").split("-").map((s) => s.trim());
+      return {
+        start: start || "09:00",
+        end: end || "18:00",
+        grace: master.graceMinutes ?? 5
+      };
+    };
+
+    // ─── LATEST WORKING DATE ───
+    const monthAttendance = attendanceRecords.filter((r) => r.checkInTime);
+    const uniqueDates = Array.from(
+      new Set(monthAttendance.map((r) => toDateKey(r.checkInTime)))
+    ).sort();
+    const latestDate =
+      uniqueDates.length > 0
+        ? uniqueDates[uniqueDates.length - 1]
+        : toDateKey(new Date());
+
+    // ─── TODAY COUNTS ───
+    const todayRecords = attendanceRecords.filter(
+      (r) => r.checkInTime && toDateKey(r.checkInTime) === latestDate
+    );
+
+    const presentIds = new Set(
+      todayRecords.map((r) =>
+        String(
+          typeof r.employeeId === "object"
+            ? r.employeeId.employeeId || r.employeeId._id
+            : r.employeeId
+        )
+      )
+    );
+
+    const onTimeIds = new Set();
+    const lateIds = new Set();
+    const forgotCheckoutIds = new Set();
+
+    todayRecords.forEach((r) => {
+      const empId = String(
+        typeof r.employeeId === "object"
+          ? r.employeeId.employeeId || r.employeeId._id
+          : r.employeeId
+      );
+      const shift = getEmployeeShift(empId);
+      const checkIn = new Date(r.checkInTime);
+
+      const match = shift.start.match(/(\d{1,2}):(\d{2})/);
+      const [sh, sm] = match ? match.slice(1).map(Number) : [9, 0];
+
+      const shiftStart = new Date(checkIn);
+      shiftStart.setHours(sh, sm, 0, 0);
+      const graceTime = new Date(shiftStart.getTime() + (shift.grace || 5) * 60000);
+
+      if (checkIn <= graceTime) onTimeIds.add(empId);
+      else lateIds.add(empId);
+
+      if (!r.checkOutTime) forgotCheckoutIds.add(empId);
+    });
+
+    const totalEmployees = employees.length;
+
+    // ─── ON LEAVE TODAY ───
+    const onLeaveIds = new Set();
+    const targetDate = new Date(latestDate);
+    targetDate.setHours(0, 0, 0, 0);
+
+    leaves.forEach((l) => {
+      if (l.status !== "approved" && l.status !== "manager_approved") return;
+
+      const start = new Date(l.startDate || l.date);
+      const end = new Date(l.endDate || l.startDate || l.date);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+
+      if (targetDate >= start && targetDate <= end) {
+        onLeaveIds.add(
+          String(
+            typeof l.employeeId === "object"
+              ? l.employeeId.employeeId || l.employeeId._id
+              : l.employeeId
+          )
+        );
+      }
+    });
+
+    // ─── BIRTHDAYS TODAY ───
+    const today = new Date();
+    const todayMD = `${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const birthdaysToday = employees
+      .filter((e) => {
+        if (!e.dateOfBirth) return false;
+        const d = new Date(e.dateOfBirth);
+        const md = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        return md === todayMD;
+      })
+      .map((e) => ({
+        employeeId: e.employeeId,
+        name: e.name,
+        email: e.email
+      }));
+
+    // ─── MONTHLY TREND (12 months of the year) ───
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd = new Date(year, 11, 31, 23, 59, 59);
+
+    const [allAttendanceForYear, allLeavesForYear] = await Promise.all([
+      Attendance.find({
+        createdAt: { $gte: yearStart, $lte: yearEnd }
+      }).lean(),
+      // ✅ Simple: saari approved leaves laao
+      Leave.find({
+        status: { $in: ["approved", "manager_approved"] }
+      }).lean()
+    ]);
+
+    const monthlyTrend = [];
+    for (let m = 0; m < 12; m++) {
+      const daysInMonth = new Date(year, m + 1, 0).getDate();
+      let workingDays = 0;
+      for (let d = 1; d <= daysInMonth; d++) {
+        if (new Date(year, m, d).getDay() !== 0) workingDays++;
+      }
+
+      const totalPossible = totalEmployees * Math.max(workingDays, 1);
+      const present = allAttendanceForYear.filter((r) => {
+        if (!r.checkInTime) return false;
+        const d = new Date(r.checkInTime);
+        return d.getFullYear() === year && d.getMonth() === m;
+      }).length;
+
+      const rate = totalPossible > 0 ? Math.min(100, Math.round((present / totalPossible) * 100)) : 0;
+
+      // ✅ Simple month filter
+      const monthLeaves = allLeavesForYear.filter((l) => {
+        const d = new Date(l.startDate || l.date);
+        return d.getFullYear() === year && d.getMonth() === m;
+      });
+
+      const leaveDetailMap = {};
+      let totalLeaveDays = 0;
+      monthLeaves.forEach((l) => {
+        const name = l.employeeName || "Unknown";
+        const days = l.days || 1;
+        totalLeaveDays += days;
+        leaveDetailMap[name] = (leaveDetailMap[name] || 0) + days;
+      });
+
+      monthlyTrend.push({
+        month: monthNames[m],
+        rate,
+        leavesCount: monthLeaves.length,
+        leavesDays: totalLeaveDays,
+        leaveDetails: Object.entries(leaveDetailMap)
+          .map(([name, days]) => ({ name, days }))
+          .sort((a, b) => b.days - a.days)
+      });
+    }
+
+    // ─── HEATMAP GRID ───
+    const firstDay = new Date(year, month - 1, 1).getDay();
+    const firstDayIndex = firstDay === 0 ? 6 : firstDay - 1;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const heatmapGrid = [];
+    let dayCounter = 1;
+
+    for (let w = 0; w < 5; w++) {
+      const week = [];
+      for (let d = 0; d < 7; d++) {
+        const idx = w * 7 + d;
+        if (idx < firstDayIndex || dayCounter > daysInMonth) {
+          week.push({ day: null, rate: 0 });
+        } else {
+          const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(dayCounter).padStart(2, "0")}`;
+          const pres = new Set(
+            attendanceRecords
+              .filter((r) => r.checkInTime && toDateKey(r.checkInTime) === dateStr)
+              .map((r) =>
+                String(
+                  typeof r.employeeId === "object"
+                    ? r.employeeId.employeeId || r.employeeId._id
+                    : r.employeeId
+                )
+              )
+          ).size;
+          const rate = totalEmployees > 0 ? (pres / totalEmployees) * 100 : 0;
+          week.push({ day: dayCounter, rate, dateStr });
+          dayCounter++;
+        }
+      }
+      heatmapGrid.push(week);
+    }
+
+    // ─── ✅ TOP PERFORMERS ───
+    const performersData = employees.map((employee) => {
+      const employeeId = String(employee.employeeId);
+      const employeeAttendance = attendanceRecords.filter(
+        (attendance) => String(attendance.employeeId) === employeeId
+      );
+
+      let shiftHours = Number(employee.shiftHours);
+      if (!shiftHours || shiftHours <= 0) shiftHours = 8;
+
+      let weekOffCount = Number(employee.weekOffCount) || 0;
+      weekOffCount = Math.min(Math.max(weekOffCount, 0), totalDays);
+
+      const expectedWorkingDays = Math.max(totalDays - weekOffCount, 0);
+
+      const presentDates = new Set();
+      employeeAttendance.forEach((attendance) => {
+        if (
+          attendance.checkInTime ||
+          attendance.checkOutTime ||
+          attendance.status === "checked-in" ||
+          attendance.status === "checked-out" ||
+          attendance.status === "on-break"
+        ) {
+          const attendanceDate = new Date(
+            attendance.checkInTime ||
+            attendance.checkOutTime ||
+            attendance.createdAt
+          );
+          const dateKey = toDateKey(attendanceDate);
+          presentDates.add(dateKey);
+        }
+      });
+
+      const presentDays = presentDates.size;
+      const absentDays = Math.max(expectedWorkingDays - presentDays, 0);
+
+      let workingDaysScore = 0;
+      if (expectedWorkingDays > 0) {
+        workingDaysScore = (presentDays / expectedWorkingDays) * 100;
+      }
+      workingDaysScore = Math.min(Math.max(workingDaysScore, 0), 100);
+
+      let actualWorkingHours = 0;
+      employeeAttendance.forEach((attendance) => {
+        actualWorkingHours += Number(attendance.workingHours) || 0;
+      });
+
+      const expectedWorkingHours = expectedWorkingDays * shiftHours;
+
+      let workingHoursScore = 0;
+      if (expectedWorkingHours > 0) {
+        workingHoursScore = (actualWorkingHours / expectedWorkingHours) * 100;
+      }
+      workingHoursScore = Math.min(Math.max(workingHoursScore, 0), 100);
+
+      const employeeShifts = allActiveShifts.filter(
+        (shift) =>
+          String(shift.employeeAssignment?.employeeId) === employeeId ||
+          String(shift.employeeId) === employeeId
+      );
+
+      const defaultShift = employeeShifts[0] || null;
+      let defaultStartTime =
+        defaultShift?.employeeAssignment?.startTime ||
+        defaultShift?.timeSlots?.[0]?.startTime ||
+        defaultShift?.startTime ||
+        null;
+
+      let lateComingDays = 0;
+      const checkedLateDates = new Set();
+
+      if (defaultStartTime) {
+        employeeAttendance.forEach((attendance) => {
+          if (!attendance.checkInTime) return;
+
+          const checkIn = new Date(attendance.checkInTime);
+          const dateKey = toDateKey(checkIn);
+          if (checkedLateDates.has(dateKey)) return;
+          checkedLateDates.add(dateKey);
+
+          const timeParts = String(defaultStartTime).split(":").map(Number);
+          const shiftStart = new Date(checkIn);
+          shiftStart.setHours(timeParts[0] || 0, timeParts[1] || 0, 0, 0);
+
+          if (checkIn > shiftStart) lateComingDays++;
+        });
+      }
+
+      let lateComingScore = 100;
+      if (expectedWorkingDays > 0) {
+        lateComingScore =
+          ((expectedWorkingDays - lateComingDays) / expectedWorkingDays) * 100;
+      }
+      lateComingScore = Math.max(0, Math.min(lateComingScore, 100));
+
+      const totalScore = lateComingScore + workingDaysScore + workingHoursScore;
+      const performancePercentage = totalScore / 3;
+
+      return {
+        employeeId: employee._id,
+        employeeCode: employee.employeeId,
+        name: employee.name,
+        email: employee.email,
+        department: employee.department,
+        shiftType: employee.shiftType,
+        shiftHours,
+        month,
+        year,
+        totalDays,
+        weekOffCount,
+        expectedWorkingDays,
+        presentDays,
+        absentDays,
+        lateComingDays,
+        expectedWorkingHours: Number(expectedWorkingHours.toFixed(2)),
+        actualWorkingHours: Number(actualWorkingHours.toFixed(2)),
+        lateComingScore: Number(lateComingScore.toFixed(2)),
+        workingDaysScore: Number(workingDaysScore.toFixed(2)),
+        workingHoursScore: Number(workingHoursScore.toFixed(2)),
+        totalScore: Number(totalScore.toFixed(2)),
+        performancePercentage: Number(performancePercentage.toFixed(2)),
+      };
+    });
+
+    performersData.sort((a, b) => {
+      if (b.performancePercentage !== a.performancePercentage) {
+        return b.performancePercentage - a.performancePercentage;
+      }
+      if (b.presentDays !== a.presentDays) {
+        return b.presentDays - a.presentDays;
+      }
+      if (b.actualWorkingHours !== a.actualWorkingHours) {
+        return b.actualWorkingHours - a.actualWorkingHours;
+      }
+      return a.lateComingDays - b.lateComingDays;
+    });
+
+    const topPerformers = performersData.slice(0, 5);
+
+    // ─── ✅ DEPARTMENT PERFORMANCE ───
+    const departmentPerformance = calculateDepartmentPerformance(
+      employees,
+      attendanceRecords,
+      allActiveShifts,
+      month,
+      year
+    );
+
+    // ─── RESPONSE ───
+    return res.status(200).json({
+      success: true,
+      data: {
+        stats: {
+          totalEmployees,
+          presentToday: presentIds.size,
+          absentToday: Math.max(0, totalEmployees - presentIds.size),
+          lateToday: lateIds.size,
+          onTimeToday: onTimeIds.size,
+          onLeaveToday: onLeaveIds.size,
+          forgotCheckoutToday: forgotCheckoutIds.size,
+          latestDate
+        },
+        employees,
+        masterShifts,
+        assignments,
+        attendance: attendanceRecords,
+        leaves,
+        birthdaysToday,
+        monthlyTrend,
+        heatmapGrid,
+        topPerformers,
+        departmentPerformance
+      }
+    });
+  } catch (error) {
+    console.error("❌ Dashboard summary error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get dashboard summary",
+      error: error.message
+    });
+  }
+};
+
+
+// ======================================================
+// EXPORTS
+// ======================================================
 
 module.exports = {
   getTopPerformers,
@@ -2888,4 +1437,5 @@ module.exports = {
   getDepartmentPerformance,
   getEmployeePerformance,
   getAllDepartment,
+  getDashboardSummary,
 };

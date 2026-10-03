@@ -49,7 +49,7 @@ const {
   getSalaries,
   checkMonthData,
   updateWeekOffConfig,
-  updatePayrollDetails,
+ getBulkPayrollData,
   getWeekOffConfig,
   getEditedAttendanceRecords
 } = require("../controller/attendanceSummary.controller");
@@ -77,5 +77,7 @@ router.get("/getsalaries/:employeeId", calculateSummary);
 router.get("/check-month-data", checkMonthData);
 // ✅ YE LINE ADD KARO:
 router.post('/updateWeekOffConfig', updateWeekOffConfig);
-router.post('/updatePayroll', updatePayrollDetails); // ✅ ADD THIS ROUTE
+
+// 🚀 NEW: Bulk payroll data (single API for entire payroll page)
+router.get("/bulk-payroll", getBulkPayrollData);
 module.exports = router;

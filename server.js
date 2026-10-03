@@ -90,13 +90,10 @@ mongoose
     console.log("✅ MongoDB Connected Successfully!");
     startMissedCheckInCron();
     startCheckoutReminderCron();
-
-    
   })
   .catch((err) => {
     console.error("❌ MongoDB Connection Error:", err);
   });
-
 // ✅ ROUTES
 const applicationRoutes = require("./routes/jobApplication.routes");
 app.use("/api/applications", applicationRoutes);

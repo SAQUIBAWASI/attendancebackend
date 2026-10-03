@@ -4383,6 +4383,7 @@ const Holiday = require("../models/Holiday");
 const CompOff = require("../models/CompOff");
 const AttendanceSummary = require("../models/AttendanceSummary");
 const { sendToToken } = require("../services/notificationService");
+const Shift = require("../models/Shift");
 
 
 
@@ -5853,6 +5854,433 @@ const calculateEmployeeStats = (attendance, profile, leaves, permissions) => {
   };
 };
 
+/* ══════════════════════════════════════════════
+   IST TIMEZONE HELPERS
+   ══════════════════════════════════════════════ */
+const IST_OFFSET_MIN = 5 * 60 + 30;
+
+const toISTParts = (dateInput) => {
+  if (!dateInput) return null;
+  try {
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return null;
+    const istMs = d.getTime() + IST_OFFSET_MIN * 60 * 1000;
+    const ist = new Date(istMs);
+    return {
+      year: ist.getUTCFullYear(),
+      month: ist.getUTCMonth() + 1,
+      day: ist.getUTCDate(),
+      hours: ist.getUTCHours(),
+      minutes: ist.getUTCMinutes(),
+      totalMinutes: ist.getUTCHours() * 60 + ist.getUTCMinutes(),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const toISTDateStr = (dateInput) => {
+  const p = toISTParts(dateInput);
+  if (!p) return null;
+  return `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
+};
+
+const toISTYM = (dateInput) => {
+  const p = toISTParts(dateInput);
+  if (!p) return null;
+  return `${p.year}-${String(p.month).padStart(2, "0")}`;
+};
+
+const parseShiftTimeStr = (timeStr) => {
+  if (!timeStr) return null;
+  const m = String(timeStr).trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const ampm = (m[3] || "").toUpperCase();
+  if (ampm === "PM" && h !== 12) h += 12;
+  if (ampm === "AM" && h === 12) h = 0;
+  return { hours: h, minutes: min, totalMinutes: h * 60 + min };
+};
+
+/* ────────── PROFILE SANITIZER ────────── */
+const sanitizeProfile = (p) => {
+  if (!p) return null;
+  return {
+    _id: p._id,
+    employeeId: p.employeeId,
+    name: p.name,
+    firstName: p.firstName,
+    lastName: p.lastName,
+    email: p.email,
+    phone: p.phone,
+    alternateNumber: p.alternateNumber || "",
+    parentsName: p.parentsName || "",
+    dob: p.dob,
+    joinDate: p.joinDate,
+    department: p.department,
+    role: p.role,
+    designation: p.role,
+    departmentId: p.departmentId,
+    roleId: p.roleId,
+    addressLine1: p.addressLine1,
+    addressLine2: p.addressLine2,
+    city: p.city,
+    state: p.state,
+    pinCode: p.pinCode,
+    country: p.country,
+    location: p.location,
+    shiftType: p.shiftType,
+    shiftHours: p.shiftHours,
+    status: p.status,
+    permissions: p.permissions || [],
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+    maxCL: p.maxCL,
+    maxSL: p.maxSL,
+    maxEL: p.maxEL,
+    maxCompOff: p.maxCompOff,
+    assignedWorkingDays: p.assignedWorkingDays,
+    weekOffPerMonth: p.weekOffPerMonth,
+    weekOffType: p.weekOffType,
+    weekOffCount: p.weekOffCount,
+  };
+};
+
+/* ══════════════════════════════════════════════
+   SHIFT START RESOLVER
+   ══════════════════════════════════════════════ */
+const resolveShiftStartMinutes = (shift, profile) => {
+  if (shift?.endTime && profile?.shiftHours) {
+    const e = parseShiftTimeStr(shift.endTime);
+    if (e) {
+      let start = e.totalMinutes - profile.shiftHours * 60;
+      if (start < 0) start += 24 * 60;
+      return start;
+    }
+  }
+  if (shift?.startTime) {
+    const p = parseShiftTimeStr(shift.startTime);
+    if (p) return p.totalMinutes;
+  }
+  return null;
+};
+
+/* ────────── GRAPH 1: LATE MINUTES ────────── */
+const buildLateGraph = (attendance, shiftStartMinutes, selectedYear, selectedMonth) => {
+  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+  const targetYM = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`;
+  const GRACE = 10;
+
+  const weeks = [
+    { label: "Week 1", start: 1,  end: 7  },
+    { label: "Week 2", start: 8,  end: 14 },
+    { label: "Week 3", start: 15, end: 21 },
+    { label: "Week 4", start: 22, end: 28 },
+    { label: "Week 5", start: 29, end: daysInMonth },
+  ];
+
+  return weeks.map((w) => {
+    const weekEnd = Math.min(w.end, daysInMonth);
+    let totalLate = 0;
+
+    attendance.forEach((a) => {
+      const ym = toISTYM(a.checkInTime || a.date || a.attendanceDate);
+      const p = toISTParts(a.checkInTime || a.date || a.attendanceDate);
+      if (ym !== targetYM || !p) return;
+      if (p.day < w.start || p.day > weekEnd) return;
+
+      if (typeof a.lateMinutes === "number" && a.lateMinutes > 0) { totalLate += a.lateMinutes; return; }
+      if (typeof a.lateBy === "number" && a.lateBy > 0) { totalLate += a.lateBy; return; }
+      if (a.status === "late") { totalLate += 15; return; }
+      if (shiftStartMinutes != null) {
+        const diff = p.totalMinutes - shiftStartMinutes - GRACE;
+        if (diff > 0) totalLate += diff;
+      }
+    });
+
+    return { week: w.label, lateMinutes: Math.round(totalLate * 100) / 100 };
+  });
+};
+
+/* ────────── GRAPH 2: ABSENT DAYS ────────── */
+const buildAbsentGraph = (attendance, leaves, selectedYear, selectedMonth, totalAssignedDays) => {
+  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+  const targetYM = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`;
+
+  const todayIST = toISTParts(new Date());
+  const isCurrentMonth =
+    selectedYear === todayIST.year && selectedMonth === todayIST.month;
+  const isPastMonth =
+    selectedYear < todayIST.year ||
+    (selectedYear === todayIST.year && selectedMonth < todayIST.month);
+
+  const elapsedDayMax = isPastMonth ? daysInMonth : isCurrentMonth ? todayIST.day : 0;
+
+  const weeks = [
+    { label: "Week 1", start: 1,  end: 7  },
+    { label: "Week 2", start: 8,  end: 14 },
+    { label: "Week 3", start: 15, end: 21 },
+    { label: "Week 4", start: 22, end: 28 },
+    { label: "Week 5", start: 29, end: daysInMonth },
+  ];
+
+  const presentDates = new Set();
+  attendance.forEach((a) => {
+    const ym = toISTYM(a.checkInTime || a.date || a.attendanceDate);
+    const p = toISTParts(a.checkInTime || a.date || a.attendanceDate);
+    if (ym === targetYM && p) presentDates.add(p.day);
+  });
+
+  const leaveDates = new Set();
+  leaves.filter((l) => String(l.status || "").toLowerCase() === "approved").forEach((l) => {
+    const sStr = toISTDateStr(l.startDate);
+    const eStr = toISTDateStr(l.endDate || l.startDate);
+    if (!sStr || !eStr) return;
+    const start = new Date(sStr + "T00:00:00Z");
+    const end = new Date(eStr + "T00:00:00Z");
+    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+      if (d.toISOString().slice(0, 7) === targetYM) leaveDates.add(d.getUTCDate());
+    }
+  });
+
+  const assignedPerDay = totalAssignedDays / daysInMonth;
+
+  return weeks.map((w) => {
+    const weekEnd = Math.min(w.end, daysInMonth);
+    const elapsedEnd = Math.min(weekEnd, elapsedDayMax);
+
+    let presentInWeek = 0, leaveInWeek = 0;
+    for (let d = w.start; d <= weekEnd; d++) {
+      if (presentDates.has(d)) presentInWeek++;
+      if (leaveDates.has(d)) leaveInWeek++;
+    }
+
+    const elapsedDays = Math.max(elapsedEnd - w.start + 1, 0);
+    const expectedInElapsed = Math.round(assignedPerDay * elapsedDays);
+    const absentInWeek = Math.max(expectedInElapsed - presentInWeek - leaveInWeek, 0);
+
+    return { week: w.label, absentDays: absentInWeek };
+  });
+};
+
+/* ────────── LOCAL: apply scheduled change if due ────────── */
+const applyScheduledChangeIfDueLocal = async (shiftDoc) => {
+  try {
+    const scheduled = shiftDoc?.employeeAssignment?.scheduledChange;
+    if (!scheduled || !scheduled.shiftType) return false;
+
+    const effectiveFrom = scheduled.effectiveFrom
+      ? new Date(scheduled.effectiveFrom)
+      : scheduled.effectiveMonth && scheduled.effectiveYear
+      ? new Date(scheduled.effectiveYear, scheduled.effectiveMonth - 1, 1)
+      : null;
+    if (!effectiveFrom) return false;
+    if (new Date() < effectiveFrom) return false;
+
+    await Shift.updateOne(
+      { _id: shiftDoc._id },
+      {
+        $set: {
+          shiftType: scheduled.shiftType,
+          shiftName: scheduled.shiftName || shiftDoc.shiftName,
+          shiftCategory: scheduled.shiftCategory || shiftDoc.shiftCategory,
+          isBrakeShift: scheduled.isBrakeShift ?? shiftDoc.isBrakeShift,
+          "employeeAssignment.selectedTimeRange": scheduled.selectedTimeRange,
+          "employeeAssignment.selectedDescription": scheduled.selectedDescription,
+          "employeeAssignment.effectiveFrom": scheduled.effectiveFrom,
+          "employeeAssignment.scheduledChange": null,
+        },
+      }
+    );
+    return true;
+  } catch (e) {
+    console.error("applyScheduledChangeIfDueLocal error:", e.message);
+    return false;
+  }
+};
+
+/* ────────── LOCAL: fetch employee shift ────────── */
+const fetchEmployeeShiftLocal = async (employeeId) => {
+  try {
+    if (!employeeId || !Shift) return null;
+
+    let employeeShift = await Shift.findOne({
+      "employeeAssignment.employeeId": employeeId,
+      isActive: true,
+      isMasterShift: false,
+    });
+
+    if (employeeShift) {
+      const applied = await applyScheduledChangeIfDueLocal(employeeShift);
+      if (applied) {
+        employeeShift = await Shift.findOne({
+          "employeeAssignment.employeeId": employeeId,
+          isActive: true,
+          isMasterShift: false,
+        });
+      }
+    }
+
+    if (!employeeShift) {
+      employeeShift = await Shift.findOne({
+        employeeId: employeeId,
+        isMasterShift: { $exists: false },
+      });
+    }
+
+    if (!employeeShift) return null;
+
+    const responseData = {
+      _id: employeeShift._id,
+      shiftType: employeeShift.shiftType,
+      shiftName: employeeShift.shiftName || `Shift ${employeeShift.shiftType}`,
+      shiftCategory: employeeShift.shiftCategory || "Regular",
+      isBrakeShift: employeeShift.isBrakeShift || false,
+      isAssigned: true,
+    };
+
+    if (employeeShift.employeeAssignment) {
+      const timeRange = employeeShift.employeeAssignment.selectedTimeRange || "10:00 - 19:00";
+      const [startTime, endTime] = timeRange.split(" - ");
+      responseData.startTime = startTime ? startTime.trim() : "10:00";
+      responseData.endTime = endTime ? endTime.trim() : "19:00";
+      responseData.timeRange = timeRange;
+      responseData.description = employeeShift.employeeAssignment.selectedDescription || "Shift timing";
+      responseData.assignedDate = employeeShift.employeeAssignment.assignedDate;
+      responseData.effectiveFrom = employeeShift.employeeAssignment.effectiveFrom;
+      responseData.scheduledChange = employeeShift.employeeAssignment.scheduledChange || null;
+    } else if (employeeShift.startTime && employeeShift.endTime) {
+      responseData.startTime = employeeShift.startTime;
+      responseData.endTime = employeeShift.endTime;
+      responseData.timeRange = `${employeeShift.startTime} - ${employeeShift.endTime}`;
+      responseData.description = "Legacy shift assignment";
+      responseData.assignedDate = employeeShift.createdAt;
+    } else {
+      responseData.startTime = "10:00";
+      responseData.endTime = "19:00";
+      responseData.timeRange = "10:00 - 19:00";
+      responseData.description = "Shift timing";
+      responseData.assignedDate = employeeShift.createdAt;
+    }
+
+    return responseData;
+  } catch (e) {
+    console.error("fetchEmployeeShiftLocal error:", e.message);
+    return null;
+  }
+};
+
+/* ══════════════════════════════════════════════
+   INLINE STATS CALCULATOR (IST aware)
+   ✅ Leaves count = RECORDS (not days)
+   ✅ Leave days used only for absent calc
+   ══════════════════════════════════════════════ */
+const calculateEmployeeStatsIST = (attendance, profile, leaves, permissions, shift, selectedMonth, selectedYear) => {
+  const targetYM = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`;
+  const todayIST = toISTParts(new Date());
+  const isCurrentMonth = selectedYear === todayIST.year && selectedMonth === todayIST.month;
+  const isPastMonth =
+    selectedYear < todayIST.year ||
+    (selectedYear === todayIST.year && selectedMonth < todayIST.month);
+
+  /* 1) Present days — unique IST dates */
+  const presentDaysSet = new Set();
+  attendance.forEach((a) => {
+    const key = toISTDateStr(a.checkInTime || a.date || a.attendanceDate);
+    if (key && key.slice(0, 7) === targetYM) presentDaysSet.add(key);
+  });
+  const presentThisMonth = presentDaysSet.size;
+
+  /* 2) Leaves — RECORDS count + DAYS (for absent) */
+  let approvedLeaveDays = 0;
+  let pendingLeaveDays = 0;
+  let rejectedLeaveDays = 0;
+  let totalLeaveDays = 0;
+
+  let approvedLeavesCount = 0;
+  let pendingLeavesCount = 0;
+  let rejectedLeavesCount = 0;
+
+  leaves.forEach((l) => {
+    const sStr = toISTDateStr(l.startDate);
+    const eStr = toISTDateStr(l.endDate || l.startDate);
+    if (!sStr || !eStr) return;
+
+    const start = new Date(sStr + "T00:00:00Z");
+    const end = new Date(eStr + "T00:00:00Z");
+    let daysInMonth = 0;
+    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+      if (d.toISOString().slice(0, 7) === targetYM) daysInMonth++;
+    }
+    if (daysInMonth === 0) return;
+
+    totalLeaveDays += daysInMonth;
+
+    const st = String(l.status || "").toLowerCase();
+    if (st === "approved") { approvedLeaveDays += daysInMonth; approvedLeavesCount++; }
+    else if (st === "pending") { pendingLeaveDays += daysInMonth; pendingLeavesCount++; }
+    else if (st === "rejected") { rejectedLeaveDays += daysInMonth; rejectedLeavesCount++; }
+  });
+
+  const totalLeavesCount = approvedLeavesCount + pendingLeavesCount + rejectedLeavesCount;
+
+  /* 3) Total working days */
+  let totalWorkingDays;
+  if (isCurrentMonth) totalWorkingDays = todayIST.day;
+  else if (isPastMonth) totalWorkingDays = new Date(selectedYear, selectedMonth, 0).getDate();
+  else totalWorkingDays = 0;
+
+  /* 4) Absent = total - present - approved DAYS */
+  const absentThisMonth = Math.max(
+    totalWorkingDays - presentThisMonth - approvedLeaveDays,
+    0
+  );
+
+  /* 5) Late — per-record */
+  const shiftStartMins = resolveShiftStartMinutes(shift, profile);
+  const GRACE = 10;
+
+  let lateThisMonth = 0;
+  attendance.forEach((a) => {
+    if (a.status === "late") { lateThisMonth++; return; }
+    if (typeof a.lateMinutes === "number" && a.lateMinutes > 0) { lateThisMonth++; return; }
+    if (typeof a.lateBy === "number" && a.lateBy > 0) { lateThisMonth++; return; }
+    if (shiftStartMins != null) {
+      const ist = toISTParts(a.checkInTime || a.date || a.attendanceDate);
+      if (!ist) return;
+      if (ist.totalMinutes > shiftStartMins + GRACE) lateThisMonth++;
+    }
+  });
+
+  /* 6) Attendance rate */
+  const denom = presentThisMonth + absentThisMonth + approvedLeaveDays;
+  const attendanceRate = denom > 0 ? Math.round((presentThisMonth / denom) * 100) : 0;
+
+  return {
+    presentThisMonth,
+    absentThisMonth,
+    lateThisMonth,
+
+    // ✅ leaves = RECORDS
+    leavesThisMonth: totalLeavesCount,
+    approvedLeaves: approvedLeavesCount,
+    pendingLeaves: pendingLeavesCount,
+    rejectedLeaves: rejectedLeavesCount,
+
+    // leave days (alag)
+    totalLeaveDays,
+    approvedLeaveDays,
+    pendingLeaveDays,
+    rejectedLeaveDays,
+
+    totalWorkingDays,
+    permissions: permissions.length,
+    attendanceRate,
+    shiftStartMins,
+  };
+};
+
 /* ────────── MAIN CONTROLLER ────────── */
 const employeeDashboard = async (req, res) => {
   try {
@@ -5861,203 +6289,229 @@ const employeeDashboard = async (req, res) => {
       return res.status(400).json({ success: false, message: "employeeId is required" });
     }
 
-    const today = new Date();
-    const todayMonth = today.getMonth() + 1;
-    const todayDate = today.getDate();
+    console.log("🚀 Dashboard called for:", employeeId);
 
-    // 1️⃣ PROFILE
-    const profile = await Employee.findOne({ employeeId }).lean();
-    if (!profile) {
+    const today = new Date();
+    const qMonth = req.query.month ? parseInt(req.query.month, 10) : null;
+    const qYear = req.query.year ? parseInt(req.query.year, 10) : null;
+
+    const todayIST = toISTParts(today);
+    const selectedMonth = qMonth && qMonth >= 1 && qMonth <= 12 ? qMonth : todayIST.month;
+    const selectedYear = qYear && qYear > 2000 ? qYear : todayIST.year;
+
+    const monthStartStr = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}-01`;
+    const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
+    const monthEndStr = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+    const todayMonth = selectedMonth;
+    const todayDate = todayIST.day;
+
+    /* 1️⃣ PROFILE */
+    const rawProfile = await Employee.findOne({ employeeId }).lean();
+    if (!rawProfile) {
       return res.status(404).json({ success: false, message: "Employee not found" });
     }
-    const department = profile.department || "";
+    const profile = sanitizeProfile(rawProfile);
+    const department = rawProfile.department || "";
 
-    // 2️⃣ ATTENDANCE
-    const userAttendance = await Attendance.find({
+    /* 2️⃣ ATTENDANCE */
+    const allAttendance = await Attendance.find({
       $or: [{ employeeId }, { "employeeId.employeeId": employeeId }],
     })
       .sort({ checkInTime: -1 })
-      .limit(500)
+      .limit(2000)
       .lean();
 
-    // 3️⃣ LEAVES
-    const leaves = await Leave.find({ employeeId }).sort({ createdAt: -1 }).lean();
+    const userAttendance = allAttendance.filter((a) => {
+      const dStr = toISTDateStr(a.checkInTime || a.date || a.attendanceDate);
+      if (!dStr) return false;
+      return dStr >= monthStartStr && dStr <= monthEndStr;
+    });
 
-    // 4️⃣ PERMISSIONS
+    /* 3️⃣ LEAVES */
+    const allLeaves = await Leave.find({ employeeId }).sort({ createdAt: -1 }).lean();
+    const leaves = allLeaves.filter((l) => {
+      const sStr = toISTDateStr(l.startDate);
+      const eStr = toISTDateStr(l.endDate || l.startDate);
+      if (!sStr || !eStr) return false;
+      return sStr <= monthEndStr && eStr >= monthStartStr;
+    });
+
+    /* 4️⃣ PERMISSIONS */
     let permissions = [];
     try {
-      permissions = await Permission.find({ employeeId, status: "APPROVED" }).lean();
+      const allPerms = await Permission.find({ employeeId, status: "APPROVED" }).lean();
+      permissions = allPerms.filter((p) => {
+        const dStr = toISTDateStr(p.createdAt || p.date);
+        if (!dStr) return false;
+        return dStr >= monthStartStr && dStr <= monthEndStr;
+      });
     } catch (e) {
       console.warn("Permissions fetch failed:", e.message);
     }
 
-    // 5️⃣ LOCATION
+    /* 5️⃣ LOCATION */
     let locationName = "Not Assigned";
     try {
-      if (profile.location?.name) locationName = profile.location.name;
+      if (rawProfile.location?.name) locationName = rawProfile.location.name;
       else {
-        const locDoc = await Employee.findById(profile._id).populate("location").lean();
+        const locDoc = await Employee.findById(rawProfile._id).populate("location").lean();
         if (locDoc?.location?.name) locationName = locDoc.location.name;
       }
     } catch (e) {
       console.warn("Location fetch failed:", e.message);
     }
 
-    // 6️⃣ SHIFT
-    let shiftData = null;
-    try {
-      shiftData = await Shift.findOne({ employeeId }).lean();
-    } catch (e) {
-      console.warn("Shift fetch failed:", e.message);
-    }
+    /* 6️⃣ SHIFT */
+    const shift = await fetchEmployeeShiftLocal(employeeId);
 
     let shiftTiming = "Not Assigned";
-    let upcomingShift = null;
-
-    if (shiftData) {
-      if (shiftData.startTime) {
-        shiftTiming = `${shiftData.startTime} - ${shiftData.endTime}`;
-      } else if (shiftData.employeeAssignment?.startTime) {
-        shiftTiming = `${shiftData.employeeAssignment.startTime} - ${shiftData.employeeAssignment.endTime}`;
-      } else {
-        shiftTiming = "No Shift Assigned";
-      }
-
-      const scheduled = shiftData.scheduledChange;
-      if (scheduled?.shiftType) {
-        upcomingShift = {
-          shiftType: scheduled.shiftType,
-          shiftName: scheduled.shiftName || `Shift ${scheduled.shiftType}`,
-          timeRange: scheduled.selectedTimeRange || "Not specified",
-          description: scheduled.selectedDescription || "Shift timing",
-          effectiveFrom: scheduled.effectiveFrom,
-          shiftCategory: scheduled.shiftCategory || shiftData.shiftCategory || "Regular",
-        };
-      }
+    if (shift?.startTime && shift?.endTime) {
+      shiftTiming = `${shift.startTime} - ${shift.endTime}`;
+    } else if (shift?.timeRange) {
+      shiftTiming = shift.timeRange;
     }
 
-    // 7️⃣ STATS
-    const stats = calculateEmployeeStats(userAttendance, profile, leaves, permissions);
+    let upcomingShift = null;
+    if (shift?.scheduledChange?.shiftType) {
+      upcomingShift = {
+        shiftType: shift.scheduledChange.shiftType,
+        shiftName: shift.scheduledChange.shiftName || `Shift ${shift.scheduledChange.shiftType}`,
+        timeRange: shift.scheduledChange.selectedTimeRange || "Not specified",
+        description: shift.scheduledChange.selectedDescription || "Shift timing",
+        shiftCategory: shift.scheduledChange.shiftCategory || "Regular",
+        effectiveFrom: shift.scheduledChange.effectiveFrom || null,
+        effectiveMonth: shift.scheduledChange.effectiveMonth || null,
+        effectiveYear: shift.scheduledChange.effectiveYear || null,
+      };
+    }
 
-    // 8️⃣ BIRTHDAYS
+    /* 7️⃣ STATS */
+    const stats = calculateEmployeeStatsIST(
+      userAttendance, rawProfile, leaves, permissions, shift, selectedMonth, selectedYear
+    );
+
+    const totalAssignedDays = rawProfile.assignedWorkingDays || 26;
+    const shiftStartMins = resolveShiftStartMinutes(shift, profile);
+
+    console.log("📊 shiftStartMins:", shiftStartMins, "→",
+      shiftStartMins != null ? `${Math.floor(shiftStartMins/60)}:${String(shiftStartMins%60).padStart(2,'0')}` : "N/A");
+    console.log("📊 stats:", stats);
+
+    /* 7️⃣.1️⃣ GRAPH 1 */
+    const lateGraph = buildLateGraph(userAttendance, shiftStartMins, selectedYear, selectedMonth);
+
+    /* 7️⃣.2️⃣ GRAPH 2 */
+    const absentGraph = buildAbsentGraph(userAttendance, leaves, selectedYear, selectedMonth, totalAssignedDays);
+
+    /* 8️⃣ BIRTHDAYS */
     let birthdaysToday = [];
     try {
       birthdaysToday = await Employee.aggregate([
-        {
-          $match: {
-            department,
-            $expr: {
-              $and: [
-                { $eq: [{ $month: "$dob" }, todayMonth] },
-                { $eq: [{ $dayOfMonth: "$dob" }, todayDate] },
-              ],
-            },
-          },
-        },
-        { $project: { name: 1, email: 1, employeeName: "$name", department: 1 } },
+        { $match: { department, $expr: { $and: [
+          { $eq: [{ $month: "$dob" }, todayMonth] },
+          { $eq: [{ $dayOfMonth: "$dob" }, todayDate] },
+        ]}}},
+        { $project: { name: 1, email: 1, employeeName: "$name", department: 1, dob: 1 } },
       ]);
     } catch (e) { console.warn("Birthdays fetch failed:", e.message); }
 
-    // 9️⃣ ANNIVERSARIES
+    /* 9️⃣ ANNIVERSARIES */
     let anniversariesToday = [];
     try {
       anniversariesToday = await Employee.aggregate([
-        {
-          $match: {
-            department,
-            $expr: {
-              $and: [
-                { $eq: [{ $month: "$joiningDate" }, todayMonth] },
-                { $eq: [{ $dayOfMonth: "$joiningDate" }, todayDate] },
-              ],
-            },
-          },
-        },
-        {
-          $project: {
-            name: 1, email: 1, employeeName: "$name", department: 1,
-            yearsOfService: { $subtract: [today.getFullYear(), { $year: "$joiningDate" }] },
-          },
-        },
+        { $match: { department, $expr: { $and: [
+          { $eq: [{ $month: "$joinDate" }, todayMonth] },
+          { $eq: [{ $dayOfMonth: "$joinDate" }, todayDate] },
+        ]}}},
+        { $project: { name: 1, email: 1, employeeName: "$name", department: 1, joinDate: 1,
+          yearsOfService: { $subtract: [selectedYear, { $year: "$joinDate" }] } } },
       ]);
     } catch (e) { console.warn("Anniversaries fetch failed:", e.message); }
 
-    // 🔟 LEAVES TODAY
+    /* 🔟 LEAVES TODAY */
     let leavesToday = [];
     try {
-      const deptIds = await Employee.find({ department }).distinct("employeeId");
-      leavesToday = await Leave.find({
-        status: "approved",
-        employeeId: { $in: deptIds },
-        startDate: { $lte: today },
-        endDate: { $gte: today },
-      }).lean();
+      const isCurrentMonth = selectedMonth === todayIST.month && selectedYear === todayIST.year;
+      if (isCurrentMonth) {
+        const deptIds = await Employee.find({ department }).distinct("employeeId");
+        const todayStr = toISTDateStr(today);
+        const allDeptLeaves = await Leave.find({
+          status: "approved", employeeId: { $in: deptIds },
+        }).lean();
+        leavesToday = allDeptLeaves.filter((l) => {
+          const sStr = toISTDateStr(l.startDate);
+          const eStr = toISTDateStr(l.endDate || l.startDate);
+          return sStr <= todayStr && eStr >= todayStr;
+        });
+      }
     } catch (e) { console.warn("Leaves today fetch failed:", e.message); }
 
-    // 1️⃣1️⃣ HOLIDAYS
-    let holidays = [];
-    let upcomingHolidaysCount = 0;
-    let nextHolidayName = "";
+    /* 1️⃣1️⃣ HOLIDAYS */
+    let holidays = [], upcomingHolidaysCount = 0, nextHolidayName = "";
     try {
-      holidays = await Holiday.find().sort({ fromDate: 1 }).lean();
-      const todayStr = today.toISOString().split("T")[0];
-      const upcoming = holidays.filter((h) => (h.toDate || h.fromDate || "") >= todayStr);
+      const allHolidays = await Holiday.find().sort({ fromDate: 1 }).lean();
+      holidays = allHolidays.filter((h) => {
+        const fStr = toISTDateStr(h.fromDate);
+        const tStr = toISTDateStr(h.toDate || h.fromDate);
+        if (!fStr || !tStr) return false;
+        return fStr <= monthEndStr && tStr >= monthStartStr;
+      });
+      const todayStr = toISTDateStr(today);
+      const upcoming = holidays.filter((h) => toISTDateStr(h.toDate || h.fromDate) >= todayStr);
       upcomingHolidaysCount = upcoming.length;
       nextHolidayName = upcoming[0]?.name || "";
     } catch (e) { console.warn("Holidays fetch failed:", e.message); }
 
-    // 1️⃣2️⃣ PERFORMANCE
+    /* 1️⃣2️⃣ PERFORMANCE */
     let performanceData = null;
     try {
-      performanceData = await performanceService.getEmployeePerformance(
-        employeeId, todayMonth, today.getFullYear()
-      );
+      performanceData = await performanceService.getEmployeePerformance(employeeId, selectedMonth, selectedYear);
     } catch (e) { console.warn("Performance fetch failed:", e.message); }
 
-    // 1️⃣3️⃣ TOP PERFORMER
+    /* 1️⃣3️⃣ TOP PERFORMER */
     let topPerformer = null;
     try {
-      const topRes = await performanceService.getTopPerformers(todayMonth, today.getFullYear());
+      const topRes = await performanceService.getTopPerformers(selectedMonth, selectedYear);
       topPerformer = topRes?.[0] || null;
     } catch (e) { console.warn("Top performer fetch failed:", e.message); }
 
-    /* ────────────────────────────────────────
-       ✅ FINAL RESPONSE
-       stats ko TOP LEVEL pe rakha — cards ke liye
-       ──────────────────────────────────────── */
+    /* ─────────────── FINAL RESPONSE ─────────────── */
     return res.json({
       success: true,
+      filter: { month: selectedMonth, year: selectedYear, monthStart: monthStartStr, monthEnd: monthEndStr },
 
-      // 🎯 YAHI WO OBJECT HAI JO CARDS MEIN DIKHANA HAI
       stats: {
-        // Cards ke liye clean fields
-        present: performanceData?.presentDays ?? stats.presentThisMonth,
-        absent: performanceData?.absentDays ?? stats.absentThisMonth,
-        late: performanceData?.lateComingDays ?? stats.lateThisMonth,
-        leaves:
-          performanceData?.leavesDays ??
-          performanceData?.leaveDays ??
-          performanceData?.leaves ??
-          stats.leavesThisMonth,
-        performance:
-          performanceData?.performancePercentage ?? stats.attendanceRate,
+        present: stats.presentThisMonth,
+        absent: stats.absentThisMonth,
+        late: stats.lateThisMonth,
+        leaves: stats.leavesThisMonth,               // ✅ 1 (records)
+        performance: stats.attendanceRate,
 
-        // Extra info (frontend me kaam aayega)
         totalWorkingDays: stats.totalWorkingDays,
-        pendingLeaves: stats.pendingLeaves,
+        pendingLeaves: stats.pendingLeaves,          // ✅ 1 (records)
         permissions: stats.permissions,
 
-        // Purane naam bhi rakh diye (backward compatible)
         presentThisMonth: stats.presentThisMonth,
         absentThisMonth: stats.absentThisMonth,
         lateThisMonth: stats.lateThisMonth,
         leavesThisMonth: stats.leavesThisMonth,
+
+        // leave record counts
+        approvedLeaves: stats.approvedLeaves,
+        pendingLeavesCount: stats.pendingLeaves,
+        rejectedLeaves: stats.rejectedLeaves,
+
+        // leave day counts
+        totalLeaveDays: stats.totalLeaveDays,
+        approvedLeaveDays: stats.approvedLeaveDays,
+        pendingLeaveDays: stats.pendingLeaveDays,
+        rejectedLeaveDays: stats.rejectedLeaveDays,
+
         attendanceRate: stats.attendanceRate,
-        performancePercentage:
-          performanceData?.performancePercentage ?? stats.attendanceRate,
+        performancePercentage: stats.attendanceRate,
       },
 
-      // Quick actions ke liye counts
       counts: {
         attendanceLogs: userAttendance.length,
         totalLeaves: leaves.length,
@@ -6067,26 +6521,14 @@ const employeeDashboard = async (req, res) => {
         nextHoliday: nextHolidayName,
       },
 
-      // Baaki saara data
       data: {
         profile,
         location: locationName,
-        shiftTiming,
-        currentShift: shiftData,
-        upcomingShift,
-
-        attendance: userAttendance,
-        leaves,
-        permissions,
-
-        birthdaysToday,
-        anniversariesToday,
-        leavesToday,
-
-        holidays,
-
-        performanceData,
-        topPerformer,
+        shift, shiftTiming, currentShift: shift, upcomingShift,
+        attendance: userAttendance, leaves, permissions,
+        lateGraph, absentGraph,
+        birthdaysToday, anniversariesToday, leavesToday, holidays,
+        performanceData, topPerformer,
       },
     });
   } catch (error) {
@@ -6094,10 +6536,6 @@ const employeeDashboard = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-
-
-
-
 
 // ============================================
 // HELPERS

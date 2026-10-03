@@ -191,6 +191,11 @@ router.get('/week-off', shiftController.getWeekOffRecords);
 router.put('/week-off/:id', shiftController.updateWeekOff);
 router.delete('/week-off/:id', shiftController.deleteWeekOff);
 
+
+// ✅ Employee apna week-off dekhe (SPECIFIC — isko upar rakho)
+router.get('/my-week-off', shiftController.getMyWeekOff);
+
+
 // ✅ Employee week-off dates for a month
 router.get('/employee-weekoff-dates', shiftController.getEmployeeWeekOffDates);
 

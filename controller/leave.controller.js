@@ -589,27 +589,165 @@ exports.updateLeaveStatus = async (req, res) => {
   }
 };
 
-// ✅ Get leaves by employee
+/* 🔧 SAFE DATE → "YYYY-MM-DD" (Date object OR string dono handle) */
+const toDateStr = (val) => {
+  if (!val) return null;
+  try {
+    if (val instanceof Date) return val.toISOString().split("T")[0];
+    const str = String(val);
+    if (str.includes("T")) return str.split("T")[0];
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+    return str.slice(0, 10);
+  } catch (e) {
+    return null;
+  }
+};
+
+// ✅ Get leaves by employee (with stats + month/year filter)
 exports.getLeavesByEmployee = async (req, res) => {
   try {
     const { employeeId } = req.params;
-
     if (!employeeId) {
-      return res.status(400).json({ message: "Employee ID is required" });
+      return res.status(400).json({ success: false, message: "Employee ID is required" });
     }
 
-    const leaves = await Leave.find({ employeeId }).sort({ createdAt: -1 });
+    console.log("🚀 getLeavesByEmployee called for:", employeeId);
 
-    res.status(200).json({
+    /* 🗓️ QUERY PARAMS */
+    const today = new Date();
+    const qMonth = req.query.month ? parseInt(req.query.month, 10) : null;
+    const qYear  = req.query.year  ? parseInt(req.query.year, 10)  : null;
+
+    const selectedMonth =
+      qMonth && qMonth >= 1 && qMonth <= 12 ? qMonth : today.getMonth() + 1;
+    const selectedYear =
+      qYear && qYear > 2000 ? qYear : today.getFullYear();
+
+    const monthStartStr = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}-01`;
+    const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
+    const monthEndStr = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+    console.log("🗓️ Filter:", { selectedMonth, selectedYear, monthStartStr, monthEndStr });
+
+    /* 1️⃣ EMPLOYEE */
+    const employee = await Employee.findOne({ employeeId }).lean();
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found" });
+    }
+
+    const weekOffPerMonth   = employee.weekOffPerMonth || 0;
+    const totalAssignedDays = employee.assignedWorkingDays || 26;
+
+    /* 2️⃣ LEAVES */
+    const allLeaves = await Leave.find({ employeeId }).sort({ createdAt: -1 }).lean();
+    console.log("📋 Total leaves in DB:", allLeaves.length);
+
+    const leaves = allLeaves.filter((l) => {
+      const startStr = toDateStr(l.startDate);
+      const endStr   = toDateStr(l.endDate || l.startDate);
+      if (!startStr || !endStr) return false;
+      return startStr <= monthEndStr && endStr >= monthStartStr;
+    });
+    console.log("📋 Leaves after filter:", leaves.length);
+
+    /* 3️⃣ ATTENDANCE */
+    const allAttendance = await Attendance.find({
+      $or: [{ employeeId }, { "employeeId.employeeId": employeeId }],
+    }).lean();
+
+    console.log("📅 Total attendance in DB:", allAttendance.length);
+    if (allAttendance[0]) {
+      console.log("📅 Sample checkInTime:", allAttendance[0].checkInTime,
+                  "| type:", typeof allAttendance[0].checkInTime,
+                  "| isDate:", allAttendance[0].checkInTime instanceof Date);
+    }
+
+    const attendance = allAttendance.filter((a) => {
+      const dStr = toDateStr(a.checkInTime || a.date || a.attendanceDate);
+      if (!dStr) return false;
+      return dStr >= monthStartStr && dStr <= monthEndStr;
+    });
+
+    console.log("📅 Attendance after filter:", attendance.length);
+
+    /* 4️⃣ PRESENT DAYS — unique dates */
+    const presentDaysSet = new Set();
+    attendance.forEach((a) => {
+      const dStr = toDateStr(a.checkInTime || a.date || a.attendanceDate);
+      if (dStr) presentDaysSet.add(dStr);
+    });
+    const presentDays = presentDaysSet.size;
+    console.log("✅ Present days:", presentDays, "→", [...presentDaysSet]);
+
+    /* 5️⃣ EXTRA DAYS WORKED */
+    let extraDaysWorked = attendance.filter(
+      (a) =>
+        a.isExtraDay === true ||
+        a.isWeekOff === true ||
+        a.isHolidayWork === true ||
+        a.workType === "Week-off Work" ||
+        a.workType === "Holiday Work"
+    ).length;
+
+    if (extraDaysWorked === 0 && presentDays > totalAssignedDays) {
+      extraDaysWorked = presentDays - totalAssignedDays;
+    }
+
+    /* 6️⃣ LEAVES STATS */
+    const totalLeaves     = leaves.length;
+    const approvedLeaves  = leaves.filter((l) => l.status === "approved").length;
+    const pendingLeaves   = leaves.filter((l) => l.status === "pending").length;
+    const rejectedLeaves  = leaves.filter((l) => l.status === "rejected").length;
+
+    const casualLeaves    = leaves.filter((l) => l.leaveType === "casual").length;
+    const sickLeaves      = leaves.filter((l) => l.leaveType === "sick").length;
+    const earnedLeaves    = leaves.filter((l) => l.leaveType === "earned").length;
+    const compOffLeaves   = leaves.filter((l) => l.leaveType === "compoff").length;
+
+    /* 7️⃣ ABSENT */
+    const absentDays = Math.max(totalAssignedDays - presentDays - approvedLeaves, 0);
+
+    console.log("📊 Stats:", {
+      totalLeaves, approvedLeaves, pendingLeaves, rejectedLeaves,
+      presentDays, absentDays, extraDaysWorked,
+    });
+
+    /* ─────────────── RESPONSE ─────────────── */
+    return res.status(200).json({
       success: true,
+
+      filter: {
+        month: selectedMonth,
+        year: selectedYear,
+        monthStart: monthStartStr,
+        monthEnd: monthEndStr,
+      },
+
+      stats: {
+        totalLeaves,
+        approvedLeaves,
+        pendingLeaves,
+        rejectedLeaves,
+        casualLeaves,
+        sickLeaves,
+        earnedLeaves,
+        compOffLeaves,
+
+        weekOffPerMonth,
+        totalAssignedDays,
+        presentDays,
+        absentDays,
+        extraDaysWorked,
+      },
+
       records: leaves,
     });
   } catch (error) {
     console.error("❌ Error fetching employee leaves:", error);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
-
 // 🏠 Get employees on approved leave today
 
 exports.getOnLeaveToday = async (req, res) => {
