@@ -5000,10 +5000,6 @@ const getEmployeeAttendanceSummary = async (req, res) => {
   res.status(200).json({ success: true, message: "Attendance summary" });
 };
 
-const submitResignation = async (req, res) => {
-  res.status(200).json({ success: true, message: "Resignation submitted" });
-};
-
 const addEmployeeExperience = async (req, res) => {
   res.status(200).json({ success: true, message: "Experience added" });
 };
@@ -7089,7 +7085,6 @@ module.exports = {
   applyPendingIncrements,
   getAllEmployeesSalaryStatus,
   getEmployeeAttendanceSummary,
-  submitResignation,
   addEmployeeExperience,
   getEmployeeExperiences,
   getEmployeeCandidateDocuments,

@@ -23,6 +23,8 @@ const taskRoutes = require("./routes/task.routes");
 const employeeTaskRoutes = require("./routes/employeeTask.routes");
 const { startMissedCheckInCron } = require("./services/missedCheckInCron");
 const { startCheckoutReminderCron } = require("./cron/checkoutReminderCron");
+const { startCheckinReminderCron } = require("./cron/checkinReminderCron");
+
 const axios = require("axios");
 
 
@@ -89,6 +91,7 @@ mongoose
   .then(() => {
     console.log("✅ MongoDB Connected Successfully!");
     startMissedCheckInCron();
+    startCheckinReminderCron();
     startCheckoutReminderCron();
   })
   .catch((err) => {

@@ -48,27 +48,29 @@ const addReferralContact = async (req, res) => {
       customerName,
       customerPhone,
       customerAddress,
-      customerOrganization,        // ✅ NEW
+      customerOrganization,        // ✅
       // Doctor
       doctorName,
       doctorOrganization,
       doctorPhone,
       doctorSpecialization,
-      doctorAddress,               // ✅ NEW
+      doctorAddress,               // ✅
       // Commission
       clinicCommission,
       pharmacyCommission,
       labCommission,
+      // Consultation Fee (₹) — ✅ NEW
+      consultationFee,
       // Dates & notes
-      onboardDate,                 // ✅ NEW
-      referralDate,                // fallback (purana)
+      onboardDate,
+      referralDate,
       referralNotes,
       status,
       // Discounts (Special Offers)
-      discountFees,                // ✅ NEW
-      discountFeesType,            // ✅ NEW
-      discountLab,                 // ✅ NEW
-      discountLabType,             // ✅ NEW
+      discountFees,
+      discountFeesType,
+      discountLab,
+      discountLabType,
       // Offers array (legacy)
       offers
     } = req.body;
@@ -97,6 +99,9 @@ const addReferralContact = async (req, res) => {
     // onboardDate fallback to referralDate (backward compat)
     const finalOnboardDate = onboardDate || referralDate || "";
 
+    // ✅ Normalize consultationFee (₹ only — always a number)
+    const normalizedConsultationFee = parseFloat(consultationFee) || 0;
+
     const contact = new ReferralContact({
       referralType,
 
@@ -119,9 +124,12 @@ const addReferralContact = async (req, res) => {
       labCommission: parseFloat(labCommission) || 0,
       totalCommission,
 
+      // ✅ Consultation Fee (₹ only)
+      consultationFee: normalizedConsultationFee,
+
       // Dates
       onboardDate: finalOnboardDate,
-      referralDate: referralDate || finalOnboardDate, // keep old field synced
+      referralDate: referralDate || finalOnboardDate,
       referralNotes,
 
       // Discounts
@@ -150,6 +158,8 @@ const addReferralContact = async (req, res) => {
     });
   }
 };
+
+
 // ==================== UPDATE ====================
 const updateReferralContact = async (req, res) => {
   try {
@@ -166,6 +176,11 @@ const updateReferralContact = async (req, res) => {
       const pharmacy = parseFloat(updateData.pharmacyCommission) || 0;
       const lab = parseFloat(updateData.labCommission) || 0;
       updateData.totalCommission = clinic + pharmacy + lab;
+    }
+
+    // ✅ Normalize consultationFee (₹ only — always a number)
+    if (updateData.consultationFee !== undefined) {
+      updateData.consultationFee = parseFloat(updateData.consultationFee) || 0;
     }
 
     // 🔹 Normalize discount types
@@ -185,11 +200,9 @@ const updateReferralContact = async (req, res) => {
     }
 
     // 🔹 onboardDate / referralDate sync
-    // Agar frontend sirf onboardDate bhej raha hai to referralDate bhi sync karo (backward compat)
     if (updateData.onboardDate !== undefined && updateData.referralDate === undefined) {
       updateData.referralDate = updateData.onboardDate;
     }
-    // Agar sirf referralDate bhej raha hai to onboardDate bhi set kar do
     if (updateData.referralDate !== undefined && updateData.onboardDate === undefined) {
       updateData.onboardDate = updateData.referralDate;
     }

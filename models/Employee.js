@@ -467,6 +467,18 @@ lastMissedCheckInNotifiedAt: {
   type: Date,
   default: null,
 },
+
+
+// models/Employee.js ke schema mein add karein
+checkinReminders: [
+  {
+    sentAt: { type: Date, default: Date.now },
+    lateMinutes: { type: Number },
+    mobileNumber: { type: String },
+    status: { type: String, enum: ["sent", "failed"], default: "sent" },
+    error: { type: String },
+  },
+],
   
   // Employment Info
   employeeId: { type: String, unique: true, required: true },

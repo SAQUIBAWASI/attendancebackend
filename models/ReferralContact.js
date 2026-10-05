@@ -47,6 +47,10 @@ const ReferralContactSchema = new mongoose.Schema(
       default: '%'
     },
 
+
+        consultationFee: { type: Number, default: 0, min: 0 },
+
+
     // ===== Offers Array =====
     offers: [
       {

@@ -318,7 +318,7 @@ const {
   addEmployee, getEmployees, getEmployeeByEmail, getEmployeeByPhone,
   loginEmployee, getEmployeeAttendanceSummary, assignLocation,
   getAssignedLocationByEmployeeId, updateEmployee, deleteEmployee,
-  submitResignation, addEmployeeExperience, getEmployeeExperiences,
+  addEmployeeExperience, getEmployeeExperiences,
   getEmployeeCandidateDocuments, getEmployeeLetters, getBirthdaysToday,
   getAnniversariesToday, convertEmployeeIdsToTH, applyEmployeeSalaryIncrement,
   applySalaryIncrement, getEmployeeSalaryForDate, getSalaryIncrementHistory,
@@ -364,7 +364,6 @@ router.put("/assign-location/:employeeId", assignLocation);
 router.get("/mylocation/:employeeId", getAssignedLocationByEmployeeId);
 router.put("/update/:id", updateEmployee);
 router.delete("/delete-employee/:id", deleteEmployee);
-router.post("/submit-resignation", submitResignation);
 router.post("/experience", upload.fields([{ name: 'offerLetter', maxCount: 1 }, { name: 'payslip', maxCount: 1 }]), addEmployeeExperience);
 router.get("/experience/:employeeId", getEmployeeExperiences);
 router.get("/candidate-documents/:employeeId", getEmployeeCandidateDocuments);
