@@ -15,12 +15,12 @@ const TEMPLATE_NAME = "reminder_checkout";
 const TEMPLATE_NAMESPACE = "dad418a7_c0d7_42c8_8f6e_1d6abee724f2";
 const TEMPLATE_LANG = "en";
 
-// ✅ 5 min late hone par reminder bhejna
 const LATE_THRESHOLD_MINUTES = 5;
-// ✅ Ek din me max 3 reminder (spam se bachne ke liye)
 const MAX_REMINDERS_PER_DAY = 3;
-// ✅ Do reminders ke beech minimum gap (cooldown)
 const COOLDOWN_MINUTES = 30;
+
+// ✅ GUARD — cron sirf ek baar start ho (duplicate cron se bachne ke liye)
+let cronStarted = false;
 
 // ==========================================
 // 📤 WHATSAPP SEND FUNCTION
@@ -117,6 +117,7 @@ const getMobile = (employee) => {
 // ⏰ MAIN CRON LOGIC (production)
 // ✅ Har 5 min chalta hai
 // ✅ Sirf unhe bhejta hai jinho ne 5+ min se checkout nahi kiya
+// ✅ FIX: Ek employee ko ek run me sirf EK message
 // ==========================================
 const checkAndSendCheckoutReminders = async () => {
   const now = new Date();
@@ -130,7 +131,9 @@ const checkAndSendCheckoutReminders = async () => {
     const activeAttendances = await Attendance.find({
       checkInTime: { $gte: startOfToday },
       status: { $in: ["checked-in", "on-break"] },
-    }).lean();
+    })
+      .sort({ checkInTime: -1 }) // ✅ Latest pehle — latest record hi process hoga
+      .lean();
 
     if (activeAttendances.length === 0) {
       console.log("ℹ️ [CRON] No active check-ins found.");
@@ -139,18 +142,41 @@ const checkAndSendCheckoutReminders = async () => {
 
     console.log(`📊 [CRON] Found ${activeAttendances.length} active check-in(s)`);
 
+    // ✅ FIX: Ek employee ke multiple attendance records → sirf LATEST process karo
+    const latestAttendanceByEmp = new Map();
+    for (const att of activeAttendances) {
+      const empId = getEmpId(att);
+      if (!empId) continue;
+      if (!latestAttendanceByEmp.has(empId)) {
+        latestAttendanceByEmp.set(empId, att);
+      }
+    }
+
+    const uniqueAttendances = Array.from(latestAttendanceByEmp.values());
+    console.log(
+      `📊 [CRON] After dedup: ${uniqueAttendances.length} unique employee(s)`
+    );
+
     // ✅ Unique empIds → employees fetch
-    const empIds = [
-      ...new Set(activeAttendances.map(getEmpId).filter(Boolean)),
-    ];
+    const empIds = [...latestAttendanceByEmp.keys()];
     const employeeMap = await getEmployeeMap(empIds);
 
     let sent = 0;
     let skipped = 0;
+    const processedEmpIds = new Set(); // ✅ Double-safety: same run me 1 hi baar
 
-    for (const attendance of activeAttendances) {
+    for (const attendance of uniqueAttendances) {
       try {
         const empId = getEmpId(attendance);
+
+        // ✅ EXTRA GUARD — same run me same employee dobara process na ho
+        if (processedEmpIds.has(empId)) {
+          console.log(`🔁 [CRON] ${empId} already processed in this run → skip`);
+          skipped++;
+          continue;
+        }
+        processedEmpIds.add(empId);
+
         const employee = employeeMap.get(empId);
 
         if (!employee) {
@@ -250,7 +276,7 @@ const checkAndSendCheckoutReminders = async () => {
     }
 
     console.log(
-      `📊 [CRON] Done — Sent: ${sent}, Skipped: ${skipped}, Total: ${activeAttendances.length}`
+      `📊 [CRON] Done — Sent: ${sent}, Skipped: ${skipped}, Total unique: ${uniqueAttendances.length}`
     );
   } catch (err) {
     console.error("❌ [CRON] Fatal error:", err.message);
@@ -260,8 +286,16 @@ const checkAndSendCheckoutReminders = async () => {
 // ==========================================
 // 🚀 CRON SCHEDULE
 // ✅ Har 5 min chalta hai (*/5 * * * *)
+// ✅ FIX: sirf ek baar start hoga — duplicate cron nahi banega
 // ==========================================
 const startCheckoutReminderCron = () => {
+  // ✅ GUARD — dobara call karne pe skip karo
+  if (cronStarted) {
+    console.log("⚠️ [CRON] Checkout reminder cron already running — skipping duplicate start");
+    return;
+  }
+  cronStarted = true;
+
   cron.schedule("*/5 * * * *", checkAndSendCheckoutReminders, {
     scheduled: true,
     timezone: "Asia/Kolkata",

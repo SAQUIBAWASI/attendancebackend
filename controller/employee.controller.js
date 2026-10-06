@@ -5999,8 +5999,15 @@ const buildLateGraph = (attendance, shiftStartMinutes, selectedYear, selectedMon
   });
 };
 
-/* ────────── GRAPH 2: ABSENT DAYS ────────── */
-const buildAbsentGraph = (attendance, leaves, selectedYear, selectedMonth, totalAssignedDays) => {
+/* ────────── GRAPH 2: ABSENT DAYS (respects weekOffCount) ────────── */
+const buildAbsentGraph = (
+  attendance,
+  leaves,
+  selectedYear,
+  selectedMonth,
+  totalAssignedDays,
+  weekOffCount = 4
+) => {
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
   const targetYM = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`;
 
@@ -6010,54 +6017,134 @@ const buildAbsentGraph = (attendance, leaves, selectedYear, selectedMonth, total
   const isPastMonth =
     selectedYear < todayIST.year ||
     (selectedYear === todayIST.year && selectedMonth < todayIST.month);
-
   const elapsedDayMax = isPastMonth ? daysInMonth : isCurrentMonth ? todayIST.day : 0;
 
-  const weeks = [
-    { label: "Week 1", start: 1,  end: 7  },
-    { label: "Week 2", start: 8,  end: 14 },
-    { label: "Week 3", start: 15, end: 21 },
-    { label: "Week 4", start: 22, end: 28 },
-    { label: "Week 5", start: 29, end: daysInMonth },
-  ];
-
+  /* 1️⃣ Present dates set */
   const presentDates = new Set();
   attendance.forEach((a) => {
-    const ym = toISTYM(a.checkInTime || a.date || a.attendanceDate);
-    const p = toISTParts(a.checkInTime || a.date || a.attendanceDate);
-    if (ym === targetYM && p) presentDates.add(p.day);
+    const d = toISTDateStr(a.checkInTime || a.date || a.attendanceDate);
+    if (d && d.slice(0, 7) === targetYM) presentDates.add(d);
   });
 
+  /* 2️⃣ Approved leave dates set */
   const leaveDates = new Set();
-  leaves.filter((l) => String(l.status || "").toLowerCase() === "approved").forEach((l) => {
-    const sStr = toISTDateStr(l.startDate);
-    const eStr = toISTDateStr(l.endDate || l.startDate);
-    if (!sStr || !eStr) return;
-    const start = new Date(sStr + "T00:00:00Z");
-    const end = new Date(eStr + "T00:00:00Z");
-    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-      if (d.toISOString().slice(0, 7) === targetYM) leaveDates.add(d.getUTCDate());
+  leaves
+    .filter((l) => String(l.status || "").toLowerCase() === "approved")
+    .forEach((l) => {
+      const sStr = toISTDateStr(l.startDate);
+      const eStr = toISTDateStr(l.endDate || l.startDate);
+      if (!sStr || !eStr) return;
+      const s = new Date(sStr + "T00:00:00Z");
+      const e = new Date(eStr + "T00:00:00Z");
+      for (let d = new Date(s); d <= e; d.setUTCDate(d.getUTCDate() + 1)) {
+        const ymd = d.toISOString().slice(0, 10);
+        if (ymd.slice(0, 7) === targetYM) leaveDates.add(ymd);
+      }
+    });
+
+  /* 3️⃣ Build calendar-aligned weeks (Sun start)
+       - Week 1: month start → first Sunday
+       - Week 2..N-1: Monday → Sunday (7 days)
+       - Last week: remaining */
+  const monthStart = new Date(Date.UTC(selectedYear, selectedMonth - 1, 1));
+  const monthEnd = new Date(Date.UTC(selectedYear, selectedMonth - 1, daysInMonth));
+
+  const weeks = [];
+  let cur = new Date(monthStart);
+  let weekNum = 1;
+  while (cur <= monthEnd) {
+    const wStart = new Date(cur);
+    let wEnd;
+    if (weekNum === 1) {
+      wEnd = new Date(cur);
+      while (wEnd.getUTCDay() !== 0 && wEnd < monthEnd) {
+        wEnd.setUTCDate(wEnd.getUTCDate() + 1);
+      }
+    } else {
+      wEnd = new Date(cur);
+      wEnd.setUTCDate(wEnd.getUTCDate() + 6);
+      if (wEnd > monthEnd) wEnd = new Date(monthEnd);
     }
+    weeks.push({ week: weekNum, start: new Date(wStart), end: new Date(wEnd) });
+    cur = new Date(wEnd);
+    cur.setUTCDate(cur.getUTCDate() + 1);
+    weekNum++;
+  }
+
+  /* 4️⃣ Distribute weekOffCount across weeks proportionally to calendar days */
+  const weekOffsAlloc = weeks.map((w) => {
+    const calDays = w.end.getUTCDate() - w.start.getUTCDate() + 1;
+    const share = (weekOffCount * calDays) / daysInMonth;
+    return { calDays, share, alloc: Math.floor(share) };
   });
 
-  const assignedPerDay = totalAssignedDays / daysInMonth;
+  const allocated = weekOffsAlloc.reduce((s, w) => s + w.alloc, 0);
+  let remaining = weekOffCount - allocated;
+  const sortedIdx = weekOffsAlloc
+    .map((w, i) => ({ i, frac: w.share - w.alloc }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; k < remaining; k++) {
+    const idx = sortedIdx[k % sortedIdx.length].i;
+    if (weekOffsAlloc[idx].alloc < weekOffsAlloc[idx].calDays) {
+      weekOffsAlloc[idx].alloc++;
+    }
+  }
 
-  return weeks.map((w) => {
-    const weekEnd = Math.min(w.end, daysInMonth);
-    const elapsedEnd = Math.min(weekEnd, elapsedDayMax);
+  /* 5️⃣ Build final weeks — pick week-off dates (prefer Sunday, then Saturday) */
+  let totalAbsent = 0;
+  let totalWorkingDays = 0;
 
-    let presentInWeek = 0, leaveInWeek = 0;
-    for (let d = w.start; d <= weekEnd; d++) {
-      if (presentDates.has(d)) presentInWeek++;
-      if (leaveDates.has(d)) leaveInWeek++;
+  const finalWeeks = weeks.map((w, idx) => {
+    const wStartDay = w.start.getUTCDate();
+    const wEndDay = w.end.getUTCDate();
+    const calDays = weekOffsAlloc[idx].calDays;
+    const weekOffs = weekOffsAlloc[idx].alloc;
+    const workingDays = calDays - weekOffs;
+    totalWorkingDays += workingDays;
+
+    // Collect dates with DOW to decide off-days
+    const weekDates = [];
+    for (let d = wStartDay; d <= wEndDay; d++) {
+      const dateObj = new Date(Date.UTC(selectedYear, selectedMonth - 1, d));
+      weekDates.push({ day: d, dow: dateObj.getUTCDay() });
+    }
+    const priority = [...weekDates].sort((a, b) => {
+      const rank = (dow) => (dow === 0 ? 0 : dow === 6 ? 1 : 2);
+      return rank(a.dow) - rank(b.dow) || a.day - b.day;
+    });
+    const weekOffDates = new Set();
+    for (let k = 0; k < weekOffs && k < priority.length; k++) {
+      weekOffDates.add(priority[k].day);
     }
 
-    const elapsedDays = Math.max(elapsedEnd - w.start + 1, 0);
-    const expectedInElapsed = Math.round(assignedPerDay * elapsedDays);
-    const absentInWeek = Math.max(expectedInElapsed - presentInWeek - leaveInWeek, 0);
+    const absentDates = [];
+    for (let d = wStartDay; d <= wEndDay; d++) {
+      if (d > elapsedDayMax) continue;
+      if (weekOffDates.has(d)) continue;
+      const ymd = `${targetYM}-${String(d).padStart(2, "0")}`;
+      if (!presentDates.has(ymd) && !leaveDates.has(ymd)) {
+        absentDates.push(ymd);
+      }
+    }
+    totalAbsent += absentDates.length;
 
-    return { week: w.label, absentDays: absentInWeek };
+    return {
+      week: w.week,
+      startDate: w.start.toISOString().slice(0, 10),
+      endDate: w.end.toISOString().slice(0, 10),
+      workingDays,
+      absentDays: absentDates.length,
+      absentDates,
+    };
   });
+
+  return {
+    periodStart: `${targetYM}-01`,
+    periodEnd: `${targetYM}-${String(daysInMonth).padStart(2, "0")}`,
+    totalAbsent,
+    totalWorkingDays,
+    weeks: finalWeeks,
+  };
 };
 
 /* ────────── LOCAL: apply scheduled change if due ────────── */
@@ -6398,7 +6485,8 @@ const employeeDashboard = async (req, res) => {
     const lateGraph = buildLateGraph(userAttendance, shiftStartMins, selectedYear, selectedMonth);
 
     /* 7️⃣.2️⃣ GRAPH 2 */
-    const absentGraph = buildAbsentGraph(userAttendance, leaves, selectedYear, selectedMonth, totalAssignedDays);
+    const weekOffCount = Number(rawProfile.weekOffCount) || 4;
+const absentGraph = buildAbsentGraph(userAttendance, leaves, selectedYear, selectedMonth, totalAssignedDays, weekOffCount);
 
     /* 8️⃣ BIRTHDAYS */
     let birthdaysToday = [];

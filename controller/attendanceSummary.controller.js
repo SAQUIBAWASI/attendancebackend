@@ -11119,3 +11119,384 @@ exports.getBulkPayrollData = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+
+
+
+exports.getSummaryPageData = async (req, res) => {
+  try {
+    const { month, fromDate, toDate } = req.query;
+
+    let targetMonth = month;
+    if (!targetMonth && fromDate) {
+      const d = new Date(fromDate);
+      targetMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
+    if (!targetMonth) {
+      const now = new Date();
+      targetMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    const [year, monthNum] = targetMonth.split('-').map(Number);
+    const monthStart = new Date(year, monthNum - 1, 1);
+    const monthEnd = new Date(year, monthNum, 0, 23, 59, 59, 999);
+
+    const rangeStart = fromDate ? new Date(fromDate) : monthStart;
+    const rangeEnd = toDate ? new Date(toDate + 'T23:59:59.999Z') : monthEnd;
+
+    // ── Parallel fetch ──
+    const [
+      employees,
+      attendanceRecords,
+      allShifts,
+      leaves,
+      holidays,
+      summaries,
+      regularizationRequests,
+    ] = await Promise.all([
+      Employee.find({ status: { $ne: 'inactive' } }).lean(),
+      Attendance.find({
+        checkInTime: { $gte: rangeStart, $lte: rangeEnd },
+      }).sort({ checkInTime: -1 }).lean(),
+      Shift.find({}).lean(),
+      Leave.find({
+        status: 'approved',
+        $or: [
+          { startDate: { $regex: `^${targetMonth}` } },
+          { endDate: { $regex: `^${targetMonth}` } },
+        ],
+      }).lean(),
+      Holiday.find({
+        $or: [
+          { fromDate: { $regex: `^${targetMonth}` } },
+          { toDate: { $regex: `^${targetMonth}` } },
+        ],
+      }).lean(),
+      AttendanceSummary.find({ month: targetMonth }).lean(),
+      (async () => {
+        try {
+          const RegReq = require('../models/AttendanceEditRequest');
+          return await RegReq.find({}).sort({ createdAt: -1 }).lean();
+        } catch (e) { return []; }
+      })(),
+    ]);
+
+    const masterShifts = allShifts.filter((s) => s.isMasterShift);
+
+    const empMap = {};
+    employees.forEach((e) => { empMap[e.employeeId] = e; });
+
+    // ── shiftMap (all formats) ──
+    const shiftMap = {};
+    allShifts.forEach((s) => {
+      if (s.employeeAssignment?.employeeId) {
+        shiftMap[s.employeeAssignment.employeeId] = s;
+      }
+      if (Array.isArray(s.employeeAssignment?.selectedEmployees)) {
+        s.employeeAssignment.selectedEmployees.forEach((emp) => {
+          const empId = typeof emp === 'object' ? emp.employeeId : emp;
+          if (empId) shiftMap[empId] = s;
+        });
+      }
+      if (Array.isArray(s.selectedEmployees)) {
+        s.selectedEmployees.forEach((emp) => {
+          const empId = typeof emp === 'object' ? emp.employeeId : emp;
+          if (empId) shiftMap[empId] = s;
+        });
+      }
+      if (s.employeeId) {
+        shiftMap[s.employeeId] = s;
+      }
+    });
+
+    // ═══════════════════════════════════════════════
+    // ✅ HARDCODED SHIFT TIMES (yeh kaam karega)
+    // ═══════════════════════════════════════════════
+    const HARDCODED = {
+      "A":  { start: "07:00", end: "17:00" },
+      "B":  { start: "10:00", end: "19:00" },
+      "C":  { start: "11:00", end: "20:00" },
+      "D":  { start: "09:00", end: "21:00" },
+      "E":  { start: "07:00", end: "21:30" },
+      "F":  { start: "06:30", end: "22:00" },
+      "G":  { start: "16:00", end: "23:00" },
+      "H":  { start: "17:00", end: "22:00" },
+      "I":  { start: "18:00", end: "22:00" },
+      "J":  { start: "10:00", end: "22:00" },
+      "K":  { start: "10:00", end: "21:30" },
+      "L":  { start: "01:00", end: "12:00" },
+      "M":  { start: "08:00", end: "14:00" },
+      "N":  { start: "18:00", end: "23:00" },
+      "O":  { start: "17:00", end: "23:00" },
+      "P":  { start: "06:30", end: "17:00" },
+      "BR": { start: "07:00", end: "21:30" },
+    };
+
+    const parseHM = (t) => {
+      if (!t) return null;
+      const m = String(t).trim().match(/(\d{1,2})[:.](\d{2})\s*(AM|PM|am|pm)?/i);
+      if (!m) return null;
+      let h = parseInt(m[1]);
+      const mn = parseInt(m[2]);
+      const ampm = m[3] ? m[3].toUpperCase() : null;
+      if (ampm === 'PM' && h < 12) h += 12;
+      if (ampm === 'AM' && h === 12) h = 0;
+      return { h, m: mn };
+    };
+
+    // ── getShiftTimings — BULLETPROOF ──
+    const getShiftTimings = (employeeId) => {
+      const emp = empMap[employeeId];
+      const assignment = shiftMap[employeeId];
+
+      let start = null, end = null, shiftType = null;
+
+      // Priority 1: Assignment se timing
+      if (assignment) {
+        const empAssign = assignment.employeeAssignment || {};
+        if (empAssign.startTime && empAssign.endTime) {
+          start = String(empAssign.startTime).trim();
+          end = String(empAssign.endTime).trim();
+        } else if (empAssign.selectedTimeRange) {
+          const parts = String(empAssign.selectedTimeRange).split(/[-]| to /i).map(p => p.trim());
+          if (parts.length === 2) { start = parts[0]; end = parts[1]; }
+        } else if (assignment.startTime && assignment.endTime) {
+          start = String(assignment.startTime).trim();
+          end = String(assignment.endTime).trim();
+        }
+        shiftType = assignment.shiftType || empAssign.shiftType;
+      }
+
+      // Priority 2: shiftType from employee document
+      if (!shiftType && emp?.shiftType) {
+        shiftType = emp.shiftType;
+      }
+
+      // Priority 3: HARDCODED map
+      if ((!start || !end) && shiftType && HARDCODED[shiftType]) {
+        start = HARDCODED[shiftType].start;
+        end = HARDCODED[shiftType].end;
+      }
+
+      // Priority 4: Employee's own shiftStart/shiftEnd
+      if (!start && emp?.shiftStart) start = emp.shiftStart;
+      if (!end && emp?.shiftEnd) end = emp.shiftEnd;
+
+      if (!start) start = '09:00';
+      if (!end) end = '18:00';
+
+      const st = parseHM(start) || { h: 9, m: 0 };
+      const en = parseHM(end) || { h: 18, m: 0 };
+
+      return { start, end, startHour: st.h, startMinute: st.m, endHour: en.h, endMinute: en.m, shiftType };
+    };
+
+    const getShiftHours = (employeeId) => {
+      const emp = empMap[employeeId];
+      if (emp?.shiftHours > 0) return emp.shiftHours;
+
+      const t = getShiftTimings(employeeId);
+      let sm = t.startHour * 60 + t.startMinute;
+      let em = t.endHour * 60 + t.endMinute;
+      if (em <= sm) em += 24 * 60;
+      const h = (em - sm) / 60;
+      return (h > 0 && h < 24) ? Number(h.toFixed(2)) : 9;
+    };
+
+    const getDayType = (hours, shiftHrs) => {
+      const h = parseFloat(hours) || 0;
+      const sh = shiftHrs || 9;
+      if (h >= sh * 0.9) return 'full';
+      if (h >= sh * 0.5) return 'half';
+      return 'full_leave';
+    };
+
+    const summaryMap = {};
+    summaries.forEach((s) => { summaryMap[s.employeeId] = s; });
+
+    const attendanceByEmp = {};
+    attendanceRecords.forEach((rec) => {
+      if (!rec.employeeId || !rec.checkInTime) return;
+      if (!attendanceByEmp[rec.employeeId]) attendanceByEmp[rec.employeeId] = {};
+      const dateKey = new Date(rec.checkInTime).toISOString().slice(0, 10);
+      if (!attendanceByEmp[rec.employeeId][dateKey]) attendanceByEmp[rec.employeeId][dateKey] = [];
+      attendanceByEmp[rec.employeeId][dateKey].push(rec);
+    });
+
+    // ── Enrich ──
+    const enrichedEmployees = employees.map((emp) => {
+      const empId = emp.employeeId;
+      const shiftHrs = getShiftHours(empId);
+      const timings = getShiftTimings(empId);
+      const dailyRecords = attendanceByEmp[empId] || {};
+
+      let presentDays = 0, halfDays = 0, lateDays = 0;
+      let onsiteDays = 0, remoteDays = 0, totalOT = 0, totalHours = 0;
+      let latestRecord = null, latestCheckInDate = null;
+
+      Object.entries(dailyRecords).forEach(([dateKey, recs]) => {
+        const lastRec = recs[recs.length - 1];
+        const hours = lastRec.totalHours || lastRec.hours || 0;
+        const dayType = getDayType(hours, shiftHrs);
+
+        if (dayType === 'full') presentDays++;
+        else if (dayType === 'half') halfDays++;
+
+        totalHours += hours;
+
+        // Late check (15 min grace)
+        if (lastRec.checkInTime) {
+          const checkIn = new Date(lastRec.checkInTime);
+          const shiftStart = new Date(checkIn);
+          shiftStart.setHours(timings.startHour, timings.startMinute, 0, 0);
+          const diffMin = (checkIn - shiftStart) / 60000;
+          if (diffMin > 15) lateDays++;
+        }
+
+        if (lastRec.reason === 'Onsite' || lastRec.onsite) onsiteDays++;
+        if (lastRec.reason === 'Work From Home') remoteDays++;
+
+        const ot = hours - shiftHrs;
+        if (ot > 0.5) totalOT += ot;
+
+        const recDate = new Date(lastRec.checkInTime);
+        if (!latestCheckInDate || recDate > latestCheckInDate) {
+          latestCheckInDate = recDate;
+          latestRecord = lastRec;
+        }
+      });
+
+      const workingDays = presentDays + halfDays * 0.5;
+      const summary = summaryMap[empId] || {};
+
+      // Latest status
+      let latestStatus = 'absent';
+      let latestStatusMessage = 'No Attendance';
+      let latestStatusIcon = '❌';
+      let latestStatusColor = 'text-red-600 bg-red-50 border-red-100';
+
+      if (latestRecord) {
+        const checkIn = new Date(latestRecord.checkInTime);
+        const checkOut = latestRecord.checkOutTime ? new Date(latestRecord.checkOutTime) : null;
+        const hours = latestRecord.totalHours || latestRecord.hours || 0;
+        const shiftStart = new Date(checkIn);
+        shiftStart.setHours(timings.startHour, timings.startMinute, 0, 0);
+
+        const diffMin = (checkIn - shiftStart) / (1000 * 60);
+        const fullDayThreshold = shiftHrs * 0.85;
+
+        if (checkIn && !checkOut) {
+          latestStatus = 'single_punch';
+          latestStatusMessage = 'Single Punch';
+          latestStatusIcon = '📤';
+          latestStatusColor = 'text-purple-700 bg-purple-50 border-purple-200';
+        } else if (checkOut && hours < fullDayThreshold && hours > 0) {
+          latestStatus = 'early_logout';
+          latestStatusMessage = 'Early Logout';
+          latestStatusIcon = '⏳';
+          latestStatusColor = 'text-orange-700 bg-orange-50 border-orange-200';
+        } else if (diffMin >= 60) {
+          latestStatus = 'half_day';
+          latestStatusMessage = 'Half Day';
+          latestStatusIcon = '🌓';
+          latestStatusColor = 'text-amber-700 bg-amber-50 border-amber-200';
+        } else if (diffMin > 15) {
+          latestStatus = 'late';
+          latestStatusMessage = 'Late';
+          latestStatusIcon = '⏰';
+          latestStatusColor = 'text-orange-600 bg-orange-50 border-orange-200';
+        } else if (hours >= fullDayThreshold) {
+          latestStatus = 'full_day';
+          latestStatusMessage = 'Full Day';
+          latestStatusIcon = '✅';
+          latestStatusColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+        } else {
+          latestStatus = 'present';
+          latestStatusMessage = 'Present';
+          latestStatusIcon = '📌';
+          latestStatusColor = 'text-blue-700 bg-blue-50 border-blue-200';
+        }
+      }
+
+      return {
+        employeeId: empId,
+        name: emp.name,
+        department: emp.department || '-',
+        designation: emp.role || emp.designation || '-',
+        month: targetMonth,
+        shiftHours: shiftHrs,
+        shiftStart: timings.start,
+        shiftEnd: timings.end,
+        shiftType: timings.shiftType,
+        presentDays,
+        halfDays,
+        workingDays: Number(workingDays.toFixed(1)),
+        lateDays,
+        onsiteDays,
+        remoteDays,
+        overTimeHours: Number(totalOT.toFixed(2)),
+        overTimeFormatted: `${Math.floor(totalOT)}h ${Math.round((totalOT % 1) * 60)}m`,
+        totalHours: Number(totalHours.toFixed(2)),
+        totalHoursFormatted: `${Math.floor(totalHours)}h ${Math.round((totalHours % 1) * 60)}m`,
+        latestStatus,
+        latestStatusMessage,
+        latestStatusIcon,
+        latestStatusColor,
+        latestCheckInTime: latestRecord?.checkInTime || null,
+        latestCheckOutTime: latestRecord?.checkOutTime || null,
+        latestHours: latestRecord ? (latestRecord.totalHours || latestRecord.hours || 0) : 0,
+        status: summary.status || (presentDays > 0 ? 'present' : 'absent'),
+      };
+    });
+
+    const performers = enrichedEmployees
+      .map((e) => {
+        const expected = e.workingDays || 1;
+        const perf = expected > 0 ? Math.min(100, Math.round((e.presentDays / expected) * 100)) : 0;
+        return {
+          employeeId: e.employeeId,
+          employeeCode: e.employeeId,
+          name: e.name,
+          department: e.department,
+          presentDays: e.presentDays,
+          expectedWorkingDays: e.workingDays,
+          totalWorkingDays: e.workingDays,
+          lateDays: e.lateDays,
+          lateComingDays: e.lateDays,
+          overtimeHours: e.overTimeHours,
+          actualWorkingHours: e.overTimeHours,
+          performancePercentage: perf,
+          rate: perf,
+        };
+      })
+      .sort((a, b) => b.performancePercentage - a.performancePercentage);
+
+    const topPerformers = performers.slice(0, 10);
+    const zeroAttendance = enrichedEmployees.filter((e) => e.presentDays === 0);
+
+    const departments = [...new Set(employees.map((e) => e.department).filter(Boolean))].sort();
+    const designations = [...new Set(employees.map((e) => e.role || e.designation).filter(Boolean))].sort();
+
+    res.json({
+      success: true,
+      month: targetMonth,
+      meta: {
+        totalEmployees: enrichedEmployees.length,
+        totalRecords: attendanceRecords.length,
+        holidays: holidays.length,
+        departments,
+        designations,
+      },
+      employees: enrichedEmployees,
+      topPerformers,
+      allPerformers: performers,
+      zeroAttendance,
+      regularizationRequests,
+    });
+
+  } catch (error) {
+    console.error('❌ getSummaryPageData error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

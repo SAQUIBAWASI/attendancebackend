@@ -1499,20 +1499,161 @@ router.put("/:bookingId/update-partner-payment", async (req, res) => {
 
 router.get("/getallreferralbookings", async (req, res) => {
   try {
-    const bookings = await Appointment.find({
-      paymentStatus: "Paid",
+    // ═══════════════════════════════════════════════════════════
+    // 1️⃣ BUILD MONGO QUERY
+    // ═══════════════════════════════════════════════════════════
+    const mongoQuery = {
       $or: [
-        { referralContactId: { $exists: true, $ne: null } },
-        { referralDoctorId: { $exists: true, $ne: null } },
-        { referralCustomerId: { $exists: true, $ne: null } }
-      ]
-    })
+        { referralContactId:   { $exists: true, $ne: null } },
+        { referralDoctorId:    { $exists: true, $ne: null } },
+        { referralCustomerId:  { $exists: true, $ne: null } },
+      ],
+    };
+
+    const {
+      apptFrom,
+      apptTo,
+      regFrom,
+      regTo,
+      month,
+      doctor,
+      paymentType,
+      paymentStatus,
+      bookingType,
+      search,
+      timeFilter,
+      revenueCategory,
+    } = req.query;
+
+    // ✅ TIME FILTER
+    if (timeFilter && timeFilter !== "All" && !apptFrom && !apptTo && !month) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const pad = (n) => String(n).padStart(2, "0");
+      const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+      let from = null, to = null;
+
+      if (timeFilter === "today") {
+        from = fmt(today);
+        to = from;
+      } else if (timeFilter === "yesterday") {
+        const y = new Date(today);
+        y.setDate(y.getDate() - 1);
+        from = fmt(y);
+        to = from;
+      } else if (timeFilter === "thisWeek") {
+        const dow = today.getDay();
+        const diff = dow === 0 ? 6 : dow - 1;
+        const monday = new Date(today);
+        monday.setDate(monday.getDate() - diff);
+        from = fmt(monday);
+        to = fmt(today);
+      } else if (timeFilter === "thisMonth") {
+        const first = new Date(today.getFullYear(), today.getMonth(), 1);
+        const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        from = fmt(first);
+        to = fmt(last);
+      } else if (timeFilter === "lastMonth") {
+        const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const last = new Date(today.getFullYear(), today.getMonth(), 0);
+        from = fmt(first);
+        to = fmt(last);
+      } else if (timeFilter === "thisYear") {
+        const first = new Date(today.getFullYear(), 0, 1);
+        const last = new Date(today.getFullYear(), 11, 31);
+        from = fmt(first);
+        to = fmt(last);
+      }
+
+      if (from && to) {
+        mongoQuery.appointmentDate = { $gte: from, $lte: to };
+      }
+    }
+
+    // ✅ APPOINTMENT DATE range
+    if (apptFrom || apptTo) {
+      const dateFilter = {};
+      if (apptFrom) dateFilter.$gte = apptFrom;
+      if (apptTo)   dateFilter.$lte = apptTo;
+      mongoQuery.appointmentDate = dateFilter;
+    }
+
+    // ✅ REGISTERED DATE range
+    if (regFrom || regTo) {
+      const regFilter = {};
+      if (regFrom) {
+        const from = new Date(regFrom);
+        from.setHours(0, 0, 0, 0);
+        regFilter.$gte = from;
+      }
+      if (regTo) {
+        const to = new Date(regTo);
+        to.setHours(23, 59, 59, 999);
+        regFilter.$lte = to;
+      }
+      mongoQuery.createdAt = regFilter;
+    }
+
+    // ✅ MONTH
+    if (month && !apptFrom && !apptTo && (!timeFilter || timeFilter === "All")) {
+      mongoQuery.appointmentDate = new RegExp(`^${month}`);
+    }
+
+    // ✅ DOCTOR
+    if (doctor && doctor !== "All") {
+      mongoQuery["slotDetails.doctorName"] = doctor;
+    }
+
+    // ✅ PAYMENT TYPE
+    if (paymentType && paymentType !== "All") {
+      mongoQuery.paymentType = paymentType.toLowerCase();
+    }
+
+    // ✅ PAYMENT STATUS
+    if (paymentStatus && paymentStatus !== "All") {
+      mongoQuery.paymentStatus = paymentStatus;
+    }
+
+    // ✅ BOOKING TYPE
+    if (bookingType && bookingType !== "All") {
+      if (bookingType === "Walk-In") mongoQuery.isOP = true;
+      else if (bookingType === "Online") mongoQuery.isOP = { $ne: true };
+    }
+
+    // ✅ SEARCH
+    if (search && search.trim()) {
+      const q = search.trim();
+      const rx = new RegExp(q, "i");
+      mongoQuery.$and = [
+        { $or: mongoQuery.$or },
+        {
+          $or: [
+            { patientName: rx },
+            { patientPhone: rx },
+            { purpose: rx },
+            { referredByDoctor: rx },
+            { referredByCustomer: rx },
+            { referredBy: rx },
+          ],
+        },
+      ];
+      delete mongoQuery.$or;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 2️⃣ FETCH
+    // ═══════════════════════════════════════════════════════════
+    const bookings = await Appointment.find(mongoQuery)
       .populate("referralContactId")
       .populate("referralDoctorId")
       .populate("referralCustomerId")
       .sort({ createdAt: -1, bookedAt: -1 });
 
-    // ✅ Helper — classify service category
+    // ═══════════════════════════════════════════════════════════
+    // 3️⃣ HELPERS
+    // ═══════════════════════════════════════════════════════════
     const classifyService = (svc) => {
       const cat = (svc.category || svc.serviceCategory || svc.type || "").toString().toLowerCase();
       const name = (svc.name || "").toString().toLowerCase();
@@ -1521,6 +1662,9 @@ router.get("/getallreferralbookings", async (req, res) => {
       return "clinic";
     };
 
+    // ═══════════════════════════════════════════════════════════
+    // 4️⃣ TRANSFORM
+    // ═══════════════════════════════════════════════════════════
     const transform = (b) => {
       const slotDetails = b.slotDetails || {};
       const rawServices =
@@ -1535,13 +1679,10 @@ router.get("/getallreferralbookings", async (req, res) => {
         price: Number(s.price) || 0,
         description: s.description || "",
         category: s.category || s.serviceCategory || s.type || "",
-        paymentStatus: s.paymentStatus || b.paymentStatus || "Pending",
+        paymentStatus: s.paymentStatus || b.paymentStatus || "Due",
       }));
 
-      // ✅ Break down services by category
-      let clinicAmount = 0;
-      let labAmount = 0;
-      let pharmacyAmount = 0;
+      let clinicAmount = 0, labAmount = 0, pharmacyAmount = 0;
 
       normalizedServices.forEach((s) => {
         const cat = classifyService(s);
@@ -1551,7 +1692,6 @@ router.get("/getallreferralbookings", async (req, res) => {
         else clinicAmount += price;
       });
 
-      // ✅ Add manual medicineTotal + labTotal
       const manualMedicineTotal = Number(b.medicineTotal) || 0;
       const manualLabTotal = Number(b.labTotal) || 0;
       pharmacyAmount += manualMedicineTotal;
@@ -1568,16 +1708,16 @@ router.get("/getallreferralbookings", async (req, res) => {
       const amountPaid = Number(b.amountPaid) || 0;
       const balanceAmount = Number(b.balanceAmount) || Math.max(0, finalPayable - amountPaid);
 
-      // ✅ Extract referral contact commission %
       const rc = b.referralContactId && typeof b.referralContactId === "object"
         ? b.referralContactId
-        : (b.referralDoctorId && typeof b.referralDoctorId === "object" ? b.referralDoctorId : null);
+        : (b.referralDoctorId && typeof b.referralDoctorId === "object"
+          ? b.referralDoctorId
+          : (b.referralCustomerId && typeof b.referralCustomerId === "object" ? b.referralCustomerId : null));
 
       const clinicCommissionPct = Number(rc?.clinicCommission) || 0;
       const pharmacyCommissionPct = Number(rc?.pharmacyCommission) || 0;
       const labCommissionPct = Number(rc?.labCommission) || 0;
 
-      // ✅ Per-booking doctor payable
       const partnerPayable =
         (clinicAmount * clinicCommissionPct) / 100 +
         (pharmacyAmount * pharmacyCommissionPct) / 100 +
@@ -1605,17 +1745,16 @@ router.get("/getallreferralbookings", async (req, res) => {
         symptoms: b.symptoms || "",
         appointmentType: b.appointmentType || "Consultation",
         paymentType: b.paymentType || "cash",
-        paymentStatus: b.paymentStatus || "Pending",
+        paymentStatus: b.paymentStatus || "Due",
         partialAmount: Number(b.partialAmount) || 0,
 
-        // ✅ Payment statuses — YE ADD KIYE
         doctorPaymentStatus: b.doctorPaymentStatus || "Pending",
         doctorPaymentUpdatedAt: b.doctorPaymentUpdatedAt || null,
         customerPaymentStatus: b.customerPaymentStatus || "Pending",
+        customerPaymentUpdatedAt: b.customerPaymentUpdatedAt || null,
         partnerPaymentStatus: b.partnerPaymentStatus || "Due",
         partnerPaymentUpdatedAt: b.partnerPaymentUpdatedAt || null,
 
-        // ✅ Totals
         subtotal,
         commissionAmount,
         discount: discountAmount,
@@ -1626,14 +1765,12 @@ router.get("/getallreferralbookings", async (req, res) => {
         amountPaid,
         balanceAmount,
 
-        // ✅ Category breakdown
         clinicAmount,
         labAmount,
         pharmacyAmount,
         medicineTotal: manualMedicineTotal,
         labTotal: manualLabTotal,
 
-        // ✅ Referral commission + partner payable
         clinicCommissionPct,
         pharmacyCommissionPct,
         labCommissionPct,
@@ -1654,6 +1791,7 @@ router.get("/getallreferralbookings", async (req, res) => {
         referralDoctorId: b.referralDoctorId || "",
         referralCommission: b.referralCommission || "",
         referralCommissionType: b.referralCommissionType || "",
+        referralType: rc?.referralType || "",
 
         referralContactDetails: rc
           ? {
@@ -1674,10 +1812,147 @@ router.get("/getallreferralbookings", async (req, res) => {
 
     const transformed = bookings.map(transform);
 
+    // ═══════════════════════════════════════════════════════════
+    // 5️⃣ REVENUE CATEGORY FILTER (post-process)
+    // ═══════════════════════════════════════════════════════════
+    let finalBookings = transformed;
+    if (revenueCategory && revenueCategory !== "All") {
+      finalBookings = transformed.filter((b) => {
+        if (revenueCategory === "clinic")   return (b.clinicAmount   || 0) > 0;
+        if (revenueCategory === "lab")      return (b.labAmount      || 0) > 0;
+        if (revenueCategory === "pharmacy") return (b.pharmacyAmount || 0) > 0;
+        return true;
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 6️⃣ STATS + CATEGORY BREAKDOWN (same shape as getallbookings)
+    // ═══════════════════════════════════════════════════════════
+    const stats = {
+      totalPatients: finalBookings.length,
+      active: 0,
+      inactive: 0,
+      paid: 0,
+      partial: 0,
+      pending: 0,
+      due: 0,
+      totalRevenue: 0,
+      totalReferralPayable: 0,
+      revenueBreakdown: {
+        clinicRevenue: 0,
+        labRevenue: 0,
+        pharmacyRevenue: 0,
+        cashCollected: 0,
+        onlineCollected: 0,
+        cardCollected: 0,
+        insuranceCollected: 0,
+        totalCollected: 0,
+        dueAmount: 0,
+      },
+    };
+
+    const categoryBreakdown = {
+      clinic:   { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0, referralPayable: 0 },
+      lab:      { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0, referralPayable: 0 },
+      pharmacy: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0, referralPayable: 0 },
+    };
+
+    finalBookings.forEach((b) => {
+      if (b.isActive === false) stats.inactive++;
+      else stats.active++;
+
+      const ps = (b.paymentStatus || "Due").toString().toLowerCase();
+      if (ps === "paid") stats.paid++;
+      else if (ps === "partial") stats.partial++;
+      else if (ps === "due") stats.due++;
+      else stats.pending++;
+
+      const clinic   = Number(b.clinicAmount)   || 0;
+      const lab      = Number(b.labAmount)      || 0;
+      const pharmacy = Number(b.pharmacyAmount) || 0;
+
+      stats.revenueBreakdown.clinicRevenue   += clinic;
+      stats.revenueBreakdown.labRevenue      += lab;
+      stats.revenueBreakdown.pharmacyRevenue += pharmacy;
+
+      const paid = Number(b.amountPaid) || 0;
+      const due  = Number(b.balanceAmount) || 0;
+      const pt   = (b.paymentType || "").toString().toLowerCase();
+
+      if (pt === "cash")           stats.revenueBreakdown.cashCollected += paid;
+      else if (pt === "online")    stats.revenueBreakdown.onlineCollected += paid;
+      else if (pt === "card")      stats.revenueBreakdown.cardCollected += paid;
+      else if (pt === "insurance") stats.revenueBreakdown.insuranceCollected += paid;
+
+      stats.revenueBreakdown.totalCollected += paid;
+      stats.revenueBreakdown.dueAmount += due;
+
+      stats.totalReferralPayable += Number(b.partnerPayable) || 0;
+
+      const catTotal = clinic + lab + pharmacy;
+      if (catTotal <= 0) return;
+
+      const clinicShare   = clinic / catTotal;
+      const labShare      = lab / catTotal;
+      const pharmacyShare = pharmacy / catTotal;
+
+      if (clinic > 0)   categoryBreakdown.clinic.footFall   += 1;
+      if (lab > 0)      categoryBreakdown.lab.footFall      += 1;
+      if (pharmacy > 0) categoryBreakdown.pharmacy.footFall += 1;
+
+      // Clinic
+      categoryBreakdown.clinic.total += clinic;
+      categoryBreakdown.clinic.due   += due * clinicShare;
+      if (pt === "cash")           categoryBreakdown.clinic.cash      += paid * clinicShare;
+      else if (pt === "online")    categoryBreakdown.clinic.online    += paid * clinicShare;
+      else if (pt === "card")      categoryBreakdown.clinic.card      += paid * clinicShare;
+      else if (pt === "insurance") categoryBreakdown.clinic.insurance += paid * clinicShare;
+
+      // Lab
+      categoryBreakdown.lab.total += lab;
+      categoryBreakdown.lab.due   += due * labShare;
+      if (pt === "cash")           categoryBreakdown.lab.cash      += paid * labShare;
+      else if (pt === "online")    categoryBreakdown.lab.online    += paid * labShare;
+      else if (pt === "card")      categoryBreakdown.lab.card      += paid * labShare;
+      else if (pt === "insurance") categoryBreakdown.lab.insurance += paid * labShare;
+
+      // Pharmacy
+      categoryBreakdown.pharmacy.total += pharmacy;
+      categoryBreakdown.pharmacy.due   += due * pharmacyShare;
+      if (pt === "cash")           categoryBreakdown.pharmacy.cash      += paid * pharmacyShare;
+      else if (pt === "online")    categoryBreakdown.pharmacy.online    += paid * pharmacyShare;
+      else if (pt === "card")      categoryBreakdown.pharmacy.card      += paid * pharmacyShare;
+      else if (pt === "insurance") categoryBreakdown.pharmacy.insurance += paid * pharmacyShare;
+
+      // Referral payable split by category
+      const rc = b.referralContactDetails;
+      if (rc) {
+        categoryBreakdown.clinic.referralPayable   += (clinic   * (Number(rc.clinicCommission)   || 0)) / 100;
+        categoryBreakdown.lab.referralPayable      += (lab      * (Number(rc.labCommission)      || 0)) / 100;
+        categoryBreakdown.pharmacy.referralPayable += (pharmacy * (Number(rc.pharmacyCommission) || 0)) / 100;
+      }
+    });
+
+    stats.totalRevenue = stats.revenueBreakdown.totalCollected;
+
+    // Round
+    Object.keys(categoryBreakdown).forEach((cat) => {
+      Object.keys(categoryBreakdown[cat]).forEach((k) => {
+        if (k === "footFall") categoryBreakdown[cat][k] = Number(categoryBreakdown[cat][k]) || 0;
+        else categoryBreakdown[cat][k] = Math.round(categoryBreakdown[cat][k]);
+      });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // 7️⃣ RESPONSE
+    // ═══════════════════════════════════════════════════════════
     return res.status(200).json({
       success: true,
-      count: transformed.length,
-      bookings: transformed
+      count: finalBookings.length,
+      stats,
+      categoryBreakdown,
+      timeFilter: timeFilter || "All",
+      bookings: finalBookings,
     });
   } catch (error) {
     console.error("❌ Error fetching all referral bookings:", error);
@@ -1685,39 +1960,37 @@ router.get("/getallreferralbookings", async (req, res) => {
   }
 });
 
+// ============================================================
 // PUT /appointment-slots/updatedoctorpayment/:bookingId
+// ✅ Accepts: Due | Paid | Partial (+ legacy Pending → normalized to Due)
+// ============================================================
 router.put("/updatedoctorpayment/:bookingId", async (req, res) => {
   try {
     const { bookingId } = req.params;
-    const { doctorPaymentStatus } = req.body;
+    let { doctorPaymentStatus } = req.body;
 
-    console.log("🔵 [updateDoctorPayment] Called with:", {
-      bookingId,
-      doctorPaymentStatus,
-    });
+    console.log("🔵 [updateDoctorPayment] Called with:", { bookingId, doctorPaymentStatus });
 
     if (!bookingId || !mongoose.Types.ObjectId.isValid(bookingId)) {
-      console.log("❌ Invalid bookingId");
+      return res.status(400).json({ success: false, message: "Valid booking ID is required" });
+    }
+
+    // ✅ Normalize legacy "Pending" → "Due"
+    if (doctorPaymentStatus === "Pending") doctorPaymentStatus = "Due";
+
+    const ALLOWED = ["Due", "Paid", "Partial"];
+    if (!doctorPaymentStatus || !ALLOWED.includes(doctorPaymentStatus)) {
       return res.status(400).json({
         success: false,
-        message: "Valid booking ID is required",
+        message: `doctorPaymentStatus must be one of: ${ALLOWED.join(", ")}`,
       });
     }
 
-    if (!doctorPaymentStatus || !["Pending", "Paid"].includes(doctorPaymentStatus)) {
-      console.log("❌ Invalid status");
-      return res.status(400).json({
-        success: false,
-        message: "doctorPaymentStatus must be 'Pending' or 'Paid'",
-      });
-    }
-
-    // ✅ Direct update — no middleware, no save(), instant write
     const updated = await Appointment.findByIdAndUpdate(
       bookingId,
       {
         $set: {
-          doctorPaymentStatus: doctorPaymentStatus,
+          doctorPaymentStatus,
           doctorPaymentUpdatedAt: new Date(),
         },
       },
@@ -1725,14 +1998,10 @@ router.put("/updatedoctorpayment/:bookingId", async (req, res) => {
     );
 
     if (!updated) {
-      console.log("❌ Booking not found");
-      return res.status(404).json({
-        success: false,
-        message: "Booking not found",
-      });
+      return res.status(404).json({ success: false, message: "Booking not found" });
     }
 
-    console.log("✅ Updated:", {
+    console.log("✅ Doctor payment updated:", {
       _id: updated._id,
       doctorPaymentStatus: updated.doctorPaymentStatus,
       doctorPaymentUpdatedAt: updated.doctorPaymentUpdatedAt,
@@ -1743,9 +2012,8 @@ router.put("/updatedoctorpayment/:bookingId", async (req, res) => {
       message: `Doctor payment status updated to ${doctorPaymentStatus}`,
       data: updated,
     });
-
   } catch (error) {
-    console.error("❌ Error:", error);
+    console.error("❌ Error updating doctor payment:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to update",
@@ -1754,22 +2022,59 @@ router.put("/updatedoctorpayment/:bookingId", async (req, res) => {
 });
 
 
-// PUT /api/appointment-slots/updatecustomerpayment/:bookingId
+// ============================================================
+// PUT /appointment-slots/updatecustomerpayment/:id
+// ✅ Accepts: Due | Paid | Partial (+ legacy Pending → normalized to Due)
+// ============================================================
 router.put("/updatecustomerpayment/:id", async (req, res) => {
   try {
-    const { customerPaymentStatus } = req.body;
+    const { id } = req.params;
+    let { customerPaymentStatus } = req.body;
+
+    console.log("🟢 [updateCustomerPayment] Called with:", { id, customerPaymentStatus });
+
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Valid booking ID is required" });
+    }
+
+    // ✅ Normalize legacy "Pending" → "Due"
+    if (customerPaymentStatus === "Pending") customerPaymentStatus = "Due";
+
+    const ALLOWED = ["Due", "Paid", "Partial"];
+    if (!customerPaymentStatus || !ALLOWED.includes(customerPaymentStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `customerPaymentStatus must be one of: ${ALLOWED.join(", ")}`,
+      });
+    }
+
     const booking = await Appointment.findByIdAndUpdate(
-      req.params.id,
-      { customerPaymentStatus },
-      { new: true }
+      id,
+      {
+        $set: {
+          customerPaymentStatus,
+          customerPaymentUpdatedAt: new Date(),
+        },
+      },
+      { new: true, runValidators: false }
     );
-    if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
-    res.json({ success: true, data: booking });
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    console.log("✅ Customer payment updated:", {
+      _id: booking._id,
+      customerPaymentStatus: booking.customerPaymentStatus,
+      customerPaymentUpdatedAt: booking.customerPaymentUpdatedAt,
+    });
+
+    return res.status(200).json({ success: true, data: booking });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error("❌ Error updating customer payment:", err);
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
-
 
 
 router.put("/addmedicines/:id", async (req, res) => {
@@ -2400,6 +2705,7 @@ router.put("/updatelabtotal/:id", async (req, res) => {
 // POST /appointment-slots/book — Book Appointment (NO VALIDATION)
 // Trusts frontend financials + Force-overrides after save
 // ✅ OFFER APPLIED SUPPORT
+// ✅ "Pending" replaced with "Due" everywhere
 // ============================================================
 router.post("/book", async (req, res) => {
   try {
@@ -2605,7 +2911,9 @@ router.post("/book", async (req, res) => {
       Number.isFinite(clientSentBalance) &&
       (clientSentAmountPaid > 0 || clientSentBalance > 0);
 
-    let finalPaymentStatus = paymentStatus || "Pending";
+    // ✅ Normalize: treat "Pending" as "Due"
+    let finalPaymentStatus =
+      !paymentStatus || paymentStatus === "Pending" ? "Due" : paymentStatus;
     let finalAmountPaid = 0;
     let finalBalanceAmount = finalPayable;
 
@@ -2620,7 +2928,8 @@ router.post("/book", async (req, res) => {
       } else if (finalAmountPaid > 0 && finalBalanceAmount > 0) {
         finalPaymentStatus = "Partial";
       } else if (finalAmountPaid <= 0) {
-        finalPaymentStatus = paymentStatus === "Due" ? "Due" : "Pending";
+        // ✅ Always default to "Due" (never "Pending")
+        finalPaymentStatus = "Due";
       }
     } else {
       if (paymentStatus === "Paid") {
@@ -2651,7 +2960,8 @@ router.post("/book", async (req, res) => {
             finalBalanceAmount = finalPayable - parsedPartial;
           }
         } else {
-          finalPaymentStatus = "Pending";
+          // ✅ Always default to "Due" (never "Pending")
+          finalPaymentStatus = "Due";
           finalAmountPaid = 0;
           finalBalanceAmount = finalPayable;
         }
@@ -2725,7 +3035,9 @@ router.post("/book", async (req, res) => {
         name: s.name || "Service",
         price: Number(s.price) || 0,
         description: s.description || "",
-        paymentStatus: s.paymentStatus || "Pending",
+        // ✅ Default to "Due" instead of "Pending"
+        paymentStatus:
+          s.paymentStatus && s.paymentStatus !== "Pending" ? s.paymentStatus : "Due",
       })),
 
       servicesTotal,
@@ -2897,7 +3209,6 @@ router.post("/book", async (req, res) => {
     });
   }
 });
-
 
 
 
@@ -3616,6 +3927,7 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
 // ============================================================
 // PUT /appointment-slots/updateop/:bookingId — Update Appointment
 // Trusts frontend financials + Force-overrides after save
+// ✅ "Pending" replaced with "Due" everywhere
 // ============================================================
 router.put("/updateop/:bookingId", async (req, res) => {
   try {
@@ -3722,7 +4034,9 @@ router.put("/updateop/:bookingId", async (req, res) => {
       name: s.name || "Service",
       price: Number(s.price) || 0,
       description: s.description || "",
-      paymentStatus: s.paymentStatus || "Pending",
+      // ✅ Default to "Due" instead of "Pending"
+      paymentStatus:
+        s.paymentStatus && s.paymentStatus !== "Pending" ? s.paymentStatus : "Due",
       addedAt: s.addedAt || new Date(),
     }));
 
@@ -3780,7 +4094,9 @@ router.put("/updateop/:bookingId", async (req, res) => {
       Number.isFinite(clientSentBalance) &&
       (clientSentAmountPaid > 0 || clientSentBalance > 0);
 
-    let finalPaymentStatus = paymentStatus || "Pending";
+    // ✅ Normalize: treat "Pending" as "Due"
+    let finalPaymentStatus =
+      !paymentStatus || paymentStatus === "Pending" ? "Due" : paymentStatus;
     let finalAmountPaid = 0;
     let finalBalanceAmount = finalPayable;
 
@@ -3795,7 +4111,8 @@ router.put("/updateop/:bookingId", async (req, res) => {
       } else if (finalAmountPaid > 0 && finalBalanceAmount > 0) {
         finalPaymentStatus = "Partial";
       } else if (finalAmountPaid <= 0) {
-        finalPaymentStatus = paymentStatus === "Due" ? "Due" : "Pending";
+        // ✅ Always default to "Due" (never "Pending")
+        finalPaymentStatus = "Due";
       }
     } else {
       // Fallback logic
@@ -3827,7 +4144,8 @@ router.put("/updateop/:bookingId", async (req, res) => {
             finalBalanceAmount = finalPayable - parsedPartial;
           }
         } else {
-          finalPaymentStatus = "Pending";
+          // ✅ Always default to "Due" (never "Pending")
+          finalPaymentStatus = "Due";
           finalAmountPaid = 0;
           finalBalanceAmount = finalPayable;
         }
@@ -3955,7 +4273,6 @@ router.put("/updateop/:bookingId", async (req, res) => {
 });
 
 
-
 router.put("/updatecharges/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -4037,7 +4354,8 @@ router.put("/updatecharges/:id", async (req, res) => {
     const currentPaid = Number(booking.amountPaid) || 0;
     let finalAmountPaid = currentPaid;
     let finalBalanceAmount = Math.max(0, finalPayable - currentPaid);
-    let finalPaymentStatus = "Pending";
+    // ✅ Default to "Due" (never "Pending")
+    let finalPaymentStatus = "Due";
 
     if (finalBalanceAmount <= 0 && finalAmountPaid > 0) {
       finalPaymentStatus = "Paid";
@@ -4046,7 +4364,8 @@ router.put("/updatecharges/:id", async (req, res) => {
     } else if (finalAmountPaid > 0 && finalBalanceAmount > 0) {
       finalPaymentStatus = "Partial";
     } else if (finalAmountPaid === 0) {
-      finalPaymentStatus = booking.paymentStatus === "Due" ? "Due" : "Pending";
+      // ✅ Always default to "Due" (never "Pending")
+      finalPaymentStatus = "Due";
     }
 
     // ============================================================
@@ -4121,7 +4440,6 @@ router.put("/updatecharges/:id", async (req, res) => {
     });
   }
 });
-
 
 // ✅ NEW: Vitals update API
 router.put("/vitals/:id", async (req, res) => {

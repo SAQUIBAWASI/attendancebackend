@@ -51,7 +51,8 @@ const {
   updateWeekOffConfig,
  getBulkPayrollData,
   getWeekOffConfig,
-  getEditedAttendanceRecords
+  getEditedAttendanceRecords,
+  getSummaryPageData,
 } = require("../controller/attendanceSummary.controller");
 
 // 📊 Attendance Summary Routes
@@ -80,4 +81,9 @@ router.post('/updateWeekOffConfig', updateWeekOffConfig);
 
 // 🚀 NEW: Bulk payroll data (single API for entire payroll page)
 router.get("/bulk-payroll", getBulkPayrollData);
+
+
+// ✅ Add this:
+router.get('/page-data', getSummaryPageData);
+
 module.exports = router;

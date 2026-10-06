@@ -136,5 +136,7 @@ router.get("/extra-days/:employeeId", attendanceController.getMyExtraDays);
 
 router.post("/checkinwithqr", attendanceController.checkInForQR);
 
+router.get('/page-data', attendanceController.getAttendanceListPageData);
+
 
 module.exports = router;

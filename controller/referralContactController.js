@@ -57,8 +57,13 @@ const addReferralContact = async (req, res) => {
       doctorAddress,               // ✅
       // Commission
       clinicCommission,
+      clinicCommissionType,        // ✅ NEW
       pharmacyCommission,
+      pharmacyCommissionType,      // ✅ NEW
       labCommission,
+      labCommissionType,           // ✅ NEW
+      feesCommission,              // ✅ NEW
+      feesCommissionType,          // ✅ NEW
       // Consultation Fee (₹) — ✅ NEW
       consultationFee,
       // Dates & notes
@@ -71,15 +76,18 @@ const addReferralContact = async (req, res) => {
       discountFeesType,
       discountLab,
       discountLabType,
+      // Services ✅ NEW
+      services,
       // Offers array (legacy)
       offers
     } = req.body;
 
-    // Auto-calculate total commission
+    // Auto-calculate total commission (all 4 categories)
     const totalCommission =
       (parseFloat(clinicCommission) || 0) +
       (parseFloat(pharmacyCommission) || 0) +
-      (parseFloat(labCommission) || 0);
+      (parseFloat(labCommission) || 0) +
+      (parseFloat(feesCommission) || 0);   // ✅ NEW
 
     // Normalize offers
     let normalizedOffers = [];
@@ -92,9 +100,26 @@ const addReferralContact = async (req, res) => {
         }));
     }
 
+    // Normalize services ✅ NEW
+    let normalizedServices = [];
+    if (Array.isArray(services)) {
+      normalizedServices = services
+        .filter((s) => s && s.name)
+        .map((s) => ({
+          name: String(s.name).trim(),
+          price: Number(s.price) || 0,
+        }));
+    }
+
     // Normalize discount types
     const normalizedFeesType = discountFeesType === '₹' ? '₹' : '%';
     const normalizedLabType = discountLabType === '₹' ? '₹' : '%';
+
+    // Normalize commission types ✅ NEW
+    const normalizedClinicType = clinicCommissionType === '₹' ? '₹' : '%';
+    const normalizedPharmacyType = pharmacyCommissionType === '₹' ? '₹' : '%';
+    const normalizedLabCommType = labCommissionType === '₹' ? '₹' : '%';
+    const normalizedFeesCommType = feesCommissionType === '₹' ? '₹' : '%';
 
     // onboardDate fallback to referralDate (backward compat)
     const finalOnboardDate = onboardDate || referralDate || "";
@@ -120,12 +145,20 @@ const addReferralContact = async (req, res) => {
 
       // Commission
       clinicCommission: parseFloat(clinicCommission) || 0,
+      clinicCommissionType: normalizedClinicType,          // ✅ NEW
       pharmacyCommission: parseFloat(pharmacyCommission) || 0,
+      pharmacyCommissionType: normalizedPharmacyType,      // ✅ NEW
       labCommission: parseFloat(labCommission) || 0,
+      labCommissionType: normalizedLabCommType,            // ✅ NEW
+      feesCommission: parseFloat(feesCommission) || 0,     // ✅ NEW
+      feesCommissionType: normalizedFeesCommType,          // ✅ NEW
       totalCommission,
 
       // ✅ Consultation Fee (₹ only)
       consultationFee: normalizedConsultationFee,
+
+      // ✅ Services
+      services: normalizedServices,
 
       // Dates
       onboardDate: finalOnboardDate,
@@ -166,21 +199,65 @@ const updateReferralContact = async (req, res) => {
     const { id } = req.params;
     const updateData = { ...req.body };
 
-    // 🔹 Auto-calculate total commission
+    // 🔹 Auto-calculate total commission (all 4 categories)
     if (
       updateData.clinicCommission !== undefined ||
       updateData.pharmacyCommission !== undefined ||
-      updateData.labCommission !== undefined
+      updateData.labCommission !== undefined ||
+      updateData.feesCommission !== undefined          // ✅ NEW
     ) {
-      const clinic = parseFloat(updateData.clinicCommission) || 0;
+      const clinic   = parseFloat(updateData.clinicCommission) || 0;
       const pharmacy = parseFloat(updateData.pharmacyCommission) || 0;
-      const lab = parseFloat(updateData.labCommission) || 0;
-      updateData.totalCommission = clinic + pharmacy + lab;
+      const lab      = parseFloat(updateData.labCommission) || 0;
+      const fees     = parseFloat(updateData.feesCommission) || 0;   // ✅ NEW
+      updateData.totalCommission = clinic + pharmacy + lab + fees;
+    }
+
+    // 🔹 Normalize commission values ✅ NEW
+    if (updateData.clinicCommission !== undefined) {
+      updateData.clinicCommission = parseFloat(updateData.clinicCommission) || 0;
+    }
+    if (updateData.pharmacyCommission !== undefined) {
+      updateData.pharmacyCommission = parseFloat(updateData.pharmacyCommission) || 0;
+    }
+    if (updateData.labCommission !== undefined) {
+      updateData.labCommission = parseFloat(updateData.labCommission) || 0;
+    }
+    if (updateData.feesCommission !== undefined) {
+      updateData.feesCommission = parseFloat(updateData.feesCommission) || 0;
+    }
+
+    // 🔹 Normalize commission types ✅ NEW
+    if (updateData.clinicCommissionType !== undefined) {
+      updateData.clinicCommissionType = updateData.clinicCommissionType === '₹' ? '₹' : '%';
+    }
+    if (updateData.pharmacyCommissionType !== undefined) {
+      updateData.pharmacyCommissionType = updateData.pharmacyCommissionType === '₹' ? '₹' : '%';
+    }
+    if (updateData.labCommissionType !== undefined) {
+      updateData.labCommissionType = updateData.labCommissionType === '₹' ? '₹' : '%';
+    }
+    if (updateData.feesCommissionType !== undefined) {
+      updateData.feesCommissionType = updateData.feesCommissionType === '₹' ? '₹' : '%';
     }
 
     // ✅ Normalize consultationFee (₹ only — always a number)
     if (updateData.consultationFee !== undefined) {
       updateData.consultationFee = parseFloat(updateData.consultationFee) || 0;
+    }
+
+    // ✅ Normalize services ✅ NEW
+    if (updateData.services !== undefined) {
+      if (Array.isArray(updateData.services)) {
+        updateData.services = updateData.services
+          .filter((s) => s && s.name)
+          .map((s) => ({
+            name: String(s.name).trim(),
+            price: Number(s.price) || 0,
+          }));
+      } else {
+        updateData.services = [];
+      }
     }
 
     // 🔹 Normalize discount types

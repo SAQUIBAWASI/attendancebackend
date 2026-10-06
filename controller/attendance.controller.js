@@ -4045,3 +4045,146 @@ exports.getMyAttendanceForApp = async (req, res) => {
     });
   }
 };
+
+
+
+
+// ============================================================================
+// 🚀 SINGLE API — Attendance List Page (ALL data in one call)
+// GET /api/attendance/page-data?month=2026-10&fromDate=&toDate=
+// ============================================================================
+exports.getAttendanceListPageData = async (req, res) => {
+  try {
+    const { month, fromDate, toDate } = req.query;
+
+    // ── Fetch employees + attendance in parallel ──
+    const [employees, attendanceResult] = await Promise.all([
+      Employee.find({}).lean(),
+      Attendance.find({}).sort({ checkInTime: -1 }).lean(),
+    ]);
+
+    // ── Filter out inactive employees ──
+    const INACTIVE_IDS = ['EMP002', 'EMP003', 'EMP004', 'EMP008', 'EMP010', 'EMP018', 'EMP019'];
+    const activeEmployees = employees.filter((emp) => {
+      if (emp.status === 'inactive') return false;
+      if (emp.status === 'active') return true;
+      return !INACTIVE_IDS.includes(emp.employeeId);
+    });
+
+    // ── Build employee map (for O(1) lookup instead of O(n) find) ──
+    const empMap = {};
+    activeEmployees.forEach((emp) => {
+      empMap[emp.employeeId] = {
+        employeeId: emp.employeeId,
+        name: emp.name || 'Unknown',
+        department: emp.department || emp.departmentName || 'N/A',
+        designation: emp.designation || emp.role || 'N/A',
+        profilePicture: emp.profilePicture || null,
+      };
+    });
+
+    // ── Filter attendance — only active employees ──
+    const activeEmployeeIds = new Set(activeEmployees.map((e) => e.employeeId));
+    let activeRecords = attendanceResult.filter((rec) =>
+      activeEmployeeIds.has(rec.employeeId)
+    );
+
+    // ── Apply date filters (same logic as frontend applyDateFilters) ──
+    if (fromDate && toDate) {
+      const fromDateObj = new Date(fromDate);
+      fromDateObj.setHours(0, 0, 0, 0);
+      const toDateObj = new Date(toDate);
+      toDateObj.setHours(23, 59, 59, 999);
+      activeRecords = activeRecords.filter((rec) => {
+        if (!rec.checkInTime) return false;
+        const recordDate = new Date(rec.checkInTime);
+        return recordDate >= fromDateObj && recordDate <= toDateObj;
+      });
+    } else if (month && !fromDate && !toDate) {
+      activeRecords = activeRecords.filter((rec) => {
+        if (!rec.checkInTime) return false;
+        const recordMonth = new Date(rec.checkInTime).toISOString().slice(0, 7);
+        return recordMonth === month;
+      });
+    } else if (fromDate && !toDate) {
+      const fromDateObj = new Date(fromDate);
+      fromDateObj.setHours(0, 0, 0, 0);
+      const toDateObj = new Date(fromDate);
+      toDateObj.setHours(23, 59, 59, 999);
+      activeRecords = activeRecords.filter((rec) => {
+        if (!rec.checkInTime) return false;
+        const recordDate = new Date(rec.checkInTime);
+        return recordDate >= fromDateObj && recordDate <= toDateObj;
+      });
+    }
+
+    // ── Enrich each record with employee details (server-side) ──
+    // This avoids frontend doing find() per row
+    const enrichedRecords = activeRecords.map((rec) => {
+      const empDetails = empMap[rec.employeeId] || {
+        name: 'Unknown',
+        department: 'N/A',
+        designation: 'N/A',
+        profilePicture: null,
+      };
+
+      // Compute total break minutes if not stored
+      let totalBreakMinutes = rec.totalBreakMinutes || 0;
+      if (!totalBreakMinutes && Array.isArray(rec.breaks) && rec.breaks.length > 0) {
+        totalBreakMinutes = rec.breaks.reduce((sum, b) => sum + (b.breakMinutes || 0), 0);
+      }
+
+      return {
+        ...rec,
+        // Enriched employee fields
+        employeeName: empDetails.name,
+        employeeDepartment: empDetails.department,
+        employeeDesignation: empDetails.designation,
+        employeeProfilePicture: empDetails.profilePicture,
+        // Computed
+        totalBreakMinutes,
+      };
+    });
+
+    // ── Unique departments + designations ──
+    const depts = new Set();
+    const designations = new Set();
+    activeEmployees.forEach((emp) => {
+      if (emp.department) depts.add(emp.department);
+      if (emp.role || emp.designation) designations.add(emp.role || emp.designation);
+    });
+
+    // ── Stats (for KPI cards) ──
+    const stats = {
+      totalRecords: enrichedRecords.length,
+      onsiteEntries: enrichedRecords.filter((r) => r.onsite).length,
+      activeCheckedIn: enrichedRecords.filter((r) => r.status === 'checked-in').length,
+      totalBreakMinutes: enrichedRecords.reduce((sum, r) => sum + (r.totalBreakMinutes || 0), 0),
+    };
+
+    // ── Response ──
+    res.json({
+      success: true,
+      meta: {
+        totalRecords: enrichedRecords.length,
+        totalEmployees: activeEmployees.length,
+        departments: Array.from(depts).sort(),
+        designations: Array.from(designations).sort(),
+      },
+      employees: activeEmployees.map((emp) => ({
+        employeeId: emp.employeeId,
+        name: emp.name,
+        department: emp.department || 'N/A',
+        designation: emp.designation || emp.role || 'N/A',
+        profilePicture: emp.profilePicture || null,
+        status: emp.status,
+      })),
+      records: enrichedRecords,
+      stats,
+    });
+
+  } catch (error) {
+    console.error('❌ getAttendanceListPageData error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
