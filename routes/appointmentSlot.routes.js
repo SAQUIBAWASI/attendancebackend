@@ -533,6 +533,97 @@ router.put("/updatecharges/:id", async (req, res) => {
 router.get("/getallbookings", async (req, res) => {
   try {
     // ═══════════════════════════════════════════════════════════
+    // ✅ AUTO-MIGRATE HELPER — purane corrupted bookings ko fix karta hai
+    // ═══════════════════════════════════════════════════════════
+    const migrateCategoryPayment = async (booking) => {
+      const cp = booking.categoryPayment;
+      const allZero =
+        !cp ||
+        ((!cp.clinic?.paidAmount || cp.clinic.paidAmount === 0) &&
+          (!cp.lab?.paidAmount || cp.lab.paidAmount === 0) &&
+          (!cp.pharmacy?.paidAmount || cp.pharmacy.paidAmount === 0));
+
+      const ps = booking.paymentStatus;
+      const amountPaid = Number(booking.amountPaid) || 0;
+
+      // Skip if not legacy or nothing to migrate
+      if (!allZero) return booking;
+      if (ps !== "Paid" && ps !== "Partial") return booking;
+      if (amountPaid <= 0 && ps !== "Paid") return booking;
+
+      // ===== Compute category breakdown from services =====
+      const services =
+        Array.isArray(booking.services) && booking.services.length > 0
+          ? booking.services
+          : Array.isArray(booking.serviceItems)
+            ? booking.serviceItems
+            : [];
+
+      let clinic = 0, lab = 0, pharmacy = 0;
+
+      services.forEach((s) => {
+        const cat = (s.category || "").toString().toLowerCase();
+        const name = (s.name || "").toString().toLowerCase();
+        let c = "clinic";
+        if (cat.includes("pharm") || cat.includes("medic") || name.includes("pharm") || name.includes("medic")) c = "pharmacy";
+        else if (cat.includes("lab") || cat.includes("test") || name.includes("lab") || name.includes("test")) c = "lab";
+
+        const price = Number(s.price) || 0;
+        if (c === "lab") lab += price;
+        else if (c === "pharmacy") pharmacy += price;
+        else clinic += price;
+      });
+
+      // Add manual lab/pharmacy totals
+      lab += Number(booking.labTotal) || 0;
+      pharmacy += Number(booking.medicineTotal) || 0;
+
+      // Fallback: if services empty but manual totals exist
+      if (clinic === 0 && lab === 0 && pharmacy === 0) {
+        const fallback = Number(booking.finalPayable) || Number(booking.totalAmount) || 0;
+        clinic = fallback;
+      }
+
+      // ===== Build new categoryPayment =====
+      let newCategoryPayment;
+      if (ps === "Paid") {
+        newCategoryPayment = {
+          clinic: { paidAmount: clinic },
+          lab: { paidAmount: lab },
+          pharmacy: { paidAmount: pharmacy },
+        };
+      } else {
+        // Partial — allocate amountPaid in order clinic → lab → pharmacy
+        let remaining = amountPaid;
+        const allocate = (amt) => {
+          if (amt <= 0) return 0;
+          const give = Math.min(remaining, amt);
+          remaining -= give;
+          return give;
+        };
+        newCategoryPayment = {
+          clinic: { paidAmount: allocate(clinic) },
+          lab: { paidAmount: allocate(lab) },
+          pharmacy: { paidAmount: allocate(pharmacy) },
+        };
+      }
+
+      // ===== Save to DB + update local ref =====
+      try {
+        await Appointment.updateOne(
+          { _id: booking._id },
+          { $set: { categoryPayment: newCategoryPayment } }
+        );
+        booking.categoryPayment = newCategoryPayment;
+        console.log(`✅ Migrated categoryPayment for booking ${booking._id}`);
+      } catch (err) {
+        console.error(`❌ Failed to migrate booking ${booking._id}:`, err.message);
+      }
+
+      return booking;
+    };
+
+    // ═══════════════════════════════════════════════════════════
     // 1️⃣ BUILD MONGO QUERY from query params
     // ═══════════════════════════════════════════════════════════
     const mongoQuery = {
@@ -665,6 +756,13 @@ router.get("/getallbookings", async (req, res) => {
     // 2️⃣ FETCH from DB
     // ═══════════════════════════════════════════════════════════
     const bookings = await Appointment.find(mongoQuery).sort({ createdAt: -1 });
+
+    // ═══════════════════════════════════════════════════════════
+    // ✅ 2.5️⃣ AUTO-MIGRATE — purane bookings fix karo
+    // ═══════════════════════════════════════════════════════════
+    for (const b of bookings) {
+      await migrateCategoryPayment(b);
+    }
 
     // ═══════════════════════════════════════════════════════════
     // 3️⃣ TRANSFORM (merge review total)
@@ -1361,6 +1459,7 @@ router.post("/", async (req, res) => {
 
 
 // 7. UPDATE SLOT STATUS OR DETAILS
+// 7. UPDATE SLOT STATUS OR DETAILS
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -1377,7 +1476,6 @@ router.put("/:id", async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
-
 // 8. DELETE SINGLE SLOT
 router.delete("/:id", async (req, res) => {
   try {
@@ -3991,6 +4089,13 @@ router.put("/updateop/:bookingId", async (req, res) => {
       status,
       medicineTotal: reqMedicineTotal,
       labTotal: reqLabTotal,
+
+      // ✅ Individual lab & pharmacy items
+      labItems: reqLabItems,
+      medicineItems: reqMedicineItems,
+
+      // ✅ NEW: Per-category payment tracking
+      categoryPayment: reqCategoryPayment,
     } = req.body;
 
     console.log("📥 Update request received");
@@ -4003,6 +4108,7 @@ router.put("/updateop/:bookingId", async (req, res) => {
       clientBalanceAmount,
       paymentStatus,
     });
+    console.log("💰 Category payment:", reqCategoryPayment);
 
     // ===== NORMALIZE REFERRALS =====
     let finalReferralContactId = existing.referralContactId || null;
@@ -4034,25 +4140,52 @@ router.put("/updateop/:bookingId", async (req, res) => {
       name: s.name || "Service",
       price: Number(s.price) || 0,
       description: s.description || "",
-      // ✅ Default to "Due" instead of "Pending"
       paymentStatus:
         s.paymentStatus && s.paymentStatus !== "Pending" ? s.paymentStatus : "Due",
       addedAt: s.addedAt || new Date(),
     }));
 
+    // ===== ✅ NORMALIZE LAB ITEMS =====
+    const normalizedLabItems = Array.isArray(reqLabItems)
+      ? reqLabItems.map((item) => ({
+          serviceId: item.serviceId || item._id || "",
+          name: item.name || "Lab Test",
+          price: Number(item.price) || 0,
+          description: item.description || "",
+          category: "lab",
+        }))
+      : [];
+
+    // ===== ✅ NORMALIZE MEDICINE ITEMS =====
+    const normalizedMedicineItems = Array.isArray(reqMedicineItems)
+      ? reqMedicineItems.map((item) => ({
+          serviceId: item.serviceId || item._id || "",
+          name: item.name || "Medicine",
+          price: Number(item.price) || 0,
+          description: item.description || "",
+          category: "pharmacy",
+        }))
+      : [];
+
     // ===== ✅ COMPUTE FINANCIALS — TRUST FRONTEND FIRST =====
     const servicesTotal = normalizedServices.reduce((sum, s) => sum + (s.price || 0), 0);
 
-    // ✅ Use NEW labTotal/medicineTotal if provided, else keep existing
+    const computedLabFromItems = normalizedLabItems.reduce((s, x) => s + (x.price || 0), 0);
+    const computedMedFromItems = normalizedMedicineItems.reduce((s, x) => s + (x.price || 0), 0);
+
     const medicineTotal =
-      reqMedicineTotal !== undefined && reqMedicineTotal !== null
-        ? Number(reqMedicineTotal)
-        : Number(existing.medicineTotal) || 0;
+      normalizedMedicineItems.length > 0
+        ? computedMedFromItems
+        : (reqMedicineTotal !== undefined && reqMedicineTotal !== null
+            ? Number(reqMedicineTotal)
+            : Number(existing.medicineTotal) || 0);
 
     const labTotal =
-      reqLabTotal !== undefined && reqLabTotal !== null
-        ? Number(reqLabTotal)
-        : Number(existing.labTotal) || 0;
+      normalizedLabItems.length > 0
+        ? computedLabFromItems
+        : (reqLabTotal !== undefined && reqLabTotal !== null
+            ? Number(reqLabTotal)
+            : Number(existing.labTotal) || 0);
 
     // ===== Server-side fallback calc =====
     const commissionPercent = parseFloat(referralCommission) || 0;
@@ -4111,11 +4244,9 @@ router.put("/updateop/:bookingId", async (req, res) => {
       } else if (finalAmountPaid > 0 && finalBalanceAmount > 0) {
         finalPaymentStatus = "Partial";
       } else if (finalAmountPaid <= 0) {
-        // ✅ Always default to "Due" (never "Pending")
         finalPaymentStatus = "Due";
       }
     } else {
-      // Fallback logic
       if (paymentStatus === "Paid") {
         finalAmountPaid = finalPayable;
         finalBalanceAmount = 0;
@@ -4144,7 +4275,6 @@ router.put("/updateop/:bookingId", async (req, res) => {
             finalBalanceAmount = finalPayable - parsedPartial;
           }
         } else {
-          // ✅ Always default to "Due" (never "Pending")
           finalPaymentStatus = "Due";
           finalAmountPaid = 0;
           finalBalanceAmount = finalPayable;
@@ -4153,13 +4283,10 @@ router.put("/updateop/:bookingId", async (req, res) => {
     }
 
     console.log("💰 Computed FINAL:", {
-      subtotal,
-      commissionAmount,
-      discountAmount,
-      finalPayable,
-      finalAmountPaid,
-      finalBalanceAmount,
-      finalPaymentStatus,
+      subtotal, commissionAmount, discountAmount, finalPayable,
+      finalAmountPaid, finalBalanceAmount, finalPaymentStatus,
+      labItemsCount: normalizedLabItems.length,
+      medicineItemsCount: normalizedMedicineItems.length,
     });
 
     // ===== UPDATE DATA =====
@@ -4193,6 +4320,10 @@ router.put("/updateop/:bookingId", async (req, res) => {
       // ✅ Services
       services: normalizedServices,
 
+      // ✅ Lab & Pharmacy items
+      labItems: normalizedLabItems,
+      medicineItems: normalizedMedicineItems,
+
       // ✅ Totals — all synced
       servicesTotal,
       medicineTotal,
@@ -4210,6 +4341,11 @@ router.put("/updateop/:bookingId", async (req, res) => {
       status: status || existing.status,
     };
 
+    // ✅ NEW: Save category payment only when explicitly provided
+    if (reqCategoryPayment !== undefined && reqCategoryPayment !== null) {
+      updateData.categoryPayment = reqCategoryPayment;
+    }
+
     if (appointmentDate) updateData.appointmentDate = appointmentDate;
     if (slotId && mongoose.Types.ObjectId.isValid(slotId)) updateData.slotId = slotId;
 
@@ -4220,30 +4356,36 @@ router.put("/updateop/:bookingId", async (req, res) => {
 
     // ============================================================
     // ✅ CRITICAL FIX: FORCE OVERRIDE after update
-    // This bypasses any pre-save hook that recalculates finalPayable
     // ============================================================
+    const forceSet = {
+      labItems: normalizedLabItems,
+      medicineItems: normalizedMedicineItems,
+      servicesTotal,
+      medicineTotal,
+      labTotal,
+      subtotal,
+      commissionAmount,
+      discount: discountAmount,
+      discountType: discountType || "₹",
+      finalPayable,
+      finalPayableAmount: finalPayable,
+      grandTotal: finalPayable,
+      totalAmount: finalPayable,
+      totalFee: finalPayable,
+      amountPaid: finalAmountPaid,
+      balanceAmount: finalBalanceAmount,
+      partialAmount: finalAmountPaid,
+      paymentStatus: finalPaymentStatus,
+    };
+
+    // ✅ NEW: only override categoryPayment if provided
+    if (reqCategoryPayment !== undefined && reqCategoryPayment !== null) {
+      forceSet.categoryPayment = reqCategoryPayment;
+    }
+
     await Appointment.updateOne(
       { _id: bookingId },
-      {
-        $set: {
-          servicesTotal,
-          medicineTotal,
-          labTotal,
-          subtotal,
-          commissionAmount,
-          discount: discountAmount,
-          discountType: discountType || "₹",
-          finalPayable,
-          finalPayableAmount: finalPayable,
-          grandTotal: finalPayable,
-          totalAmount: finalPayable,
-          totalFee: finalPayable,
-          amountPaid: finalAmountPaid,
-          balanceAmount: finalBalanceAmount,
-          partialAmount: finalAmountPaid,
-          paymentStatus: finalPaymentStatus,
-        },
-      }
+      { $set: forceSet }
     );
 
     console.log("✅ Force override applied to DB");
@@ -4259,6 +4401,9 @@ router.put("/updateop/:bookingId", async (req, res) => {
       amountPaid: populatedAppointment.amountPaid,
       balanceAmount: populatedAppointment.balanceAmount,
       paymentStatus: populatedAppointment.paymentStatus,
+      labItemsCount: populatedAppointment.labItems?.length || 0,
+      medicineItemsCount: populatedAppointment.medicineItems?.length || 0,
+      categoryPayment: populatedAppointment.categoryPayment,
     });
 
     return res.status(200).json({
@@ -4271,21 +4416,24 @@ router.put("/updateop/:bookingId", async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
-
-
 router.put("/updatecharges/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { medicineTotal, labTotal } = req.body;
+    const { medicineTotal, labTotal, labItems, medicineItems } = req.body;
 
-    if (medicineTotal === undefined && labTotal === undefined) {
+    if (
+      medicineTotal === undefined &&
+      labTotal === undefined &&
+      labItems === undefined &&
+      medicineItems === undefined
+    ) {
       return res.status(400).json({
         success: false,
-        message: "At least one of medicineTotal or labTotal is required",
+        message: "At least one of medicineTotal, labTotal, labItems, or medicineItems is required",
       });
     }
 
-    // Validate
+    // Validate totals
     let newMedicineTotal;
     if (medicineTotal !== undefined && medicineTotal !== null) {
       newMedicineTotal = Number(medicineTotal);
@@ -4316,16 +4464,61 @@ router.put("/updatecharges/:id", async (req, res) => {
       });
     }
 
-    // Final lab/medicine values (new or existing)
+    // ============================================================
+    // ✅ NORMALIZE LAB ITEMS (if provided)
+    // ============================================================
+    let normalizedLabItems = null;
+    let computedLabFromItems = 0;
+    if (Array.isArray(labItems)) {
+      normalizedLabItems = labItems.map((item) => ({
+        serviceId: item.serviceId || item._id || "",
+        name: item.name || "Lab Test",
+        price: Number(item.price) || 0,
+        description: item.description || "",
+        category: "lab",
+      }));
+      computedLabFromItems = normalizedLabItems.reduce(
+        (sum, x) => sum + (Number(x.price) || 0),
+        0
+      );
+    }
+
+    // ============================================================
+    // ✅ NORMALIZE MEDICINE ITEMS (if provided)
+    // ============================================================
+    let normalizedMedicineItems = null;
+    let computedMedFromItems = 0;
+    if (Array.isArray(medicineItems)) {
+      normalizedMedicineItems = medicineItems.map((item) => ({
+        serviceId: item.serviceId || item._id || "",
+        name: item.name || "Medicine",
+        price: Number(item.price) || 0,
+        description: item.description || "",
+        category: "pharmacy",
+      }));
+      computedMedFromItems = normalizedMedicineItems.reduce(
+        (sum, x) => sum + (Number(x.price) || 0),
+        0
+      );
+    }
+
+    // ============================================================
+    // ✅ Final lab/medicine totals
+    // Priority: items array (if provided) > explicit total > existing
+    // ============================================================
     const finalMedicineTotal =
-      newMedicineTotal !== undefined
-        ? newMedicineTotal
-        : Number(booking.medicineTotal) || 0;
+      normalizedMedicineItems !== null
+        ? computedMedFromItems
+        : newMedicineTotal !== undefined
+          ? newMedicineTotal
+          : Number(booking.medicineTotal) || 0;
 
     const finalLabTotal =
-      newLabTotal !== undefined
-        ? newLabTotal
-        : Number(booking.labTotal) || 0;
+      normalizedLabItems !== null
+        ? computedLabFromItems
+        : newLabTotal !== undefined
+          ? newLabTotal
+          : Number(booking.labTotal) || 0;
 
     // ============================================================
     // ✅ CALCULATE EVERYTHING HERE (bypass middleware)
@@ -4334,27 +4527,21 @@ router.put("/updatecharges/:id", async (req, res) => {
       ? booking.services.reduce((sum, s) => sum + (Number(s.price) || 0), 0)
       : 0;
 
-    // ✅ Subtotal = services + lab + medicine
     const subtotal = servicesTotal + finalLabTotal + finalMedicineTotal;
 
-    // ✅ Commission on subtotal
     const commissionPercent = parseFloat(booking.referralCommission) || 0;
     const commissionAmount = (subtotal * commissionPercent) / 100;
 
-    // ✅ Discount
     const discountAmount = Number(booking.discount) || 0;
 
-    // ✅ Final = subtotal - commission - discount
     const finalPayable = Math.max(
       0,
       subtotal - commissionAmount - discountAmount
     );
 
-    // ✅ Payment status
     const currentPaid = Number(booking.amountPaid) || 0;
     let finalAmountPaid = currentPaid;
     let finalBalanceAmount = Math.max(0, finalPayable - currentPaid);
-    // ✅ Default to "Due" (never "Pending")
     let finalPaymentStatus = "Due";
 
     if (finalBalanceAmount <= 0 && finalAmountPaid > 0) {
@@ -4364,34 +4551,37 @@ router.put("/updatecharges/:id", async (req, res) => {
     } else if (finalAmountPaid > 0 && finalBalanceAmount > 0) {
       finalPaymentStatus = "Partial";
     } else if (finalAmountPaid === 0) {
-      // ✅ Always default to "Due" (never "Pending")
       finalPaymentStatus = "Due";
     }
 
     // ============================================================
     // ✅ FORCE OVERRIDE — bypass pre-save middleware
     // ============================================================
+    const setData = {
+      medicineTotal: finalMedicineTotal,
+      labTotal: finalLabTotal,
+      servicesTotal,
+      subtotal,
+      commissionAmount,
+      discount: discountAmount,
+      finalPayable,
+      finalPayableAmount: finalPayable,
+      grandTotal: finalPayable,
+      totalAmount: finalPayable,
+      totalFee: finalPayable,
+      amountPaid: finalAmountPaid,
+      balanceAmount: finalBalanceAmount,
+      partialAmount: finalAmountPaid,
+      paymentStatus: finalPaymentStatus,
+    };
+
+    // ✅ Only overwrite items arrays if explicitly provided
+    if (normalizedLabItems !== null) setData.labItems = normalizedLabItems;
+    if (normalizedMedicineItems !== null) setData.medicineItems = normalizedMedicineItems;
+
     await Appointment.updateOne(
       { _id: id },
-      {
-        $set: {
-          medicineTotal: finalMedicineTotal,
-          labTotal: finalLabTotal,
-          servicesTotal,
-          subtotal,
-          commissionAmount,
-          discount: discountAmount,
-          finalPayable,
-          finalPayableAmount: finalPayable,
-          grandTotal: finalPayable,
-          totalAmount: finalPayable,
-          totalFee: finalPayable,
-          amountPaid: finalAmountPaid,
-          balanceAmount: finalBalanceAmount,
-          partialAmount: finalAmountPaid,
-          paymentStatus: finalPaymentStatus,
-        },
-      }
+      { $set: setData }
     );
 
     // ============================================================
@@ -4409,6 +4599,8 @@ router.put("/updatecharges/:id", async (req, res) => {
       amountPaid: finalAmountPaid,
       balanceAmount: finalBalanceAmount,
       paymentStatus: finalPaymentStatus,
+      labItemsCount: updated.labItems?.length || 0,
+      medicineItemsCount: updated.medicineItems?.length || 0,
     });
 
     return res.status(200).json({
@@ -4418,6 +4610,8 @@ router.put("/updatecharges/:id", async (req, res) => {
         _id: updated._id,
         medicineTotal: updated.medicineTotal,
         labTotal: updated.labTotal,
+        labItems: updated.labItems || [],
+        medicineItems: updated.medicineItems || [],
         servicesTotal: updated.servicesTotal,
         subtotal: updated.subtotal,
         totalAmount: updated.totalAmount,
@@ -4440,7 +4634,6 @@ router.put("/updatecharges/:id", async (req, res) => {
     });
   }
 });
-
 // ✅ NEW: Vitals update API
 router.put("/vitals/:id", async (req, res) => {
   try {

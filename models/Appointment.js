@@ -244,6 +244,36 @@ offerDeduction: { type: Number, default: 0 },
     medicineTotal: { type: Number, default: 0, min: 0 },
     labTotal: { type: Number, default: 0, min: 0 },
 
+
+    // Existing schema me sirf ye 2 fields add karo (baaki kuch nahi chhedo)
+
+labItems: [
+  {
+    serviceId: { type: String, default: "" },
+    name: { type: String, default: "" },
+    price: { type: Number, default: 0 },
+    description: { type: String, default: "" },
+    category: { type: String, default: "lab" },
+  },
+],
+medicineItems: [
+  {
+    serviceId: { type: String, default: "" },
+    name: { type: String, default: "" },
+    price: { type: Number, default: 0 },
+    description: { type: String, default: "" },
+    category: { type: String, default: "pharmacy" },
+  },
+],
+
+
+// Existing schema me add karo (baaki kuch nahi chhedo)
+categoryPayment: {
+  clinic: { paidAmount: { type: Number, default: 0 } },
+  lab: { paidAmount: { type: Number, default: 0 } },
+  pharmacy: { paidAmount: { type: Number, default: 0 } },
+},
+
     // =============================================
     // PAYMENT FIELDS
     // =============================================
