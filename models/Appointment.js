@@ -247,6 +247,7 @@ offerDeduction: { type: Number, default: 0 },
 
     // Existing schema me sirf ye 2 fields add karo (baaki kuch nahi chhedo)
 
+// Appointment Schema
 labItems: [
   {
     serviceId: { type: String, default: "" },
@@ -254,6 +255,8 @@ labItems: [
     price: { type: Number, default: 0 },
     description: { type: String, default: "" },
     category: { type: String, default: "lab" },
+    paymentMode: { type: String, default: "Cash" },     // ✅ NEW
+    paymentStatus: { type: String, default: "Due" },    // ✅ NEW
   },
 ],
 medicineItems: [
@@ -263,6 +266,8 @@ medicineItems: [
     price: { type: Number, default: 0 },
     description: { type: String, default: "" },
     category: { type: String, default: "pharmacy" },
+    paymentMode: { type: String, default: "Cash" },     // ✅ NEW
+    paymentStatus: { type: String, default: "Due" },    // ✅ NEW
   },
 ],
 

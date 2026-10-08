@@ -695,7 +695,7 @@ router.get("/getallbookings", async (req, res) => {
     if (apptFrom || apptTo) {
       const dateFilter = {};
       if (apptFrom) dateFilter.$gte = apptFrom;
-      if (apptTo)   dateFilter.$lte = apptTo;
+      if (apptTo) dateFilter.$lte = apptTo;
       mongoQuery.appointmentDate = dateFilter;
     }
 
@@ -765,7 +765,7 @@ router.get("/getallbookings", async (req, res) => {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 3️⃣ TRANSFORM (merge review total)
+    // 3️⃣ TRANSFORM (merge review total + compute per-item statuses)
     // ═══════════════════════════════════════════════════════════
     const transformedBookings = bookings.map((booking) => {
       const b = booking.toObject ? booking.toObject() : booking;
@@ -795,11 +795,41 @@ router.get("/getallbookings", async (req, res) => {
       const newGrandTotal = Number(b.grandTotal || 0) + reviewServicesTotal;
       const newSubtotal = Number(b.subtotal || 0) + reviewServicesTotal;
 
-      const amountPaid = Number(b.amountPaid) || 0;
+      // ✅ Compute per-item-based paid if labItems / medicineItems exist
+      const labItemsArr = Array.isArray(b.labItems) ? b.labItems : [];
+      const medItemsArr = Array.isArray(b.medicineItems) ? b.medicineItems : [];
+      const hasLabItems = labItemsArr.length > 0;
+      const hasMedItems = medItemsArr.length > 0;
+
+      let amountPaid = Number(b.amountPaid) || 0;
+
+      if (hasLabItems || hasMedItems) {
+        const cp = b.categoryPayment || {};
+        const clinicPaid = Number(cp.clinic?.paidAmount) || 0;
+
+        const labPaid = hasLabItems
+          ? labItemsArr.reduce(
+              (sum, item) =>
+                sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
+              0
+            )
+          : (Number(cp.lab?.paidAmount) || 0);
+
+        const pharmacyPaid = hasMedItems
+          ? medItemsArr.reduce(
+              (sum, item) =>
+                sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
+              0
+            )
+          : (Number(cp.pharmacy?.paidAmount) || 0);
+
+        amountPaid = clinicPaid + labPaid + pharmacyPaid;
+      }
+
       const newBalanceAmount = Math.max(0, newFinalPayable - amountPaid);
 
       let newPaymentStatus = b.paymentStatus || "Pending";
-      if (newFinalPayable > 0 && amountPaid >= newFinalPayable) {
+      if (newFinalPayable > 0 && amountPaid >= newFinalPayable - 0.5) {
         newPaymentStatus = "Paid";
       } else if (amountPaid > 0 && amountPaid < newFinalPayable) {
         newPaymentStatus = "Partial";
@@ -816,6 +846,7 @@ router.get("/getallbookings", async (req, res) => {
         grandTotal: newGrandTotal,
         totalAmount: newTotalAmount,
         subtotal: newSubtotal,
+        amountPaid,
         balanceAmount: newBalanceAmount,
         paymentStatus: newPaymentStatus,
         reviewServicesTotal,
@@ -864,6 +895,8 @@ router.get("/getallbookings", async (req, res) => {
 
         if (Number(b.medicineTotal) > 0) hasPharmacy = true;
         if (Number(b.labTotal) > 0) hasLab = true;
+        if (Array.isArray(b.labItems) && b.labItems.length > 0) hasLab = true;
+        if (Array.isArray(b.medicineItems) && b.medicineItems.length > 0) hasPharmacy = true;
 
         if (revenueCategory === "clinic") return hasClinic;
         if (revenueCategory === "lab") return hasLab;
@@ -897,26 +930,27 @@ router.get("/getallbookings", async (req, res) => {
       },
     };
 
-    // ✅ Category-wise breakdown with payment-mode split + footFall
     const categoryBreakdown = {
       clinic:   { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
       lab:      { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
       pharmacy: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
     };
 
+    // ═══════════════════════════════════════════════════════════
+    // ✅ FIXED: DIRECT per-category due (no proportional split)
+    // ═══════════════════════════════════════════════════════════
     finalBookings.forEach((b) => {
-      // Active / Inactive
+      // ─── Active / Inactive ───
       if (b.isActive === false) stats.inactive++;
       else stats.active++;
 
-      // Payment status counts
-      const ps = (b.paymentStatus || "Pending").toString().toLowerCase();
-      if (ps === "paid") stats.paid++;
-      else if (ps === "partial") stats.partial++;
-      else if (ps === "due") stats.due++;
-      else stats.pending++;
+      // ─── Detect per-item arrays ───
+      const labItemsArr = Array.isArray(b.labItems) ? b.labItems : [];
+      const medItemsArr = Array.isArray(b.medicineItems) ? b.medicineItems : [];
+      const hasLabItems = labItemsArr.length > 0;
+      const hasMedItems = medItemsArr.length > 0;
 
-      // ─── Services breakdown ───
+      // ─── Category totals from services ───
       const baseServices =
         (Array.isArray(b.services) && b.services.length > 0 && b.services) ||
         (Array.isArray(b.serviceItems) && b.serviceItems.length > 0 && b.serviceItems) ||
@@ -932,24 +966,75 @@ router.get("/getallbookings", async (req, res) => {
         else clinic += price;
       });
 
+      // ✅ Lab items override (items = source of truth)
+      if (hasLabItems) {
+        lab = labItemsArr.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+      } else {
+        lab = Math.max(lab, Number(b.labTotal) || 0);
+      }
+
+      // ✅ Pharmacy items override
+      if (hasMedItems) {
+        pharmacy = medItemsArr.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+      } else {
+        pharmacy = Math.max(pharmacy, Number(b.medicineTotal) || 0);
+      }
+
       // Review services → clinic
       (Array.isArray(b.reviews) ? b.reviews : []).forEach((r) => {
         clinic += Number(r.price) || 0;
       });
 
-      // Manual medicine / lab totals (max to avoid double)
-      pharmacy = Math.max(pharmacy, Number(b.medicineTotal) || 0);
-      lab = Math.max(lab, Number(b.labTotal) || 0);
+      // ─── Per-category PAID ───
+      const cp = b.categoryPayment || {};
+      const clinicPaid = Number(cp.clinic?.paidAmount) || 0;
 
-      // ─── Top-level revenue breakdown ───
+      const labPaid = hasLabItems
+        ? labItemsArr.reduce(
+            (sum, item) =>
+              sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
+            0
+          )
+        : (Number(cp.lab?.paidAmount) || 0);
+
+      const pharmacyPaid = hasMedItems
+        ? medItemsArr.reduce(
+            (sum, item) =>
+              sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
+            0
+          )
+        : (Number(cp.pharmacy?.paidAmount) || 0);
+
+      // ✅ Per-category DUE — DIRECT (no proportional distribution)
+      const clinicDue = Math.max(0, clinic - clinicPaid);
+      const labDue = Math.max(0, lab - labPaid);
+      const pharmacyDue = Math.max(0, pharmacy - pharmacyPaid);
+
+      const paid = clinicPaid + labPaid + pharmacyPaid;
+      const due = clinicDue + labDue + pharmacyDue;
+      const finalPayableForStatus = clinic + lab + pharmacy;
+
+      // ─── Effective payment status ───
+      let effectiveStatus = (b.paymentStatus || "Pending").toString().toLowerCase();
+      if (finalPayableForStatus > 0 && paid >= finalPayableForStatus - 0.5) {
+        effectiveStatus = "paid";
+      } else if (paid > 0 && paid < finalPayableForStatus) {
+        effectiveStatus = "partial";
+      } else if (paid === 0) {
+        effectiveStatus = "due";
+      }
+
+      if (effectiveStatus === "paid") stats.paid++;
+      else if (effectiveStatus === "partial") stats.partial++;
+      else if (effectiveStatus === "due") stats.due++;
+      else stats.pending++;
+
+      // ─── Revenue totals ───
       stats.revenueBreakdown.clinicRevenue += clinic;
       stats.revenueBreakdown.labRevenue += lab;
       stats.revenueBreakdown.pharmacyRevenue += pharmacy;
 
-      const paid = Number(b.amountPaid) || 0;
-      const due = Number(b.balanceAmount) || 0;
       const pt = (b.paymentType || "").toString().toLowerCase();
-
       if (pt === "cash") stats.revenueBreakdown.cashCollected += paid;
       else if (pt === "online") stats.revenueBreakdown.onlineCollected += paid;
       else if (pt === "card") stats.revenueBreakdown.cardCollected += paid;
@@ -958,47 +1043,43 @@ router.get("/getallbookings", async (req, res) => {
       stats.revenueBreakdown.totalCollected += paid;
       stats.revenueBreakdown.dueAmount += due;
 
-      // ─── Category-wise proportional distribution ───
-      const catTotal = clinic + lab + pharmacy;
-      if (catTotal <= 0) return;
-
-      const clinicShare   = clinic / catTotal;
-      const labShare      = lab / catTotal;
-      const pharmacyShare = pharmacy / catTotal;
-
-      // ✅ FOOTFALL — count how many bookings have each category
+      // ─── Footfall ───
       if (clinic > 0)   categoryBreakdown.clinic.footFall   += 1;
       if (lab > 0)      categoryBreakdown.lab.footFall      += 1;
       if (pharmacy > 0) categoryBreakdown.pharmacy.footFall += 1;
 
+      // ═══════════════════════════════════════════════════════════
+      // ✅ DIRECT per-category distribution (NO proportional split)
+      // ═══════════════════════════════════════════════════════════
+
       // Clinic
       categoryBreakdown.clinic.total += clinic;
-      categoryBreakdown.clinic.due   += due * clinicShare;
-      if (pt === "cash")            categoryBreakdown.clinic.cash      += paid * clinicShare;
-      else if (pt === "online")     categoryBreakdown.clinic.online    += paid * clinicShare;
-      else if (pt === "card")       categoryBreakdown.clinic.card      += paid * clinicShare;
-      else if (pt === "insurance")  categoryBreakdown.clinic.insurance += paid * clinicShare;
+      categoryBreakdown.clinic.due   += clinicDue;
+      if (pt === "cash")            categoryBreakdown.clinic.cash      += clinicPaid;
+      else if (pt === "online")     categoryBreakdown.clinic.online    += clinicPaid;
+      else if (pt === "card")       categoryBreakdown.clinic.card      += clinicPaid;
+      else if (pt === "insurance")  categoryBreakdown.clinic.insurance += clinicPaid;
 
       // Lab
       categoryBreakdown.lab.total += lab;
-      categoryBreakdown.lab.due   += due * labShare;
-      if (pt === "cash")            categoryBreakdown.lab.cash      += paid * labShare;
-      else if (pt === "online")     categoryBreakdown.lab.online    += paid * labShare;
-      else if (pt === "card")       categoryBreakdown.lab.card      += paid * labShare;
-      else if (pt === "insurance")  categoryBreakdown.lab.insurance += paid * labShare;
+      categoryBreakdown.lab.due   += labDue;
+      if (pt === "cash")            categoryBreakdown.lab.cash      += labPaid;
+      else if (pt === "online")     categoryBreakdown.lab.online    += labPaid;
+      else if (pt === "card")       categoryBreakdown.lab.card      += labPaid;
+      else if (pt === "insurance")  categoryBreakdown.lab.insurance += labPaid;
 
       // Pharmacy
       categoryBreakdown.pharmacy.total += pharmacy;
-      categoryBreakdown.pharmacy.due   += due * pharmacyShare;
-      if (pt === "cash")            categoryBreakdown.pharmacy.cash      += paid * pharmacyShare;
-      else if (pt === "online")     categoryBreakdown.pharmacy.online    += paid * pharmacyShare;
-      else if (pt === "card")       categoryBreakdown.pharmacy.card      += paid * pharmacyShare;
-      else if (pt === "insurance")  categoryBreakdown.pharmacy.insurance += paid * pharmacyShare;
+      categoryBreakdown.pharmacy.due   += pharmacyDue;
+      if (pt === "cash")            categoryBreakdown.pharmacy.cash      += pharmacyPaid;
+      else if (pt === "online")     categoryBreakdown.pharmacy.online    += pharmacyPaid;
+      else if (pt === "card")       categoryBreakdown.pharmacy.card      += pharmacyPaid;
+      else if (pt === "insurance")  categoryBreakdown.pharmacy.insurance += pharmacyPaid;
     });
 
     stats.totalRevenue = stats.revenueBreakdown.totalCollected;
 
-    // ✅ Round categoryBreakdown values (skip footFall — it's already integer)
+    // ✅ Round categoryBreakdown values
     Object.keys(categoryBreakdown).forEach((cat) => {
       Object.keys(categoryBreakdown[cat]).forEach((k) => {
         if (k === "footFall") {
@@ -4145,27 +4226,31 @@ router.put("/updateop/:bookingId", async (req, res) => {
       addedAt: s.addedAt || new Date(),
     }));
 
-    // ===== ✅ NORMALIZE LAB ITEMS =====
-    const normalizedLabItems = Array.isArray(reqLabItems)
-      ? reqLabItems.map((item) => ({
-          serviceId: item.serviceId || item._id || "",
-          name: item.name || "Lab Test",
-          price: Number(item.price) || 0,
-          description: item.description || "",
-          category: "lab",
-        }))
-      : [];
+  // ===== ✅ NORMALIZE LAB ITEMS =====
+const normalizedLabItems = Array.isArray(reqLabItems)
+  ? reqLabItems.map((item) => ({
+      serviceId: item.serviceId || item._id || "",
+      name: item.name || "Lab Test",
+      price: Number(item.price) || 0,
+      description: item.description || "",
+      category: "lab",
+      paymentMode: item.paymentMode || "Cash",        // ✅ NEW
+      paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
+    }))
+  : [];
 
-    // ===== ✅ NORMALIZE MEDICINE ITEMS =====
-    const normalizedMedicineItems = Array.isArray(reqMedicineItems)
-      ? reqMedicineItems.map((item) => ({
-          serviceId: item.serviceId || item._id || "",
-          name: item.name || "Medicine",
-          price: Number(item.price) || 0,
-          description: item.description || "",
-          category: "pharmacy",
-        }))
-      : [];
+// ===== ✅ NORMALIZE MEDICINE ITEMS =====
+const normalizedMedicineItems = Array.isArray(reqMedicineItems)
+  ? reqMedicineItems.map((item) => ({
+      serviceId: item.serviceId || item._id || "",
+      name: item.name || "Medicine",
+      price: Number(item.price) || 0,
+      description: item.description || "",
+      category: "pharmacy",
+      paymentMode: item.paymentMode || "Cash",        // ✅ NEW
+      paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
+    }))
+  : [];
 
     // ===== ✅ COMPUTE FINANCIALS — TRUST FRONTEND FIRST =====
     const servicesTotal = normalizedServices.reduce((sum, s) => sum + (s.price || 0), 0);
@@ -4469,38 +4554,43 @@ router.put("/updatecharges/:id", async (req, res) => {
     // ============================================================
     let normalizedLabItems = null;
     let computedLabFromItems = 0;
-    if (Array.isArray(labItems)) {
-      normalizedLabItems = labItems.map((item) => ({
-        serviceId: item.serviceId || item._id || "",
-        name: item.name || "Lab Test",
-        price: Number(item.price) || 0,
-        description: item.description || "",
-        category: "lab",
-      }));
-      computedLabFromItems = normalizedLabItems.reduce(
-        (sum, x) => sum + (Number(x.price) || 0),
-        0
-      );
-    }
+  // ✅ NORMALIZE LAB ITEMS
+if (Array.isArray(labItems)) {
+  normalizedLabItems = labItems.map((item) => ({
+    serviceId: item.serviceId || item._id || "",
+    name: item.name || "Lab Test",
+    price: Number(item.price) || 0,
+    description: item.description || "",
+    category: "lab",
+    paymentMode: item.paymentMode || "Cash",        // ✅ NEW
+    paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
+  }));
+  computedLabFromItems = normalizedLabItems.reduce(
+    (sum, x) => sum + (Number(x.price) || 0), 0
+  );
+}
 
     // ============================================================
     // ✅ NORMALIZE MEDICINE ITEMS (if provided)
     // ============================================================
     let normalizedMedicineItems = null;
     let computedMedFromItems = 0;
-    if (Array.isArray(medicineItems)) {
-      normalizedMedicineItems = medicineItems.map((item) => ({
-        serviceId: item.serviceId || item._id || "",
-        name: item.name || "Medicine",
-        price: Number(item.price) || 0,
-        description: item.description || "",
-        category: "pharmacy",
-      }));
-      computedMedFromItems = normalizedMedicineItems.reduce(
-        (sum, x) => sum + (Number(x.price) || 0),
-        0
-      );
-    }
+   // ✅ NORMALIZE MEDICINE ITEMS
+if (Array.isArray(medicineItems)) {
+  normalizedMedicineItems = medicineItems.map((item) => ({
+    serviceId: item.serviceId || item._id || "",
+    name: item.name || "Medicine",
+    price: Number(item.price) || 0,
+    description: item.description || "",
+    category: "pharmacy",
+    paymentMode: item.paymentMode || "Cash",        // ✅ NEW
+    paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
+  }));
+  computedMedFromItems = normalizedMedicineItems.reduce(
+    (sum, x) => sum + (Number(x.price) || 0), 0
+  );
+}
+
 
     // ============================================================
     // ✅ Final lab/medicine totals
