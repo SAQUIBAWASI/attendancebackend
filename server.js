@@ -143,6 +143,8 @@ app.use("/api/appointment-slots", require("./routes/appointmentSlot.routes"));
 
 app.use("/api/consultation-leads", require("./routes/consultationLead.routes"));
 
+app.use("/api", require("./routes/compOff.routes"));         // ✅ Direct /api/extra-worked-days & /api/comp-off-requests
+
 
 app.use("/api/teams", require("./routes/team.routes"));
 app.use("/api/partners", require("./routes/partner.routes"));

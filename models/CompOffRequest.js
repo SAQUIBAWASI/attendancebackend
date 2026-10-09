@@ -10,10 +10,33 @@ const compOffRequestSchema = new mongoose.Schema(
       type: String, 
       required: true 
     },
+    // ✅ originalLeaveId ab OPTIONAL hai (fresh comp-off request ke liye)
     originalLeaveId: { 
       type: mongoose.Schema.Types.ObjectId, 
       ref: "Leave",
-      required: true 
+      required: false,
+      default: null
+    },
+    // ✅ Extra day details
+    extraDayDate: { 
+      type: String, 
+      default: null 
+    },
+    extraDayDetails: {
+      date: { type: String },
+      day: { type: String },
+      totalHours: { type: Number, default: 8 },
+      extraHours: { type: Number, default: 0 },
+      workType: { type: String, default: "Week-off Work" }
+    },
+    // ✅ Leave details (agar leave se convert ho raha ho)
+    leaveDetails: {
+      leaveType: { type: String },
+      startDate: { type: String },
+      endDate: { type: String },
+      days: { type: Number },
+      reason: { type: String },
+      status: { type: String }
     },
     workDate: { 
       type: String, 
@@ -23,8 +46,7 @@ const compOffRequestSchema = new mongoose.Schema(
       type: String, 
       default: "" 
     },
-    // Add this field in your schema
-count: { type: Number, default: 1, min: 0.5 },
+    count: { type: Number, default: 1, min: 0.5 },
     status: { 
       type: String, 
       enum: ["pending", "approved", "rejected"],
@@ -37,6 +59,10 @@ count: { type: Number, default: 1, min: 0.5 },
     approvedDate: { 
       type: Date 
     },
+    rejectionReason: {
+      type: String,
+      default: ""
+    },
     convertedToCompOff: {
       type: Boolean,
       default: false
@@ -44,6 +70,11 @@ count: { type: Number, default: 1, min: 0.5 },
     compOffId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "CompOff"
+    },
+    // ✅ Expiry tracking
+    validTill: {
+      type: Date,
+      default: null
     }
   },
   { timestamps: true }

@@ -13,7 +13,8 @@ const compOffSchema = new mongoose.Schema(
     originalLeaveId: { 
       type: mongoose.Schema.Types.ObjectId, 
       ref: "Leave",
-      required: true 
+      required: false,
+      default: null
     },
     workDate: { 
       type: String, 

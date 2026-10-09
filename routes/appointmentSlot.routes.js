@@ -533,7 +533,7 @@ router.put("/updatecharges/:id", async (req, res) => {
 router.get("/getallbookings", async (req, res) => {
   try {
     // ═══════════════════════════════════════════════════════════
-    // ✅ AUTO-MIGRATE HELPER — purane corrupted bookings ko fix karta hai
+    // ✅ AUTO-MIGRATE HELPER
     // ═══════════════════════════════════════════════════════════
     const migrateCategoryPayment = async (booking) => {
       const cp = booking.categoryPayment;
@@ -546,12 +546,10 @@ router.get("/getallbookings", async (req, res) => {
       const ps = booking.paymentStatus;
       const amountPaid = Number(booking.amountPaid) || 0;
 
-      // Skip if not legacy or nothing to migrate
       if (!allZero) return booking;
       if (ps !== "Paid" && ps !== "Partial") return booking;
       if (amountPaid <= 0 && ps !== "Paid") return booking;
 
-      // ===== Compute category breakdown from services =====
       const services =
         Array.isArray(booking.services) && booking.services.length > 0
           ? booking.services
@@ -574,17 +572,14 @@ router.get("/getallbookings", async (req, res) => {
         else clinic += price;
       });
 
-      // Add manual lab/pharmacy totals
       lab += Number(booking.labTotal) || 0;
       pharmacy += Number(booking.medicineTotal) || 0;
 
-      // Fallback: if services empty but manual totals exist
       if (clinic === 0 && lab === 0 && pharmacy === 0) {
         const fallback = Number(booking.finalPayable) || Number(booking.totalAmount) || 0;
         clinic = fallback;
       }
 
-      // ===== Build new categoryPayment =====
       let newCategoryPayment;
       if (ps === "Paid") {
         newCategoryPayment = {
@@ -593,7 +588,6 @@ router.get("/getallbookings", async (req, res) => {
           pharmacy: { paidAmount: pharmacy },
         };
       } else {
-        // Partial — allocate amountPaid in order clinic → lab → pharmacy
         let remaining = amountPaid;
         const allocate = (amt) => {
           if (amt <= 0) return 0;
@@ -608,7 +602,6 @@ router.get("/getallbookings", async (req, res) => {
         };
       }
 
-      // ===== Save to DB + update local ref =====
       try {
         await Appointment.updateOne(
           { _id: booking._id },
@@ -624,7 +617,7 @@ router.get("/getallbookings", async (req, res) => {
     };
 
     // ═══════════════════════════════════════════════════════════
-    // 1️⃣ BUILD MONGO QUERY from query params
+    // 1️⃣ BUILD MONGO QUERY
     // ═══════════════════════════════════════════════════════════
     const mongoQuery = {
       isActive: { $ne: false },
@@ -644,7 +637,6 @@ router.get("/getallbookings", async (req, res) => {
       timeFilter,
     } = req.query;
 
-    // ✅ TIME FILTER
     if (timeFilter && timeFilter !== "All" && !apptFrom && !apptTo && !month) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -691,7 +683,6 @@ router.get("/getallbookings", async (req, res) => {
       }
     }
 
-    // ✅ APPOINTMENT DATE range — manual
     if (apptFrom || apptTo) {
       const dateFilter = {};
       if (apptFrom) dateFilter.$gte = apptFrom;
@@ -699,7 +690,6 @@ router.get("/getallbookings", async (req, res) => {
       mongoQuery.appointmentDate = dateFilter;
     }
 
-    // ✅ REGISTERED DATE (createdAt) range
     if (regFrom || regTo) {
       const regFilter = {};
       if (regFrom) {
@@ -715,33 +705,27 @@ router.get("/getallbookings", async (req, res) => {
       mongoQuery.createdAt = regFilter;
     }
 
-    // ✅ MONTH
     if (month && !apptFrom && !apptTo && (!timeFilter || timeFilter === "All")) {
       mongoQuery.appointmentDate = new RegExp(`^${month}`);
     }
 
-    // ✅ DOCTOR
     if (doctor && doctor !== "All") {
       mongoQuery["slotDetails.doctorName"] = doctor;
     }
 
-    // ✅ PAYMENT TYPE
     if (paymentType && paymentType !== "All") {
       mongoQuery.paymentType = paymentType.toLowerCase();
     }
 
-    // ✅ PAYMENT STATUS
     if (paymentStatus && paymentStatus !== "All") {
       mongoQuery.paymentStatus = paymentStatus;
     }
 
-    // ✅ BOOKING TYPE
     if (bookingType && bookingType !== "All") {
       if (bookingType === "Walk-In") mongoQuery.isOP = true;
       else if (bookingType === "Online") mongoQuery.isOP = { $ne: true };
     }
 
-    // ✅ SEARCH
     if (search && search.trim()) {
       const q = search.trim();
       const rx = new RegExp(q, "i");
@@ -753,19 +737,16 @@ router.get("/getallbookings", async (req, res) => {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 2️⃣ FETCH from DB
+    // 2️⃣ FETCH
     // ═══════════════════════════════════════════════════════════
     const bookings = await Appointment.find(mongoQuery).sort({ createdAt: -1 });
 
-    // ═══════════════════════════════════════════════════════════
-    // ✅ 2.5️⃣ AUTO-MIGRATE — purane bookings fix karo
-    // ═══════════════════════════════════════════════════════════
     for (const b of bookings) {
       await migrateCategoryPayment(b);
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 3️⃣ TRANSFORM (merge review total + compute per-item statuses)
+    // 3️⃣ TRANSFORM
     // ═══════════════════════════════════════════════════════════
     const transformedBookings = bookings.map((booking) => {
       const b = booking.toObject ? booking.toObject() : booking;
@@ -795,7 +776,6 @@ router.get("/getallbookings", async (req, res) => {
       const newGrandTotal = Number(b.grandTotal || 0) + reviewServicesTotal;
       const newSubtotal = Number(b.subtotal || 0) + reviewServicesTotal;
 
-      // ✅ Compute per-item-based paid if labItems / medicineItems exist
       const labItemsArr = Array.isArray(b.labItems) ? b.labItems : [];
       const medItemsArr = Array.isArray(b.medicineItems) ? b.medicineItems : [];
       const hasLabItems = labItemsArr.length > 0;
@@ -854,7 +834,7 @@ router.get("/getallbookings", async (req, res) => {
     });
 
     // ═══════════════════════════════════════════════════════════
-    // 4️⃣ REVENUE CATEGORY FILTER (post-process)
+    // 4️⃣ REVENUE CATEGORY FILTER
     // ═══════════════════════════════════════════════════════════
     const classifyService = (svc) => {
       if (!svc) return "clinic";
@@ -906,7 +886,7 @@ router.get("/getallbookings", async (req, res) => {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 5️⃣ STATS + CATEGORY BREAKDOWN
+    // 5️⃣ STATS + CATEGORY BREAKDOWN (per-item paymentMode based)
     // ═══════════════════════════════════════════════════════════
     const stats = {
       totalPatients: finalBookings.length,
@@ -936,26 +916,31 @@ router.get("/getallbookings", async (req, res) => {
       pharmacy: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
     };
 
-    // ═══════════════════════════════════════════════════════════
-    // ✅ FIXED: DIRECT per-category due (no proportional split)
-    // ═══════════════════════════════════════════════════════════
+    // ✅ Helper: add amount to correct mode bucket
+    const addToBucket = (bucket, mode, amount) => {
+      if (!amount || amount <= 0) return;
+      const m = String(mode || "").trim().toLowerCase();
+      if (m === "cash") bucket.cash += amount;
+      else if (m === "online") bucket.online += amount;
+      else if (m === "card") bucket.card += amount;
+      else if (m === "insurance") bucket.insurance += amount;
+    };
+
     finalBookings.forEach((b) => {
-      // ─── Active / Inactive ───
       if (b.isActive === false) stats.inactive++;
       else stats.active++;
 
-      // ─── Detect per-item arrays ───
       const labItemsArr = Array.isArray(b.labItems) ? b.labItems : [];
       const medItemsArr = Array.isArray(b.medicineItems) ? b.medicineItems : [];
       const hasLabItems = labItemsArr.length > 0;
       const hasMedItems = medItemsArr.length > 0;
 
-      // ─── Category totals from services ───
       const baseServices =
         (Array.isArray(b.services) && b.services.length > 0 && b.services) ||
         (Array.isArray(b.serviceItems) && b.serviceItems.length > 0 && b.serviceItems) ||
         [];
 
+      // ─── Category totals ───
       let clinic = 0, lab = 0, pharmacy = 0;
       baseServices.forEach((s) => {
         const price = Number(s.price) || 0;
@@ -966,21 +951,18 @@ router.get("/getallbookings", async (req, res) => {
         else clinic += price;
       });
 
-      // ✅ Lab items override (items = source of truth)
       if (hasLabItems) {
         lab = labItemsArr.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
       } else {
         lab = Math.max(lab, Number(b.labTotal) || 0);
       }
 
-      // ✅ Pharmacy items override
       if (hasMedItems) {
         pharmacy = medItemsArr.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
       } else {
         pharmacy = Math.max(pharmacy, Number(b.medicineTotal) || 0);
       }
 
-      // Review services → clinic
       (Array.isArray(b.reviews) ? b.reviews : []).forEach((r) => {
         clinic += Number(r.price) || 0;
       });
@@ -1005,7 +987,6 @@ router.get("/getallbookings", async (req, res) => {
           )
         : (Number(cp.pharmacy?.paidAmount) || 0);
 
-      // ✅ Per-category DUE — DIRECT (no proportional distribution)
       const clinicDue = Math.max(0, clinic - clinicPaid);
       const labDue = Math.max(0, lab - labPaid);
       const pharmacyDue = Math.max(0, pharmacy - pharmacyPaid);
@@ -1029,57 +1010,92 @@ router.get("/getallbookings", async (req, res) => {
       else if (effectiveStatus === "due") stats.due++;
       else stats.pending++;
 
-      // ─── Revenue totals ───
-      stats.revenueBreakdown.clinicRevenue += clinic;
-      stats.revenueBreakdown.labRevenue += lab;
-      stats.revenueBreakdown.pharmacyRevenue += pharmacy;
-
-      const pt = (b.paymentType || "").toString().toLowerCase();
-      if (pt === "cash") stats.revenueBreakdown.cashCollected += paid;
-      else if (pt === "online") stats.revenueBreakdown.onlineCollected += paid;
-      else if (pt === "card") stats.revenueBreakdown.cardCollected += paid;
-      else if (pt === "insurance") stats.revenueBreakdown.insuranceCollected += paid;
-
-      stats.revenueBreakdown.totalCollected += paid;
-      stats.revenueBreakdown.dueAmount += due;
-
       // ─── Footfall ───
       if (clinic > 0)   categoryBreakdown.clinic.footFall   += 1;
       if (lab > 0)      categoryBreakdown.lab.footFall      += 1;
       if (pharmacy > 0) categoryBreakdown.pharmacy.footFall += 1;
 
-      // ═══════════════════════════════════════════════════════════
-      // ✅ DIRECT per-category distribution (NO proportional split)
-      // ═══════════════════════════════════════════════════════════
-
-      // Clinic
+      // ═══════════════════════════════════════════════════════
+      // ✅ CLINIC — split by per-item paymentMode
+      // ═══════════════════════════════════════════════════════
       categoryBreakdown.clinic.total += clinic;
-      categoryBreakdown.clinic.due   += clinicDue;
-      if (pt === "cash")            categoryBreakdown.clinic.cash      += clinicPaid;
-      else if (pt === "online")     categoryBreakdown.clinic.online    += clinicPaid;
-      else if (pt === "card")       categoryBreakdown.clinic.card      += clinicPaid;
-      else if (pt === "insurance")  categoryBreakdown.clinic.insurance += clinicPaid;
+      categoryBreakdown.clinic.due += clinicDue;
 
-      // Lab
+      const fallbackMode = (b.paymentType || "cash").toString().toLowerCase();
+      const clinicServicesForMode = baseServices.filter(s => classifyService(s) === "clinic");
+      let clinicPaidDistributed = 0;
+
+      if (clinicServicesForMode.length > 0 && clinicServicesForMode.some(s => s.paymentMode && String(s.paymentMode).trim() !== "")) {
+        // ✅ Per-item paymentMode available — use it
+        clinicServicesForMode.forEach((svc) => {
+          const isPaid = (svc.paymentStatus || "").toLowerCase() === "paid";
+          if (!isPaid) return;
+          const price = Number(svc.price) || 0;
+          addToBucket(categoryBreakdown.clinic, svc.paymentMode, price);
+          clinicPaidDistributed += price;
+        });
+      }
+
+      // Any remaining clinic paid (from reviews or unmatched) → booking fallback mode
+      const clinicRemaining = Math.max(0, clinicPaid - clinicPaidDistributed);
+      if (clinicRemaining > 0) {
+        addToBucket(categoryBreakdown.clinic, fallbackMode, clinicRemaining);
+      }
+
+      // ═══════════════════════════════════════════════════════
+      // ✅ LAB — split by per-item paymentMode
+      // ═══════════════════════════════════════════════════════
       categoryBreakdown.lab.total += lab;
-      categoryBreakdown.lab.due   += labDue;
-      if (pt === "cash")            categoryBreakdown.lab.cash      += labPaid;
-      else if (pt === "online")     categoryBreakdown.lab.online    += labPaid;
-      else if (pt === "card")       categoryBreakdown.lab.card      += labPaid;
-      else if (pt === "insurance")  categoryBreakdown.lab.insurance += labPaid;
+      categoryBreakdown.lab.due += labDue;
 
-      // Pharmacy
+      if (hasLabItems) {
+        labItemsArr.forEach((item) => {
+          if ((item.paymentStatus || "").toLowerCase() !== "paid") return;
+          const price = Number(item.price) || 0;
+          addToBucket(categoryBreakdown.lab, item.paymentMode || fallbackMode, price);
+        });
+      } else if (labPaid > 0) {
+        addToBucket(categoryBreakdown.lab, fallbackMode, labPaid);
+      }
+
+      // ═══════════════════════════════════════════════════════
+      // ✅ PHARMACY — split by per-item paymentMode
+      // ═══════════════════════════════════════════════════════
       categoryBreakdown.pharmacy.total += pharmacy;
-      categoryBreakdown.pharmacy.due   += pharmacyDue;
-      if (pt === "cash")            categoryBreakdown.pharmacy.cash      += pharmacyPaid;
-      else if (pt === "online")     categoryBreakdown.pharmacy.online    += pharmacyPaid;
-      else if (pt === "card")       categoryBreakdown.pharmacy.card      += pharmacyPaid;
-      else if (pt === "insurance")  categoryBreakdown.pharmacy.insurance += pharmacyPaid;
+      categoryBreakdown.pharmacy.due += pharmacyDue;
+
+      if (hasMedItems) {
+        medItemsArr.forEach((item) => {
+          if ((item.paymentStatus || "").toLowerCase() !== "paid") return;
+          const price = Number(item.price) || 0;
+          addToBucket(categoryBreakdown.pharmacy, item.paymentMode || fallbackMode, price);
+        });
+      } else if (pharmacyPaid > 0) {
+        addToBucket(categoryBreakdown.pharmacy, fallbackMode, pharmacyPaid);
+      }
+
+      // ═══════════════════════════════════════════════════════
+      // ✅ Revenue totals — sum from category buckets
+      // ═══════════════════════════════════════════════════════
+      stats.revenueBreakdown.clinicRevenue += clinic;
+      stats.revenueBreakdown.labRevenue += lab;
+      stats.revenueBreakdown.pharmacyRevenue += pharmacy;
+
+      stats.revenueBreakdown.totalCollected += paid;
+      stats.revenueBreakdown.dueAmount += due;
+    });
+
+    // ✅ Aggregate cash/online/card/insurance at stats level from categoryBreakdown
+    ["clinic", "lab", "pharmacy"].forEach((cat) => {
+      stats.revenueBreakdown.cashCollected      += categoryBreakdown[cat].cash;
+      stats.revenueBreakdown.onlineCollected    += categoryBreakdown[cat].online;
+      stats.revenueBreakdown.cardCollected      += categoryBreakdown[cat].card;
+      stats.revenueBreakdown.insuranceCollected += categoryBreakdown[cat].insurance;
     });
 
     stats.totalRevenue = stats.revenueBreakdown.totalCollected;
 
-    // ✅ Round categoryBreakdown values
+    // ✅ Round categoryBreakdown
     Object.keys(categoryBreakdown).forEach((cat) => {
       Object.keys(categoryBreakdown[cat]).forEach((k) => {
         if (k === "footFall") {
@@ -1111,7 +1127,6 @@ router.get("/getallbookings", async (req, res) => {
     });
   }
 });
-
 // ✅ GET ALL INACTIVE BOOKINGS
 // Route: GET /getallinactivebookings
 router.get("/getallinactivebookings", async (req, res) => {
@@ -1751,7 +1766,6 @@ router.get("/getallreferralbookings", async (req, res) => {
       }
     }
 
-    // ✅ APPOINTMENT DATE range
     if (apptFrom || apptTo) {
       const dateFilter = {};
       if (apptFrom) dateFilter.$gte = apptFrom;
@@ -1759,7 +1773,6 @@ router.get("/getallreferralbookings", async (req, res) => {
       mongoQuery.appointmentDate = dateFilter;
     }
 
-    // ✅ REGISTERED DATE range
     if (regFrom || regTo) {
       const regFilter = {};
       if (regFrom) {
@@ -1775,33 +1788,27 @@ router.get("/getallreferralbookings", async (req, res) => {
       mongoQuery.createdAt = regFilter;
     }
 
-    // ✅ MONTH
     if (month && !apptFrom && !apptTo && (!timeFilter || timeFilter === "All")) {
       mongoQuery.appointmentDate = new RegExp(`^${month}`);
     }
 
-    // ✅ DOCTOR
     if (doctor && doctor !== "All") {
       mongoQuery["slotDetails.doctorName"] = doctor;
     }
 
-    // ✅ PAYMENT TYPE
     if (paymentType && paymentType !== "All") {
       mongoQuery.paymentType = paymentType.toLowerCase();
     }
 
-    // ✅ PAYMENT STATUS
     if (paymentStatus && paymentStatus !== "All") {
       mongoQuery.paymentStatus = paymentStatus;
     }
 
-    // ✅ BOOKING TYPE
     if (bookingType && bookingType !== "All") {
       if (bookingType === "Walk-In") mongoQuery.isOP = true;
       else if (bookingType === "Online") mongoQuery.isOP = { $ne: true };
     }
 
-    // ✅ SEARCH
     if (search && search.trim()) {
       const q = search.trim();
       const rx = new RegExp(q, "i");
@@ -1834,11 +1841,34 @@ router.get("/getallreferralbookings", async (req, res) => {
     // 3️⃣ HELPERS
     // ═══════════════════════════════════════════════════════════
     const classifyService = (svc) => {
+      if (!svc) return "service";
       const cat = (svc.category || svc.serviceCategory || svc.type || "").toString().toLowerCase();
       const name = (svc.name || "").toString().toLowerCase();
-      if (cat.includes("pharm") || cat.includes("medic") || name.includes("pharm") || name.includes("medic")) return "pharmacy";
-      if (cat.includes("lab") || cat.includes("test") || cat.includes("diagnos") || name.includes("lab") || name.includes("test")) return "lab";
-      return "clinic";
+      const combined = `${cat} ${name}`;
+
+      if (
+        combined.includes("consult") ||
+        combined.includes("doctor fee") ||
+        combined.includes("doctorfee") ||
+        combined.includes("opd") ||
+        combined.includes("visiting") ||
+        combined.includes("visit fee") ||
+        combined.includes("consultation fee")
+      ) {
+        return "fees";
+      }
+
+      if (combined.includes("pharm") || combined.includes("medic")) return "pharmacy";
+      if (combined.includes("lab") || combined.includes("test") || combined.includes("diagnos")) return "lab";
+      return "service";
+    };
+
+    // ✅ Calculate payable per category — handles % AND ₹
+    const calcCategoryPayable = (amount, commissionVal, commissionType) => {
+      if (!amount || amount <= 0) return 0;
+      const type = (commissionType || "%").trim();
+      if (type === "₹") return Math.round(Number(commissionVal) || 0);
+      return Math.round((amount * (Number(commissionVal) || 0)) / 100);
     };
 
     // ═══════════════════════════════════════════════════════════
@@ -1859,16 +1889,18 @@ router.get("/getallreferralbookings", async (req, res) => {
         description: s.description || "",
         category: s.category || s.serviceCategory || s.type || "",
         paymentStatus: s.paymentStatus || b.paymentStatus || "Due",
+        serviceCategory: classifyService(s),
       }));
 
-      let clinicAmount = 0, labAmount = 0, pharmacyAmount = 0;
+      let serviceAmount = 0, labAmount = 0, pharmacyAmount = 0, feesAmount = 0;
 
       normalizedServices.forEach((s) => {
         const cat = classifyService(s);
         const price = Number(s.price) || 0;
         if (cat === "lab") labAmount += price;
         else if (cat === "pharmacy") pharmacyAmount += price;
-        else clinicAmount += price;
+        else if (cat === "fees") feesAmount += price;
+        else serviceAmount += price;
       });
 
       const manualMedicineTotal = Number(b.medicineTotal) || 0;
@@ -1893,14 +1925,22 @@ router.get("/getallreferralbookings", async (req, res) => {
           ? b.referralDoctorId
           : (b.referralCustomerId && typeof b.referralCustomerId === "object" ? b.referralCustomerId : null));
 
-      const clinicCommissionPct = Number(rc?.clinicCommission) || 0;
-      const pharmacyCommissionPct = Number(rc?.pharmacyCommission) || 0;
-      const labCommissionPct = Number(rc?.labCommission) || 0;
+      // ✅ Commission values + types
+      const serviceCommissionVal   = Number(rc?.serviceCommission ?? rc?.clinicCommission) || 0;
+      const serviceCommissionType  = rc?.serviceCommissionType || rc?.clinicCommissionType || "%";
+      const pharmacyCommissionVal  = Number(rc?.pharmacyCommission) || 0;
+      const pharmacyCommissionType = rc?.pharmacyCommissionType || "%";
+      const labCommissionVal       = Number(rc?.labCommission) || 0;
+      const labCommissionType      = rc?.labCommissionType || "%";
+      const feesCommissionVal      = Number(rc?.feesCommission) || 0;
+      const feesCommissionType     = rc?.feesCommissionType || "%";
 
-      const partnerPayable =
-        (clinicAmount * clinicCommissionPct) / 100 +
-        (pharmacyAmount * pharmacyCommissionPct) / 100 +
-        (labAmount * labCommissionPct) / 100;
+      // ✅ Payable — respects % AND ₹ types
+      const servicePayable  = calcCategoryPayable(serviceAmount,  serviceCommissionVal,  serviceCommissionType);
+      const labPayable      = calcCategoryPayable(labAmount,      labCommissionVal,      labCommissionType);
+      const pharmacyPayable = calcCategoryPayable(pharmacyAmount, pharmacyCommissionVal, pharmacyCommissionType);
+      const feesPayable     = calcCategoryPayable(feesAmount,     feesCommissionVal,     feesCommissionType);
+      const partnerPayable  = servicePayable + labPayable + pharmacyPayable + feesPayable;
 
       return {
         _id: b._id,
@@ -1929,8 +1969,10 @@ router.get("/getallreferralbookings", async (req, res) => {
 
         doctorPaymentStatus: b.doctorPaymentStatus || "Pending",
         doctorPaymentUpdatedAt: b.doctorPaymentUpdatedAt || null,
+        doctorReferralPaidAmount: Number(b.doctorReferralPaidAmount) || 0,
         customerPaymentStatus: b.customerPaymentStatus || "Pending",
         customerPaymentUpdatedAt: b.customerPaymentUpdatedAt || null,
+        customerReferralPaidAmount: Number(b.customerReferralPaidAmount) || 0,
         partnerPaymentStatus: b.partnerPaymentStatus || "Due",
         partnerPaymentUpdatedAt: b.partnerPaymentUpdatedAt || null,
 
@@ -1944,16 +1986,29 @@ router.get("/getallreferralbookings", async (req, res) => {
         amountPaid,
         balanceAmount,
 
-        clinicAmount,
+        serviceAmount,
         labAmount,
         pharmacyAmount,
+        feesAmount,
         medicineTotal: manualMedicineTotal,
         labTotal: manualLabTotal,
 
-        clinicCommissionPct,
-        pharmacyCommissionPct,
-        labCommissionPct,
-        partnerPayable: Math.round(partnerPayable),
+        serviceCommissionPct: serviceCommissionVal,
+        pharmacyCommissionPct: pharmacyCommissionVal,
+        labCommissionPct: labCommissionVal,
+        feesCommissionPct: feesCommissionVal,
+        clinicCommissionPct: serviceCommissionVal,
+
+        serviceCommissionType,
+        pharmacyCommissionType,
+        labCommissionType,
+        feesCommissionType,
+
+        servicePayable,
+        labPayable,
+        pharmacyPayable,
+        feesPayable,
+        partnerPayable,
 
         status: b.status || "confirmed",
         services: normalizedServices,
@@ -1980,9 +2035,16 @@ router.get("/getallreferralbookings", async (req, res) => {
             organization: rc.doctorOrganization || "",
             phone: rc.doctorPhone || rc.customerPhone || "",
             specialization: rc.doctorSpecialization || "",
-            clinicCommission: Number(rc.clinicCommission) || 0,
-            pharmacyCommission: Number(rc.pharmacyCommission) || 0,
-            labCommission: Number(rc.labCommission) || 0,
+            serviceCommission: serviceCommissionVal,
+            serviceCommissionType,
+            clinicCommission: serviceCommissionVal,
+            clinicCommissionType: serviceCommissionType,
+            pharmacyCommission: pharmacyCommissionVal,
+            pharmacyCommissionType,
+            labCommission: labCommissionVal,
+            labCommissionType,
+            feesCommission: feesCommissionVal,
+            feesCommissionType,
             totalCommission: Number(rc.totalCommission) || 0,
           }
           : null,
@@ -1992,20 +2054,21 @@ router.get("/getallreferralbookings", async (req, res) => {
     const transformed = bookings.map(transform);
 
     // ═══════════════════════════════════════════════════════════
-    // 5️⃣ REVENUE CATEGORY FILTER (post-process)
+    // 5️⃣ REVENUE CATEGORY FILTER
     // ═══════════════════════════════════════════════════════════
     let finalBookings = transformed;
     if (revenueCategory && revenueCategory !== "All") {
       finalBookings = transformed.filter((b) => {
-        if (revenueCategory === "clinic")   return (b.clinicAmount   || 0) > 0;
+        if (revenueCategory === "service" || revenueCategory === "clinic") return (b.serviceAmount || 0) > 0;
         if (revenueCategory === "lab")      return (b.labAmount      || 0) > 0;
         if (revenueCategory === "pharmacy") return (b.pharmacyAmount || 0) > 0;
+        if (revenueCategory === "fees")     return (b.feesAmount     || 0) > 0;
         return true;
       });
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 6️⃣ STATS + CATEGORY BREAKDOWN (same shape as getallbookings)
+    // 6️⃣ STATS + CATEGORY BREAKDOWN
     // ═══════════════════════════════════════════════════════════
     const stats = {
       totalPatients: finalBookings.length,
@@ -2018,9 +2081,11 @@ router.get("/getallreferralbookings", async (req, res) => {
       totalRevenue: 0,
       totalReferralPayable: 0,
       revenueBreakdown: {
+        serviceRevenue: 0,
         clinicRevenue: 0,
         labRevenue: 0,
         pharmacyRevenue: 0,
+        feesRevenue: 0,
         cashCollected: 0,
         onlineCollected: 0,
         cardCollected: 0,
@@ -2031,9 +2096,10 @@ router.get("/getallreferralbookings", async (req, res) => {
     };
 
     const categoryBreakdown = {
-      clinic:   { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0, referralPayable: 0 },
+      service:  { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0, referralPayable: 0 },
       lab:      { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0, referralPayable: 0 },
       pharmacy: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0, referralPayable: 0 },
+      fees:     { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0, referralPayable: 0 },
     };
 
     finalBookings.forEach((b) => {
@@ -2046,13 +2112,16 @@ router.get("/getallreferralbookings", async (req, res) => {
       else if (ps === "due") stats.due++;
       else stats.pending++;
 
-      const clinic   = Number(b.clinicAmount)   || 0;
+      const service  = Number(b.serviceAmount)  || 0;
       const lab      = Number(b.labAmount)      || 0;
       const pharmacy = Number(b.pharmacyAmount) || 0;
+      const fees     = Number(b.feesAmount)     || 0;
 
-      stats.revenueBreakdown.clinicRevenue   += clinic;
+      stats.revenueBreakdown.serviceRevenue  += service;
+      stats.revenueBreakdown.clinicRevenue   += service;
       stats.revenueBreakdown.labRevenue      += lab;
       stats.revenueBreakdown.pharmacyRevenue += pharmacy;
+      stats.revenueBreakdown.feesRevenue     += fees;
 
       const paid = Number(b.amountPaid) || 0;
       const due  = Number(b.balanceAmount) || 0;
@@ -2068,53 +2137,56 @@ router.get("/getallreferralbookings", async (req, res) => {
 
       stats.totalReferralPayable += Number(b.partnerPayable) || 0;
 
-      const catTotal = clinic + lab + pharmacy;
+      const catTotal = service + lab + pharmacy + fees;
       if (catTotal <= 0) return;
 
-      const clinicShare   = clinic / catTotal;
-      const labShare      = lab / catTotal;
-      const pharmacyShare = pharmacy / catTotal;
+      const sShare = service / catTotal;
+      const lShare = lab / catTotal;
+      const pShare = pharmacy / catTotal;
+      const fShare = fees / catTotal;
 
-      if (clinic > 0)   categoryBreakdown.clinic.footFall   += 1;
+      if (service > 0)  categoryBreakdown.service.footFall  += 1;
       if (lab > 0)      categoryBreakdown.lab.footFall      += 1;
       if (pharmacy > 0) categoryBreakdown.pharmacy.footFall += 1;
+      if (fees > 0)     categoryBreakdown.fees.footFall     += 1;
 
-      // Clinic
-      categoryBreakdown.clinic.total += clinic;
-      categoryBreakdown.clinic.due   += due * clinicShare;
-      if (pt === "cash")           categoryBreakdown.clinic.cash      += paid * clinicShare;
-      else if (pt === "online")    categoryBreakdown.clinic.online    += paid * clinicShare;
-      else if (pt === "card")      categoryBreakdown.clinic.card      += paid * clinicShare;
-      else if (pt === "insurance") categoryBreakdown.clinic.insurance += paid * clinicShare;
+      categoryBreakdown.service.total += service;
+      categoryBreakdown.service.due   += due * sShare;
+      if (pt === "cash")           categoryBreakdown.service.cash      += paid * sShare;
+      else if (pt === "online")    categoryBreakdown.service.online    += paid * sShare;
+      else if (pt === "card")      categoryBreakdown.service.card      += paid * sShare;
+      else if (pt === "insurance") categoryBreakdown.service.insurance += paid * sShare;
 
-      // Lab
       categoryBreakdown.lab.total += lab;
-      categoryBreakdown.lab.due   += due * labShare;
-      if (pt === "cash")           categoryBreakdown.lab.cash      += paid * labShare;
-      else if (pt === "online")    categoryBreakdown.lab.online    += paid * labShare;
-      else if (pt === "card")      categoryBreakdown.lab.card      += paid * labShare;
-      else if (pt === "insurance") categoryBreakdown.lab.insurance += paid * labShare;
+      categoryBreakdown.lab.due   += due * lShare;
+      if (pt === "cash")           categoryBreakdown.lab.cash      += paid * lShare;
+      else if (pt === "online")    categoryBreakdown.lab.online    += paid * lShare;
+      else if (pt === "card")      categoryBreakdown.lab.card      += paid * lShare;
+      else if (pt === "insurance") categoryBreakdown.lab.insurance += paid * lShare;
 
-      // Pharmacy
       categoryBreakdown.pharmacy.total += pharmacy;
-      categoryBreakdown.pharmacy.due   += due * pharmacyShare;
-      if (pt === "cash")           categoryBreakdown.pharmacy.cash      += paid * pharmacyShare;
-      else if (pt === "online")    categoryBreakdown.pharmacy.online    += paid * pharmacyShare;
-      else if (pt === "card")      categoryBreakdown.pharmacy.card      += paid * pharmacyShare;
-      else if (pt === "insurance") categoryBreakdown.pharmacy.insurance += paid * pharmacyShare;
+      categoryBreakdown.pharmacy.due   += due * pShare;
+      if (pt === "cash")           categoryBreakdown.pharmacy.cash      += paid * pShare;
+      else if (pt === "online")    categoryBreakdown.pharmacy.online    += paid * pShare;
+      else if (pt === "card")      categoryBreakdown.pharmacy.card      += paid * pShare;
+      else if (pt === "insurance") categoryBreakdown.pharmacy.insurance += paid * pShare;
 
-      // Referral payable split by category
-      const rc = b.referralContactDetails;
-      if (rc) {
-        categoryBreakdown.clinic.referralPayable   += (clinic   * (Number(rc.clinicCommission)   || 0)) / 100;
-        categoryBreakdown.lab.referralPayable      += (lab      * (Number(rc.labCommission)      || 0)) / 100;
-        categoryBreakdown.pharmacy.referralPayable += (pharmacy * (Number(rc.pharmacyCommission) || 0)) / 100;
-      }
+      categoryBreakdown.fees.total += fees;
+      categoryBreakdown.fees.due   += due * fShare;
+      if (pt === "cash")           categoryBreakdown.fees.cash      += paid * fShare;
+      else if (pt === "online")    categoryBreakdown.fees.online    += paid * fShare;
+      else if (pt === "card")      categoryBreakdown.fees.card      += paid * fShare;
+      else if (pt === "insurance") categoryBreakdown.fees.insurance += paid * fShare;
+
+      // Referral payable split by category (uses pre-computed per-category payable)
+      categoryBreakdown.service.referralPayable  += Number(b.servicePayable)  || 0;
+      categoryBreakdown.lab.referralPayable      += Number(b.labPayable)      || 0;
+      categoryBreakdown.pharmacy.referralPayable += Number(b.pharmacyPayable) || 0;
+      categoryBreakdown.fees.referralPayable     += Number(b.feesPayable)     || 0;
     });
 
     stats.totalRevenue = stats.revenueBreakdown.totalCollected;
 
-    // Round
     Object.keys(categoryBreakdown).forEach((cat) => {
       Object.keys(categoryBreakdown[cat]).forEach((k) => {
         if (k === "footFall") categoryBreakdown[cat][k] = Number(categoryBreakdown[cat][k]) || 0;
@@ -2143,18 +2215,17 @@ router.get("/getallreferralbookings", async (req, res) => {
 // PUT /appointment-slots/updatedoctorpayment/:bookingId
 // ✅ Accepts: Due | Paid | Partial (+ legacy Pending → normalized to Due)
 // ============================================================
-router.put("/updatedoctorpayment/:bookingId", async (req, res) => {
+router.put("/updatedoctorpayment/:id", async (req, res) => {
   try {
-    const { bookingId } = req.params;
-    let { doctorPaymentStatus } = req.body;
+    const { id } = req.params;
+    let { doctorPaymentStatus, doctorReferralPaidAmount, paymentType } = req.body;
 
-    console.log("🔵 [updateDoctorPayment] Called with:", { bookingId, doctorPaymentStatus });
+    console.log("🟢 [updateDoctorPayment] Called with:", { id, doctorPaymentStatus, doctorReferralPaidAmount, paymentType });
 
-    if (!bookingId || !mongoose.Types.ObjectId.isValid(bookingId)) {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ success: false, message: "Valid booking ID is required" });
     }
 
-    // ✅ Normalize legacy "Pending" → "Due"
     if (doctorPaymentStatus === "Pending") doctorPaymentStatus = "Due";
 
     const ALLOWED = ["Due", "Paid", "Partial"];
@@ -2165,41 +2236,42 @@ router.put("/updatedoctorpayment/:bookingId", async (req, res) => {
       });
     }
 
-    const updated = await Appointment.findByIdAndUpdate(
-      bookingId,
-      {
-        $set: {
-          doctorPaymentStatus,
-          doctorPaymentUpdatedAt: new Date(),
-        },
-      },
+    const updateFields = {
+      doctorPaymentStatus,
+      doctorPaymentUpdatedAt: new Date(),
+    };
+
+    if (doctorReferralPaidAmount !== undefined) {
+      updateFields.doctorReferralPaidAmount = Number(doctorReferralPaidAmount) || 0;
+    }
+    if (paymentType !== undefined) {
+      updateFields.paymentType = paymentType;
+    }
+
+    const booking = await Appointment.findByIdAndUpdate(
+      id,
+      { $set: updateFields },
       { new: true, runValidators: false }
     );
 
-    if (!updated) {
+    if (!booking) {
       return res.status(404).json({ success: false, message: "Booking not found" });
     }
 
     console.log("✅ Doctor payment updated:", {
-      _id: updated._id,
-      doctorPaymentStatus: updated.doctorPaymentStatus,
-      doctorPaymentUpdatedAt: updated.doctorPaymentUpdatedAt,
+      _id: booking._id,
+      doctorPaymentStatus: booking.doctorPaymentStatus,
+      doctorReferralPaidAmount: booking.doctorReferralPaidAmount,
+      paymentType: booking.paymentType,
+      doctorPaymentUpdatedAt: booking.doctorPaymentUpdatedAt,
     });
 
-    return res.status(200).json({
-      success: true,
-      message: `Doctor payment status updated to ${doctorPaymentStatus}`,
-      data: updated,
-    });
-  } catch (error) {
-    console.error("❌ Error updating doctor payment:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to update",
-    });
+    return res.status(200).json({ success: true, data: booking });
+  } catch (err) {
+    console.error("❌ Error updating doctor payment:", err);
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
-
 
 // ============================================================
 // PUT /appointment-slots/updatecustomerpayment/:id
@@ -2208,9 +2280,9 @@ router.put("/updatedoctorpayment/:bookingId", async (req, res) => {
 router.put("/updatecustomerpayment/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    let { customerPaymentStatus } = req.body;
+    let { customerPaymentStatus, customerReferralPaidAmount, paymentType } = req.body;
 
-    console.log("🟢 [updateCustomerPayment] Called with:", { id, customerPaymentStatus });
+    console.log("🟢 [updateCustomerPayment] Called with:", { id, customerPaymentStatus, customerReferralPaidAmount, paymentType });
 
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ success: false, message: "Valid booking ID is required" });
@@ -2227,14 +2299,22 @@ router.put("/updatecustomerpayment/:id", async (req, res) => {
       });
     }
 
+    // ✅ Build update object
+    const updateFields = {
+      customerPaymentStatus,
+      customerPaymentUpdatedAt: new Date(),
+    };
+
+    if (customerReferralPaidAmount !== undefined) {
+      updateFields.customerReferralPaidAmount = Number(customerReferralPaidAmount) || 0;
+    }
+    if (paymentType !== undefined) {
+      updateFields.paymentType = paymentType;
+    }
+
     const booking = await Appointment.findByIdAndUpdate(
       id,
-      {
-        $set: {
-          customerPaymentStatus,
-          customerPaymentUpdatedAt: new Date(),
-        },
-      },
+      { $set: updateFields },
       { new: true, runValidators: false }
     );
 
@@ -2245,6 +2325,8 @@ router.put("/updatecustomerpayment/:id", async (req, res) => {
     console.log("✅ Customer payment updated:", {
       _id: booking._id,
       customerPaymentStatus: booking.customerPaymentStatus,
+      customerReferralPaidAmount: booking.customerReferralPaidAmount,
+      paymentType: booking.paymentType,
       customerPaymentUpdatedAt: booking.customerPaymentUpdatedAt,
     });
 
@@ -2254,7 +2336,6 @@ router.put("/updatecustomerpayment/:id", async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
-
 
 router.put("/addmedicines/:id", async (req, res) => {
   try {
@@ -4108,6 +4189,8 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
 // Trusts frontend financials + Force-overrides after save
 // ✅ "Pending" replaced with "Due" everywhere
 // ============================================================
+// ✅ COMPLETE FIXED FILE — router.put updateop + updatecharges + vitals
+
 router.put("/updateop/:bookingId", async (req, res) => {
   try {
     const { bookingId } = req.params;
@@ -4216,41 +4299,44 @@ router.put("/updateop/:bookingId", async (req, res) => {
       (Array.isArray(services) && services.length > 0 && services) ||
       [];
 
+    // ✅ FIX: Added paymentMode + category preservation for clinic per-item payment tracking
     const normalizedServices = finalServices.map((s) => ({
       serviceId: s.serviceId || s._id || "",
       name: s.name || "Service",
       price: Number(s.price) || 0,
       description: s.description || "",
+      category: s.category || s.serviceCategory || s.type || "",        // ✅ NEW — preserve category
+      paymentMode: s.paymentMode || "",                                  // ✅ FIX — save clinic paymentMode
       paymentStatus:
         s.paymentStatus && s.paymentStatus !== "Pending" ? s.paymentStatus : "Due",
       addedAt: s.addedAt || new Date(),
     }));
 
-  // ===== ✅ NORMALIZE LAB ITEMS =====
-const normalizedLabItems = Array.isArray(reqLabItems)
-  ? reqLabItems.map((item) => ({
-      serviceId: item.serviceId || item._id || "",
-      name: item.name || "Lab Test",
-      price: Number(item.price) || 0,
-      description: item.description || "",
-      category: "lab",
-      paymentMode: item.paymentMode || "Cash",        // ✅ NEW
-      paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
-    }))
-  : [];
+    // ===== ✅ NORMALIZE LAB ITEMS =====
+    const normalizedLabItems = Array.isArray(reqLabItems)
+      ? reqLabItems.map((item) => ({
+          serviceId: item.serviceId || item._id || "",
+          name: item.name || "Lab Test",
+          price: Number(item.price) || 0,
+          description: item.description || "",
+          category: "lab",
+          paymentMode: item.paymentMode || "Cash",        // ✅ NEW
+          paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
+        }))
+      : [];
 
-// ===== ✅ NORMALIZE MEDICINE ITEMS =====
-const normalizedMedicineItems = Array.isArray(reqMedicineItems)
-  ? reqMedicineItems.map((item) => ({
-      serviceId: item.serviceId || item._id || "",
-      name: item.name || "Medicine",
-      price: Number(item.price) || 0,
-      description: item.description || "",
-      category: "pharmacy",
-      paymentMode: item.paymentMode || "Cash",        // ✅ NEW
-      paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
-    }))
-  : [];
+    // ===== ✅ NORMALIZE MEDICINE ITEMS =====
+    const normalizedMedicineItems = Array.isArray(reqMedicineItems)
+      ? reqMedicineItems.map((item) => ({
+          serviceId: item.serviceId || item._id || "",
+          name: item.name || "Medicine",
+          price: Number(item.price) || 0,
+          description: item.description || "",
+          category: "pharmacy",
+          paymentMode: item.paymentMode || "Cash",        // ✅ NEW
+          paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
+        }))
+      : [];
 
     // ===== ✅ COMPUTE FINANCIALS — TRUST FRONTEND FIRST =====
     const servicesTotal = normalizedServices.reduce((sum, s) => sum + (s.price || 0), 0);
@@ -4402,7 +4488,7 @@ const normalizedMedicineItems = Array.isArray(reqMedicineItems)
       referralCommission: referralCommission || "",
       referralCommissionType: referralCommissionType || "",
 
-      // ✅ Services
+      // ✅ Services — NOW WITH paymentMode
       services: normalizedServices,
 
       // ✅ Lab & Pharmacy items
@@ -4443,6 +4529,8 @@ const normalizedMedicineItems = Array.isArray(reqMedicineItems)
     // ✅ CRITICAL FIX: FORCE OVERRIDE after update
     // ============================================================
     const forceSet = {
+      // ✅ Services bhi force set karo (paymentMode guaranteed)
+      services: normalizedServices,
       labItems: normalizedLabItems,
       medicineItems: normalizedMedicineItems,
       servicesTotal,
@@ -4488,6 +4576,7 @@ const normalizedMedicineItems = Array.isArray(reqMedicineItems)
       paymentStatus: populatedAppointment.paymentStatus,
       labItemsCount: populatedAppointment.labItems?.length || 0,
       medicineItemsCount: populatedAppointment.medicineItems?.length || 0,
+      servicesSample: populatedAppointment.services?.[0],
       categoryPayment: populatedAppointment.categoryPayment,
     });
 
@@ -4501,6 +4590,7 @@ const normalizedMedicineItems = Array.isArray(reqMedicineItems)
     return res.status(500).json({ success: false, message: error.message });
   }
 });
+
 router.put("/updatecharges/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -4554,43 +4644,40 @@ router.put("/updatecharges/:id", async (req, res) => {
     // ============================================================
     let normalizedLabItems = null;
     let computedLabFromItems = 0;
-  // ✅ NORMALIZE LAB ITEMS
-if (Array.isArray(labItems)) {
-  normalizedLabItems = labItems.map((item) => ({
-    serviceId: item.serviceId || item._id || "",
-    name: item.name || "Lab Test",
-    price: Number(item.price) || 0,
-    description: item.description || "",
-    category: "lab",
-    paymentMode: item.paymentMode || "Cash",        // ✅ NEW
-    paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
-  }));
-  computedLabFromItems = normalizedLabItems.reduce(
-    (sum, x) => sum + (Number(x.price) || 0), 0
-  );
-}
+    if (Array.isArray(labItems)) {
+      normalizedLabItems = labItems.map((item) => ({
+        serviceId: item.serviceId || item._id || "",
+        name: item.name || "Lab Test",
+        price: Number(item.price) || 0,
+        description: item.description || "",
+        category: "lab",
+        paymentMode: item.paymentMode || "Cash",        // ✅ NEW
+        paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
+      }));
+      computedLabFromItems = normalizedLabItems.reduce(
+        (sum, x) => sum + (Number(x.price) || 0), 0
+      );
+    }
 
     // ============================================================
     // ✅ NORMALIZE MEDICINE ITEMS (if provided)
     // ============================================================
     let normalizedMedicineItems = null;
     let computedMedFromItems = 0;
-   // ✅ NORMALIZE MEDICINE ITEMS
-if (Array.isArray(medicineItems)) {
-  normalizedMedicineItems = medicineItems.map((item) => ({
-    serviceId: item.serviceId || item._id || "",
-    name: item.name || "Medicine",
-    price: Number(item.price) || 0,
-    description: item.description || "",
-    category: "pharmacy",
-    paymentMode: item.paymentMode || "Cash",        // ✅ NEW
-    paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
-  }));
-  computedMedFromItems = normalizedMedicineItems.reduce(
-    (sum, x) => sum + (Number(x.price) || 0), 0
-  );
-}
-
+    if (Array.isArray(medicineItems)) {
+      normalizedMedicineItems = medicineItems.map((item) => ({
+        serviceId: item.serviceId || item._id || "",
+        name: item.name || "Medicine",
+        price: Number(item.price) || 0,
+        description: item.description || "",
+        category: "pharmacy",
+        paymentMode: item.paymentMode || "Cash",        // ✅ NEW
+        paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
+      }));
+      computedMedFromItems = normalizedMedicineItems.reduce(
+        (sum, x) => sum + (Number(x.price) || 0), 0
+      );
+    }
 
     // ============================================================
     // ✅ Final lab/medicine totals
@@ -4724,13 +4811,13 @@ if (Array.isArray(medicineItems)) {
     });
   }
 });
+
 // ✅ NEW: Vitals update API
 router.put("/vitals/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { vitalsTemp, vitalsBp, vitalsPr, vitalsWeight } = req.body;
 
-    // ✅ At least one required
     if (
       vitalsTemp === undefined &&
       vitalsBp === undefined &&
@@ -4743,7 +4830,6 @@ router.put("/vitals/:id", async (req, res) => {
       });
     }
 
-    // ✅ Find booking
     const booking = await Appointment.findById(id);
     if (!booking) {
       return res.status(404).json({
@@ -4752,13 +4838,11 @@ router.put("/vitals/:id", async (req, res) => {
       });
     }
 
-    // ✅ Set vitals (only if provided)
     if (vitalsTemp !== undefined && vitalsTemp !== null) booking.vitalsTemp = String(vitalsTemp).trim();
     if (vitalsBp !== undefined && vitalsBp !== null) booking.vitalsBp = String(vitalsBp).trim();
     if (vitalsPr !== undefined && vitalsPr !== null) booking.vitalsPr = String(vitalsPr).trim();
     if (vitalsWeight !== undefined && vitalsWeight !== null) booking.vitalsWeight = String(vitalsWeight).trim();
 
-    // ✅ Save
     await booking.save();
 
     return res.status(200).json({
@@ -4781,7 +4865,6 @@ router.put("/vitals/:id", async (req, res) => {
     });
   }
 });
-
 
 
 // ✅ Toggle Active Status
@@ -5474,6 +5557,269 @@ router.post("/send-invoice", async (req, res) => {
   }
 });
 
+
+
+
+
+// ✅ NEW: Revenue Analytics API — category-wise footfall, cash, online, due, total
+router.get("/revenue-analytics", async (req, res) => {
+  try {
+    const { from, to } = req.query;
+
+    // ═══════════════════════════════════════════════════════════
+    // 1️⃣ BUILD QUERY
+    // ═══════════════════════════════════════════════════════════
+    const mongoQuery = {
+      isActive: { $ne: false },
+    };
+
+    // Date range filter (on appointmentDate which is a string "YYYY-MM-DD")
+    if (from || to) {
+      const dateFilter = {};
+      if (from) dateFilter.$gte = from;
+      if (to) dateFilter.$lte = to;
+      mongoQuery.appointmentDate = dateFilter;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 2️⃣ FETCH
+    // ═══════════════════════════════════════════════════════════
+    const bookings = await Appointment.find(mongoQuery).lean();
+
+    // ═══════════════════════════════════════════════════════════
+    // 3️⃣ HELPERS
+    // ═══════════════════════════════════════════════════════════
+    const classifyService = (svc) => {
+      if (!svc) return "clinic";
+      const cat = (svc.category || svc.serviceCategory || svc.type || "").toString().toLowerCase();
+      const name = (svc.name || "").toString().toLowerCase();
+      if (cat.includes("pharm") || cat.includes("medic") || name.includes("pharm") || name.includes("medic")) return "pharmacy";
+      if (cat.includes("lab") || cat.includes("test") || cat.includes("diagnos") || name.includes("lab") || name.includes("test")) return "lab";
+      return "clinic";
+    };
+
+    const emptyCategory = () => ({
+      total: 0,
+      cash: 0,
+      online: 0,
+      card: 0,
+      insurance: 0,
+      due: 0,
+      footFall: 0,
+    });
+
+    const result = {
+      clinic: emptyCategory(),
+      lab: emptyCategory(),
+      pharmacy: emptyCategory(),
+      grandTotal: emptyCategory(),
+    };
+
+    const addToBucket = (bucket, mode, amount) => {
+      if (!amount || amount <= 0) return;
+      const m = String(mode || "").trim().toLowerCase();
+      if (m === "cash") bucket.cash += amount;
+      else if (m === "online") bucket.online += amount;
+      else if (m === "card") bucket.card += amount;
+      else if (m === "insurance") bucket.insurance += amount;
+      // "due" mode is treated as not-paid, so nothing here
+    };
+
+    // ═══════════════════════════════════════════════════════════
+    // 4️⃣ PROCESS EACH BOOKING
+    // ═══════════════════════════════════════════════════════════
+    bookings.forEach((b) => {
+      const cp = b.categoryPayment || {};
+      const fallbackMode = (b.paymentType || "cash").toString().toLowerCase();
+
+      // ─── Base services ───
+      const baseServices =
+        (Array.isArray(b.services) && b.services.length > 0 && b.services) ||
+        (Array.isArray(b.serviceItems) && b.serviceItems.length > 0 && b.serviceItems) ||
+        [];
+
+      const labItemsArr = Array.isArray(b.labItems) ? b.labItems : [];
+      const medItemsArr = Array.isArray(b.medicineItems) ? b.medicineItems : [];
+      const hasLabItems = labItemsArr.length > 0;
+      const hasMedItems = medItemsArr.length > 0;
+
+      // ─── Compute category totals ───
+      let clinicTotal = 0;
+      let labTotal = 0;
+      let pharmacyTotal = 0;
+
+      baseServices.forEach((s) => {
+        const price = Number(s.price) || 0;
+        if (price <= 0) return;
+        const cat = classifyService(s);
+        if (cat === "lab") labTotal += price;
+        else if (cat === "pharmacy") pharmacyTotal += price;
+        else clinicTotal += price;
+      });
+
+      if (hasLabItems) {
+        labTotal = labItemsArr.reduce((sum, i) => sum + (Number(i.price) || 0), 0);
+      } else {
+        labTotal = Math.max(labTotal, Number(b.labTotal) || 0);
+      }
+
+      if (hasMedItems) {
+        pharmacyTotal = medItemsArr.reduce((sum, i) => sum + (Number(i.price) || 0), 0);
+      } else {
+        pharmacyTotal = Math.max(pharmacyTotal, Number(b.medicineTotal) || 0);
+      }
+
+      // Review services → clinic
+      (Array.isArray(b.reviews) ? b.reviews : []).forEach((r) => {
+        clinicTotal += Number(r.price) || 0;
+      });
+
+      // ─── Compute category PAID amounts ───
+      // CLINIC
+      const clinicItems = baseServices.filter((s) => classifyService(s) === "clinic");
+      const hasClinicPerItem = clinicItems.some(
+        (s) => s.paymentMode && String(s.paymentMode).trim() !== ""
+      );
+      let clinicPaid = 0;
+      if (hasClinicPerItem && clinicItems.length > 0) {
+        clinicPaid = clinicItems.reduce(
+          (sum, item) =>
+            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
+          0
+        );
+      } else {
+        clinicPaid = Number(cp.clinic?.paidAmount) || 0;
+      }
+      clinicPaid = Math.min(clinicPaid, clinicTotal);
+
+      // LAB
+      let labPaid = 0;
+      if (hasLabItems) {
+        labPaid = labItemsArr.reduce(
+          (sum, item) =>
+            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
+          0
+        );
+      } else {
+        labPaid = Number(cp.lab?.paidAmount) || 0;
+      }
+      labPaid = Math.min(labPaid, labTotal);
+
+      // PHARMACY
+      let pharmacyPaid = 0;
+      if (hasMedItems) {
+        pharmacyPaid = medItemsArr.reduce(
+          (sum, item) =>
+            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
+          0
+        );
+      } else {
+        pharmacyPaid = Number(cp.pharmacy?.paidAmount) || 0;
+      }
+      pharmacyPaid = Math.min(pharmacyPaid, pharmacyTotal);
+
+      // ─── Footfall (count 1 per category if total > 0) ───
+      if (clinicTotal > 0)   result.clinic.footFall   += 1;
+      if (labTotal > 0)      result.lab.footFall      += 1;
+      if (pharmacyTotal > 0) result.pharmacy.footFall += 1;
+
+      // ─── Totals ───
+      result.clinic.total   += clinicTotal;
+      result.lab.total      += labTotal;
+      result.pharmacy.total += pharmacyTotal;
+
+      // ─── DUE ───
+      result.clinic.due   += Math.max(0, clinicTotal - clinicPaid);
+      result.lab.due      += Math.max(0, labTotal - labPaid);
+      result.pharmacy.due += Math.max(0, pharmacyTotal - pharmacyPaid);
+
+      // ─── CLINIC: distribute paid by per-item paymentMode ───
+      let clinicDistributed = 0;
+      if (hasClinicPerItem && clinicItems.length > 0) {
+        clinicItems.forEach((item) => {
+          const isPaid = (item.paymentStatus || "").toLowerCase() === "paid";
+          if (!isPaid) return;
+          const price = Number(item.price) || 0;
+          addToBucket(result.clinic, item.paymentMode, price);
+          clinicDistributed += price;
+        });
+      }
+      const clinicRemaining = Math.max(0, clinicPaid - clinicDistributed);
+      if (clinicRemaining > 0) {
+        addToBucket(result.clinic, fallbackMode, clinicRemaining);
+      }
+
+      // ─── LAB: distribute paid by per-item paymentMode ───
+      if (hasLabItems) {
+        labItemsArr.forEach((item) => {
+          if ((item.paymentStatus || "").toLowerCase() !== "paid") return;
+          const price = Number(item.price) || 0;
+          addToBucket(result.lab, item.paymentMode || fallbackMode, price);
+        });
+      } else if (labPaid > 0) {
+        addToBucket(result.lab, fallbackMode, labPaid);
+      }
+
+      // ─── PHARMACY: distribute paid by per-item paymentMode ───
+      if (hasMedItems) {
+        medItemsArr.forEach((item) => {
+          if ((item.paymentStatus || "").toLowerCase() !== "paid") return;
+          const price = Number(item.price) || 0;
+          addToBucket(result.pharmacy, item.paymentMode || fallbackMode, price);
+        });
+      } else if (pharmacyPaid > 0) {
+        addToBucket(result.pharmacy, fallbackMode, pharmacyPaid);
+      }
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // 5️⃣ GRAND TOTAL
+    // ═══════════════════════════════════════════════════════════
+    ["clinic", "lab", "pharmacy"].forEach((cat) => {
+      result.grandTotal.total     += result[cat].total;
+      result.grandTotal.cash      += result[cat].cash;
+      result.grandTotal.online    += result[cat].online;
+      result.grandTotal.card      += result[cat].card;
+      result.grandTotal.insurance += result[cat].insurance;
+      result.grandTotal.due       += result[cat].due;
+      result.grandTotal.footFall  += result[cat].footFall;
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // 6️⃣ ROUND ALL VALUES
+    // ═══════════════════════════════════════════════════════════
+    ["clinic", "lab", "pharmacy", "grandTotal"].forEach((cat) => {
+      Object.keys(result[cat]).forEach((k) => {
+        if (k === "footFall") {
+          result[cat][k] = Number(result[cat][k]) || 0;
+        } else {
+          result[cat][k] = Math.round(result[cat][k]);
+        }
+      });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // 7️⃣ RESPONSE
+    // ═══════════════════════════════════════════════════════════
+    return res.status(200).json({
+      success: true,
+      message: "Revenue analytics fetched successfully",
+      filter: {
+        from: from || null,
+        to: to || null,
+      },
+      count: bookings.length,
+      data: result,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching revenue analytics:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch revenue analytics",
+      error: error.message,
+    });
+  }
+});
 
 
 module.exports = router;

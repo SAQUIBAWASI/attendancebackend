@@ -272,6 +272,16 @@ medicineItems: [
 ],
 
 
+
+// models/Appointment.js (ya jo bhi naam hai)
+customerPaymentStatus: { type: String, enum: ["Due", "Paid", "Partial", "Pending"], default: "Due" },
+customerPaymentUpdatedAt: { type: Date, default: null },
+customerReferralPaidAmount: { type: Number, default: 0 },
+
+doctorPaymentStatus: { type: String, enum: ["Due", "Paid", "Partial", "Pending"], default: "Due" },
+doctorPaymentUpdatedAt: { type: Date, default: null },
+doctorReferralPaidAmount: { type: Number, default: 0 },
+
 // Existing schema me add karo (baaki kuch nahi chhedo)
 categoryPayment: {
   clinic: { paidAmount: { type: Number, default: 0 } },
@@ -300,6 +310,8 @@ categoryPayment: {
         name: { type: String },
         price: { type: Number, default: 0 },
         description: { type: String, default: "" },
+        category: { type: String, default: "" },           // ✅ NEW
+        paymentMode: { type: String, default: "" },         // ✅ NEW (MAIN FIX)
         paymentStatus: {
           type: String,
           enum: ["Pending", "Paid", "Partial", "Due"],

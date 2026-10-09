@@ -34,7 +34,7 @@ const {
   getCompOffs,
   getCompOffsByEmployee,
   updateCompOffStatus,
-  updateCompOff,  // ✅ Import added
+  updateCompOff,
   deleteCompOff,
   
   // Comp-off request routes
@@ -43,6 +43,11 @@ const {
   getEmployeeCompOffRequests,
   approveCompOffRequest,
   rejectCompOffRequest,
+
+  // ✅ NEW: Extra worked days
+  getExtraWorkedDays,
+
+  // Comp-off settings
   getAllCompOffSettings,
   addCompOffSettings,
   updateCompOffSettings,
@@ -54,7 +59,7 @@ router.post("/comp-offs", addCompOff);
 router.get("/comp-offs", getCompOffs);
 router.get("/comp-offs/employee/:employeeId", getCompOffsByEmployee);
 router.put("/comp-offs/:id", updateCompOffStatus);
-router.put("/comp-offs/update/:id", updateCompOff);  // ✅ Update route
+router.put("/comp-offs/update/:id", updateCompOff);
 router.delete("/comp-offs/:id", deleteCompOff);
 
 // ============ COMP-OFF REQUESTS ROUTES ============
@@ -64,19 +69,13 @@ router.get("/comp-off-requests", getCompOffRequests);
 router.put("/comp-off-requests/:id/approve", approveCompOffRequest);
 router.put("/comp-off-requests/:id/reject", rejectCompOffRequest);
 
+// ✅ NEW: Extra worked days (week-off / holiday work)
+router.get("/extra-worked-days/:employeeId", getExtraWorkedDays);
 
-// 📌 Add Comp-Off Settings
+// 📌 Comp-Off Settings
 router.post("/add-comp-off-settings", addCompOffSettings);
-
-// 📌 Get All Comp-Off Settings
 router.get("/get-all-comp-off-settings", getAllCompOffSettings);
-
-
-// 📌 Update Comp-Off Settings
 router.put("/update-comp-off-settings/:id", updateCompOffSettings);
-
-// 📌 Delete Comp-Off Settings
 router.delete("/delete-comp-off-settings/:id", deleteCompOffSettings);
-
 
 module.exports = router;

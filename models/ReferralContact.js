@@ -23,26 +23,26 @@ const ReferralContactSchema = new mongoose.Schema(
     doctorAddress: { type: String, trim: true },
 
     // ===== Commission fields =====
-    clinicCommission: { type: Number, default: 0 },
-    clinicCommissionType: {                       // ✅ NEW
+    serviceCommission: { type: Number, default: 0 },        // ✅ renamed from clinicCommission
+    serviceCommissionType: {                                 // ✅ renamed from clinicCommissionType
       type: String,
       enum: ['%', '₹'],
       default: '%'
     },
     pharmacyCommission: { type: Number, default: 0 },
-    pharmacyCommissionType: {                     // ✅ NEW
+    pharmacyCommissionType: {
       type: String,
       enum: ['%', '₹'],
       default: '%'
     },
     labCommission: { type: Number, default: 0 },
-    labCommissionType: {                          // ✅ NEW
+    labCommissionType: {
       type: String,
       enum: ['%', '₹'],
       default: '%'
     },
-    feesCommission: { type: Number, default: 0 }, // ✅ NEW
-    feesCommissionType: {                         // ✅ NEW
+    feesCommission: { type: Number, default: 0 },
+    feesCommissionType: {
       type: String,
       enum: ['%', '₹'],
       default: '%'
@@ -53,7 +53,7 @@ const ReferralContactSchema = new mongoose.Schema(
     consultationFee: { type: Number, default: 0, min: 0 },
 
     // ===== Services =====
-    services: [                                   // ✅ NEW
+    services: [
       {
         name:  { type: String, trim: true, default: "" },
         price: { type: Number, default: 0, min: 0 }
@@ -62,10 +62,10 @@ const ReferralContactSchema = new mongoose.Schema(
 
     // ===== Common fields =====
     onboardDate: { type: String, trim: true },
-    referralDate: { type: String, trim: true },   // kept for backward compatibility
+    referralDate: { type: String, trim: true },
     referralNotes: { type: String, trim: true },
 
-    // ===== Special Offers (Discount) — % OR ₹ =====
+    // ===== Special Offers (Discount) =====
     discountFees: { type: Number, default: 0 },
     discountFeesType: {
       type: String,
@@ -79,7 +79,7 @@ const ReferralContactSchema = new mongoose.Schema(
       default: '%'
     },
 
-    // ===== Offers Array (legacy + Offer modal) =====
+    // ===== Offers Array =====
     offers: [
       {
         offerName: { type: String, default: "" },

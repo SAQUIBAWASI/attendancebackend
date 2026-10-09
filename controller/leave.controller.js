@@ -219,6 +219,7 @@ const Admin = require("../models/Admin");
 const CompOff = require("../models/CompOff"); // ✅ Add this
 const Employee = require("../models/Employee"); // ✅ Employee for balances
 const ExtraDayCompOff = require('../models/ExtraDayCompOff');
+const CompOffRequest = require('../models/CompOffRequest');
 const Attendance = require("../models/Attendance");
 const Shift = require("../models/Shift");
 const { sendToToken } = require("../services/notificationService"); // 👈 ADD (agar already nahi hai)
@@ -904,7 +905,7 @@ exports.requestExtraDayCompOff = async (req, res) => {
 };
 
 // ============================================
-// 2. GET ALL REQUESTS - Get all comp-off requests with filters
+// 2. GET ALL REQUESTS - Get all comp-off requests with filters (Unified CompOffRequest & ExtraDayCompOff)
 // ============================================
 exports.getAllExtraDayCompOffRequests = async (req, res) => {
   try {
@@ -912,78 +913,215 @@ exports.getAllExtraDayCompOffRequests = async (req, res) => {
       employeeId, 
       month, 
       status,
+      search,
       page = 1,
       limit = 10,
       sortBy = 'createdAt',
       sortOrder = 'desc'
     } = req.query;
 
-    let filter = {};
-
-    // Filter by employeeId
-    if (employeeId) {
-      filter.employeeId = employeeId;
-    }
-
-    // Filter by status
-    if (status && ['pending', 'approved', 'rejected'].includes(status)) {
-      filter.status = status;
-    }
-
-    // Filter by month
-    if (month) {
-      const [year, monthNum] = month.split('-').map(Number);
-      const startDate = new Date(year, monthNum - 1, 1);
-      const endDate = new Date(year, monthNum, 0, 23, 59, 59);
-      filter.createdAt = { $gte: startDate, $lte: endDate };
-    }
-
-    // Pagination
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const skip = (pageNum - 1) * limitNum;
-
-    // Sorting
-    const sort = {};
-    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
-
-    // Get requests with pagination
-    const requests = await ExtraDayCompOff.find(filter)
-      .sort(sort)
-      .skip(skip)
-      .limit(limitNum);
-
-    // Get total count
-    const totalCount = await ExtraDayCompOff.countDocuments(filter);
-
-    // Get counts by status
-    const statusCounts = await ExtraDayCompOff.aggregate([
-      { $match: filter },
-      { $group: { _id: '$status', count: { $sum: 1 } } }
+    // 1. Fetch from both collections in parallel
+    const [extraDayRequests, compOffRequests] = await Promise.all([
+      ExtraDayCompOff.find().lean().catch(e => { console.warn("ExtraDayCompOff find error:", e.message); return []; }),
+      CompOffRequest.find().populate('originalLeaveId').lean().catch(e => { console.warn("CompOffRequest find error:", e.message); return []; })
     ]);
 
-    const counts = {
-      total: totalCount,
-      pending: 0,
-      approved: 0,
-      rejected: 0
+    const normalizedMap = new Map();
+
+    // Helper: Normalize ExtraDayCompOff
+    const normalizeExtraDay = (doc) => {
+      const extraDayStr = doc.extraDayDate ? new Date(doc.extraDayDate).toDateString() : (doc.extraDayDetails?.day || "");
+      return {
+        _id: String(doc._id),
+        employeeId: doc.employeeId || "",
+        employeeName: doc.employeeName || "",
+        extraDayDate: doc.extraDayDate || doc.workDate,
+        extraDayDetails: doc.extraDayDetails || {
+          day: extraDayStr,
+          date: doc.extraDayDate || doc.workDate,
+          totalHours: doc.extraDayDetails?.totalHours || 8,
+          extraHours: doc.extraDayDetails?.extraHours || 0
+        },
+        leaveId: doc.leaveId || null,
+        leaveDetails: doc.leaveDetails || null,
+        workDate: doc.workDate || doc.extraDayDate,
+        reason: doc.reason || "",
+        count: 1,
+        status: doc.status || "pending",
+        approvedBy: doc.approvedBy || null,
+        approvedAt: doc.approvedAt || null,
+        rejectedReason: doc.rejectedReason || null,
+        convertedToCompOff: !!doc.convertedToCompOff,
+        createdAt: doc.createdAt || new Date(),
+        updatedAt: doc.updatedAt || new Date(),
+        source: "ExtraDayCompOff"
+      };
     };
 
-    statusCounts.forEach(item => {
-      if (item._id === 'pending') counts.pending = item.count;
-      else if (item._id === 'approved') counts.approved = item.count;
-      else if (item._id === 'rejected') counts.rejected = item.count;
+    // Helper: Normalize CompOffRequest
+    const normalizeCompOffReq = (doc) => {
+      const workDateStr = doc.workDate ? (typeof doc.workDate === 'string' ? doc.workDate : new Date(doc.workDate).toISOString().slice(0, 10)) : "";
+      const extraDayObj = doc.extraDayDetails || {
+        day: workDateStr,
+        date: doc.workDate,
+        totalHours: 8,
+        extraHours: 0,
+        workType: "Week-off Work"
+      };
+      return {
+        _id: String(doc._id),
+        employeeId: doc.employeeId || "",
+        employeeName: doc.employeeName || "",
+        extraDayDate: doc.extraDayDate || doc.workDate,
+        extraDayDetails: extraDayObj,
+        leaveId: doc.originalLeaveId?._id || doc.leaveId || null,
+        leaveDetails: doc.leaveDetails || (doc.originalLeaveId ? {
+          leaveType: doc.originalLeaveId.leaveType,
+          startDate: doc.originalLeaveId.startDate,
+          endDate: doc.originalLeaveId.endDate,
+          days: doc.originalLeaveId.days,
+          reason: doc.originalLeaveId.reason,
+          status: doc.originalLeaveId.status
+        } : null),
+        workDate: doc.workDate || doc.extraDayDate,
+        reason: doc.reason || "",
+        count: doc.count || 1,
+        status: doc.status || "pending",
+        approvedBy: doc.approvedBy || null,
+        approvedAt: doc.approvedDate || doc.approvedAt || null,
+        rejectedReason: doc.rejectionReason || doc.rejectedReason || null,
+        convertedToCompOff: !!doc.convertedToCompOff,
+        createdAt: doc.createdAt || new Date(),
+        updatedAt: doc.updatedAt || new Date(),
+        source: "CompOffRequest"
+      };
+    };
+
+    // Load ExtraDayCompOff records first
+    extraDayRequests.forEach(item => {
+      const norm = normalizeExtraDay(item);
+      normalizedMap.set(norm._id, norm);
     });
+
+    // Merge CompOffRequest records (newer or updates take precedence)
+    compOffRequests.forEach(item => {
+      const norm = normalizeCompOffReq(item);
+      normalizedMap.set(norm._id, norm);
+    });
+
+    const toDateKey = (val) => {
+      if (!val) return "";
+      if (typeof val === "string") {
+        if (val.includes("T")) return val.split("T")[0];
+        return val.slice(0, 10);
+      }
+      if (val instanceof Date && !isNaN(val)) {
+        try { return val.toISOString().slice(0, 10); } catch (e) { return ""; }
+      }
+      return "";
+    };
+
+    // Deduplicate by employeeId + date key so legacy duplicates don't show twice
+    const dedupeByKey = new Map();
+    Array.from(normalizedMap.values()).forEach(item => {
+      const datePart = toDateKey(item.workDate || item.extraDayDate);
+      const dedupeKey = item.employeeId && datePart 
+        ? `${item.employeeId.trim().toUpperCase()}_${datePart}`
+        : item._id;
+      
+      const existing = dedupeByKey.get(dedupeKey);
+      if (!existing) {
+        dedupeByKey.set(dedupeKey, item);
+      } else {
+        if (existing.status !== 'pending' && item.status === 'pending') {
+          dedupeByKey.set(dedupeKey, item);
+        } else if (item.source === 'CompOffRequest') {
+          dedupeByKey.set(dedupeKey, item);
+        }
+      }
+    });
+
+    let allRecords = Array.from(dedupeByKey.values());
+
+    // 2. Filter by employeeId
+    if (employeeId) {
+      const targetEmp = String(employeeId).trim().toLowerCase();
+      allRecords = allRecords.filter(r => (r.employeeId || "").toLowerCase() === targetEmp);
+    }
+
+    // 3. Filter by month (matches createdAt, workDate, or extraDayDate)
+    if (month) {
+      const [year, monthNum] = month.split('-').map(Number);
+      const padMonth = String(monthNum).padStart(2, '0');
+      const monthPrefix = `${year}-${padMonth}`;
+
+      allRecords = allRecords.filter(r => {
+        if (r.createdAt) {
+          const cd = new Date(r.createdAt);
+          if (!isNaN(cd) && cd.getFullYear() === year && cd.getMonth() + 1 === monthNum) return true;
+        }
+        if (r.workDate) {
+          if (typeof r.workDate === 'string' && r.workDate.startsWith(monthPrefix)) return true;
+          const wd = new Date(r.workDate);
+          if (!isNaN(wd) && wd.getFullYear() === year && wd.getMonth() + 1 === monthNum) return true;
+        }
+        if (r.extraDayDate) {
+          if (typeof r.extraDayDate === 'string' && r.extraDayDate.startsWith(monthPrefix)) return true;
+          const ed = new Date(r.extraDayDate);
+          if (!isNaN(ed) && ed.getFullYear() === year && ed.getMonth() + 1 === monthNum) return true;
+        }
+        return false;
+      });
+    }
+
+    // 4. Filter by search term
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      allRecords = allRecords.filter(r => 
+        (r.employeeName && r.employeeName.toLowerCase().includes(q)) ||
+        (r.employeeId && r.employeeId.toLowerCase().includes(q)) ||
+        (r.reason && r.reason.toLowerCase().includes(q)) ||
+        (r.extraDayDetails?.day && String(r.extraDayDetails.day).toLowerCase().includes(q))
+      );
+    }
+
+    // 5. Accurate counts for current filters (before status filtering)
+    const counts = {
+      total: allRecords.length,
+      pending: allRecords.filter(r => r.status === 'pending').length,
+      approved: allRecords.filter(r => r.status === 'approved').length,
+      rejected: allRecords.filter(r => r.status === 'rejected').length
+    };
+
+    // 6. Filter by status
+    let filteredRecords = allRecords;
+    if (status && ['pending', 'approved', 'rejected'].includes(status)) {
+      filteredRecords = allRecords.filter(r => r.status === status);
+    }
+
+    // 7. Sort
+    filteredRecords.sort((a, b) => {
+      const dateA = new Date(a[sortBy] || a.createdAt || 0).getTime();
+      const dateB = new Date(b[sortBy] || b.createdAt || 0).getTime();
+      return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+    });
+
+    // 8. Pagination
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
+    const skip = (pageNum - 1) * limitNum;
+    const totalCount = filteredRecords.length;
+    const paginatedRequests = filteredRecords.slice(skip, skip + limitNum);
 
     res.status(200).json({
       success: true,
-      requests: requests,
+      requests: paginatedRequests,
       counts: counts,
       pagination: {
         page: pageNum,
         limit: limitNum,
         total: totalCount,
-        totalPages: Math.ceil(totalCount / limitNum)
+        totalPages: Math.ceil(totalCount / limitNum) || 1
       }
     });
 
@@ -996,9 +1134,9 @@ exports.getAllExtraDayCompOffRequests = async (req, res) => {
   }
 };
 
-
-
-
+// ============================================
+// 3. GET COMP-OFF REQUESTS BY EMPLOYEE ID
+// ============================================
 exports.getCompOffRequestsByEmployeeId = async (req, res) => {
   try {
     const { employeeId } = req.params;
@@ -1010,10 +1148,52 @@ exports.getCompOffRequestsByEmployeeId = async (req, res) => {
       });
     }
 
-    const requests = await ExtraDayCompOff.find({ employeeId: employeeId })
-      .sort({ createdAt: -1 });
+    const cleanEmpId = String(employeeId).trim();
+    const [extraDayReqs, compOffReqs] = await Promise.all([
+      ExtraDayCompOff.find({
+        $or: [
+          { employeeId: cleanEmpId },
+          { employeeId: { $regex: new RegExp(`^${cleanEmpId}$`, "i") } }
+        ]
+      }).lean().catch(() => []),
+      CompOffRequest.find({
+        $or: [
+          { employeeId: cleanEmpId },
+          { employeeId: { $regex: new RegExp(`^${cleanEmpId}$`, "i") } }
+        ]
+      }).populate('originalLeaveId').lean().catch(() => [])
+    ]);
 
-    // Counts by status
+    const map = new Map();
+    extraDayReqs.forEach(r => map.set(String(r._id), r));
+    compOffReqs.forEach(r => map.set(String(r._id), {
+      _id: r._id,
+      employeeId: r.employeeId,
+      employeeName: r.employeeName,
+      extraDayDate: r.extraDayDate || r.workDate,
+      extraDayDetails: r.extraDayDetails,
+      leaveDetails: r.leaveDetails || (r.originalLeaveId ? {
+        leaveType: r.originalLeaveId.leaveType,
+        startDate: r.originalLeaveId.startDate,
+        endDate: r.originalLeaveId.endDate,
+        days: r.originalLeaveId.days,
+        reason: r.originalLeaveId.reason,
+        status: r.originalLeaveId.status
+      } : null),
+      workDate: r.workDate,
+      reason: r.reason,
+      status: r.status,
+      approvedBy: r.approvedBy,
+      approvedAt: r.approvedDate,
+      rejectedReason: r.rejectionReason,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt
+    }));
+
+    const requests = Array.from(map.values()).sort(
+      (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+    );
+
     const counts = {
       total: requests.length,
       pending: requests.filter(r => r.status === 'pending').length,
@@ -1036,15 +1216,13 @@ exports.getCompOffRequestsByEmployeeId = async (req, res) => {
   }
 };
 
-
-
 // ============================================
-// 4. UPDATE COMP-OFF STATUS (APPROVE/REJECT) WITH ATTENDANCE - FIXED
+// 4. UPDATE COMP-OFF STATUS (APPROVE/REJECT) - UNIFIED WITH ATTENDANCE & COMPOFF
 // ============================================
 exports.updateCompOffStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, rejectedReason } = req.body;
+    const { status, rejectedReason, approvedBy } = req.body;
 
     if (!status || !['approved', 'rejected'].includes(status)) {
       return res.status(400).json({
@@ -1053,114 +1231,139 @@ exports.updateCompOffStatus = async (req, res) => {
       });
     }
 
-    const request = await ExtraDayCompOff.findById(id);
+    let extraDayReq = await ExtraDayCompOff.findById(id);
+    let compOffReq = await CompOffRequest.findById(id).populate('originalLeaveId');
 
-    if (!request) {
+    if (!extraDayReq && !compOffReq) {
       return res.status(404).json({
         success: false,
         error: 'Comp-off request not found'
       });
     }
 
-    if (request.status !== 'pending') {
+    const currentStatus = (extraDayReq ? extraDayReq.status : compOffReq.status);
+    if (currentStatus !== 'pending') {
       return res.status(400).json({
         success: false,
-        error: `Request is already ${request.status}`
+        error: `Request is already ${currentStatus}`
       });
     }
 
-    request.status = status;
-    request.updatedAt = new Date();
+    const finalApprovedBy = approvedBy || req.admin?.name || 'Admin';
+    const now = new Date();
 
     if (status === 'approved') {
-      request.approvedBy = req.admin?.name || 'Admin';
-      request.approvedAt = new Date();
-      request.convertedToCompOff = true;
-      
-      // USE LEAVE DATE - NOT EXTRA DAY DATE
-      const leaveDate = request.leaveDetails?.startDate || request.extraDayDate || new Date();
-      request.workDate = new Date(leaveDate);
+      // 1. Process CompOffRequest if present
+      let compOffRecord = null;
+      if (compOffReq) {
+        compOffReq.status = "approved";
+        compOffReq.approvedBy = finalApprovedBy;
+        compOffReq.approvedDate = now;
+        compOffReq.convertedToCompOff = true;
 
+        compOffRecord = new CompOff({
+          employeeId: compOffReq.employeeId,
+          employeeName: compOffReq.employeeName,
+          originalLeaveId: compOffReq.originalLeaveId?._id || null,
+          workDate: compOffReq.workDate,
+          reason: compOffReq.reason,
+          status: "approved",
+          convertedFromLeave: !!compOffReq.originalLeaveId,
+          approvedBy: finalApprovedBy,
+          approvedDate: now
+        });
+        await compOffRecord.save();
+        compOffReq.compOffId = compOffRecord._id;
+
+        if (compOffReq.originalLeaveId) {
+          await Leave.findByIdAndUpdate(compOffReq.originalLeaveId._id, {
+            isConvertedToCompOff: true,
+            compOffId: compOffRecord._id,
+            convertedDate: now
+          });
+        }
+        await compOffReq.save();
+      }
+
+      // 2. Process ExtraDayCompOff if present
+      const empId = (extraDayReq && extraDayReq.employeeId) || (compOffReq && compOffReq.employeeId);
+      const leaveDate = (extraDayReq && (extraDayReq.leaveDetails?.startDate || extraDayReq.extraDayDate)) ||
+                        (compOffReq && (compOffReq.workDate || compOffReq.extraDayDate)) ||
+                        now;
+
+      if (extraDayReq) {
+        extraDayReq.status = 'approved';
+        extraDayReq.approvedBy = finalApprovedBy;
+        extraDayReq.approvedAt = now;
+        extraDayReq.convertedToCompOff = true;
+        extraDayReq.workDate = new Date(leaveDate);
+
+        if (!compOffRecord) {
+          compOffRecord = new CompOff({
+            employeeId: extraDayReq.employeeId,
+            employeeName: extraDayReq.employeeName,
+            workDate: extraDayReq.workDate,
+            reason: extraDayReq.reason,
+            status: "approved",
+            convertedFromLeave: !!extraDayReq.leaveDetails,
+            approvedBy: finalApprovedBy,
+            approvedDate: now
+          });
+          await compOffRecord.save();
+        }
+      }
+
+      // 3. Mark/create attendance if applicable
       try {
-        const employee = await Employee.findOne({ employeeId: request.employeeId });
-        
+        const employee = await Employee.findOne({ employeeId: empId });
         if (employee) {
           const leaveDateObj = new Date(leaveDate);
           leaveDateObj.setHours(0, 0, 0, 0);
-          
-          // ============================================
-          // GET SHIFT TIMINGS FROM SHIFT SCHEMA
-          // ============================================
+
           let checkInTime = new Date(leaveDateObj);
           let checkOutTime = new Date(leaveDateObj);
           let shiftHours = employee.shiftHours || 8;
-          
+
           try {
-            // Find shift for this employee
             const shift = await Shift.findOne({
-              'employeeAssignment.employeeId': request.employeeId
+              'employeeAssignment.employeeId': empId
             });
-            
-            if (shift && shift.employeeAssignment && shift.employeeAssignment.selectedTimeRange) {
-              const timeRange = shift.employeeAssignment.selectedTimeRange; // "10:00 AM - 07:00 PM"
-              const times = timeRange.split(' - ');
-              
+            if (shift && shift.employeeAssignment?.selectedTimeRange) {
+              const times = shift.employeeAssignment.selectedTimeRange.split(' - ');
               if (times.length === 2) {
-                const startTimeStr = times[0].trim(); // "10:00 AM"
-                const endTimeStr = times[1].trim(); // "07:00 PM"
-                
-                // Parse start time
-                const startParts = startTimeStr.match(/(\d+):(\d+)\s*(AM|PM)/);
+                const startParts = times[0].trim().match(/(\d+):(\d+)\s*(AM|PM)/i);
                 if (startParts) {
                   let startHour = parseInt(startParts[1]);
                   const startMinute = parseInt(startParts[2]);
-                  const startAmPm = startParts[3];
-                  
+                  const startAmPm = startParts[3].toUpperCase();
                   if (startAmPm === 'PM' && startHour !== 12) startHour += 12;
                   if (startAmPm === 'AM' && startHour === 12) startHour = 0;
-                  
-                  checkInTime = new Date(leaveDateObj);
                   checkInTime.setHours(startHour, startMinute, 0, 0);
                 }
-                
-                // Parse end time
-                const endParts = endTimeStr.match(/(\d+):(\d+)\s*(AM|PM)/);
+                const endParts = times[1].trim().match(/(\d+):(\d+)\s*(AM|PM)/i);
                 if (endParts) {
                   let endHour = parseInt(endParts[1]);
                   const endMinute = parseInt(endParts[2]);
-                  const endAmPm = endParts[3];
-                  
+                  const endAmPm = endParts[3].toUpperCase();
                   if (endAmPm === 'PM' && endHour !== 12) endHour += 12;
                   if (endAmPm === 'AM' && endHour === 12) endHour = 0;
-                  
-                  // If end time is before start time, add a day
-                  if (endHour < startHour || (endHour === startHour && endMinute < startMinute)) {
-                    checkOutTime = new Date(leaveDateObj);
+                  if (endHour < checkInTime.getHours()) {
                     checkOutTime.setDate(checkOutTime.getDate() + 1);
-                  } else {
-                    checkOutTime = new Date(leaveDateObj);
                   }
                   checkOutTime.setHours(endHour, endMinute, 0, 0);
                 }
-                
-                // Calculate shift hours
                 const diffMs = checkOutTime - checkInTime;
                 shiftHours = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
               }
             }
-          } catch (shiftError) {
-            console.error('Error fetching shift:', shiftError);
-            // Fallback to default timings
-            checkInTime = new Date(leaveDateObj);
-            checkInTime.setHours(10, 0, 0, 0); // 10:00 AM
-            checkOutTime = new Date(leaveDateObj);
-            checkOutTime.setHours(19, 0, 0, 0); // 07:00 PM
+          } catch (shiftErr) {
+            checkInTime.setHours(10, 0, 0, 0);
+            checkOutTime.setHours(19, 0, 0, 0);
             shiftHours = employee.shiftHours || 8;
           }
-          
-          // Check if attendance already exists for this leave date
+
           const existingAttendance = await Attendance.findOne({
-            employeeId: request.employeeId,
+            employeeId: empId,
             checkInTime: {
               $gte: new Date(leaveDateObj),
               $lt: new Date(leaveDateObj.getTime() + 24 * 60 * 60 * 1000)
@@ -1168,75 +1371,104 @@ exports.updateCompOffStatus = async (req, res) => {
           });
 
           if (existingAttendance) {
-            // Update existing attendance to comp-off
             existingAttendance.status = 'comp-off';
             existingAttendance.checkInTime = checkInTime;
             existingAttendance.checkOutTime = checkOutTime;
-            existingAttendance.totalHours = shiftHours || employee.shiftHours || 0;
-            existingAttendance.workingHours = shiftHours || employee.shiftHours || 0;
-            existingAttendance.assignedShiftHours = shiftHours || employee.shiftHours || 0;
+            existingAttendance.totalHours = shiftHours;
+            existingAttendance.workingHours = shiftHours;
+            existingAttendance.assignedShiftHours = shiftHours;
             existingAttendance.otHours = 0;
-            existingAttendance.reason = `Comp-off (Approved on ${new Date().toLocaleDateString()}) - Against ${request.leaveDetails?.leaveType || 'Leave'}`;
+            existingAttendance.reason = `Comp-off (Approved on ${now.toLocaleDateString()})`;
             existingAttendance.isCompOff = true;
-            existingAttendance.compOffRequestId = request._id;
-            existingAttendance.updatedAt = new Date();
-            
+            existingAttendance.compOffRequestId = id;
+            existingAttendance.updatedAt = now;
             await existingAttendance.save();
-            request.attendanceId = existingAttendance._id;
+            if (extraDayReq) extraDayReq.attendanceId = existingAttendance._id;
           } else {
-            // Create new attendance record for leave date with shift timings
-            const attendanceData = {
-              employeeId: request.employeeId,
+            const attendance = new Attendance({
+              employeeId: empId,
               employeeEmail: employee.email || '',
-              checkInTime: checkInTime,
-              checkOutTime: checkOutTime,
+              checkInTime,
+              checkOutTime,
               status: 'comp-off',
               totalBreakMinutes: 0,
-              totalHours: shiftHours || employee.shiftHours || 0,
-              workingHours: shiftHours || employee.shiftHours || 0,
-              assignedShiftHours: shiftHours || employee.shiftHours || 0,
+              totalHours: shiftHours,
+              workingHours: shiftHours,
+              assignedShiftHours: shiftHours,
               otHours: 0,
               basicSalary: employee.salaryPerMonth || 0,
               workingDays: employee.workingDays || 26,
               otMultiplier: 2,
               hourlyRate: (employee.salaryPerMonth || 0) / ((employee.workingDays || 26) * (employee.shiftHours || 8)),
-              otRate: 0,
-              otAmount: 0,
-              latitude: 0,
-              longitude: 0,
-              distance: 0,
-              onsite: false,
               officeName: 'Comp-off',
-              reason: `Comp-off (Approved on ${new Date().toLocaleDateString()}) - Against ${request.leaveDetails?.leaveType || 'Leave'}`,
-              comment: `Comp-off approved for leave: ${request.leaveDetails?.leaveType || 'Leave'} from ${request.leaveDetails?.startDate ? new Date(request.leaveDetails.startDate).toLocaleDateString() : ''} to ${request.leaveDetails?.endDate ? new Date(request.leaveDetails.endDate).toLocaleDateString() : ''} (Extra day: ${request.extraDayDetails?.day || request.extraDayDate})`,
+              reason: `Comp-off (Approved on ${now.toLocaleDateString()})`,
+              comment: `Comp-off approved`,
               breaks: [],
               isCompOff: true,
-              compOffRequestId: request._id
-            };
-
-            const attendance = new Attendance(attendanceData);
+              compOffRequestId: id
+            });
             await attendance.save();
-            request.attendanceId = attendance._id;
+            if (extraDayReq) extraDayReq.attendanceId = attendance._id;
           }
         }
-      } catch (attendanceError) {
-        console.error('Error creating/updating attendance for comp-off:', attendanceError);
+      } catch (attErr) {
+        console.warn('⚠️ Attendance update (non-critical):', attErr.message);
+      }
+
+      if (extraDayReq) await extraDayReq.save();
+
+      // 4. Notify employee
+      try {
+        await Notification.create({
+          userId: empId,
+          role: "employee",
+          title: "Comp-off Request Approved",
+          message: `Your comp-off request for ${new Date(leaveDate).toLocaleDateString()} has been approved`,
+          type: "comp_off_approved"
+        });
+      } catch (notifErr) {
+        console.warn('⚠️ Notification error (non-critical):', notifErr.message);
       }
 
     } else if (status === 'rejected') {
-      if (rejectedReason) {
-        request.rejectedReason = rejectedReason;
+      const reason = rejectedReason || req.body.rejectionReason || '';
+      if (compOffReq) {
+        compOffReq.status = 'rejected';
+        compOffReq.approvedBy = finalApprovedBy;
+        compOffReq.approvedDate = now;
+        compOffReq.rejectionReason = reason;
+        await compOffReq.save();
+      }
+      if (extraDayReq) {
+        extraDayReq.status = 'rejected';
+        extraDayReq.rejectedReason = reason;
+        extraDayReq.updatedAt = now;
+        await extraDayReq.save();
+      }
+
+      const empId = (extraDayReq && extraDayReq.employeeId) || (compOffReq && compOffReq.employeeId);
+      const leaveDate = (extraDayReq && (extraDayReq.leaveDetails?.startDate || extraDayReq.extraDayDate)) ||
+                        (compOffReq && (compOffReq.workDate || compOffReq.extraDayDate)) ||
+                        now;
+      try {
+        await Notification.create({
+          userId: empId,
+          role: "employee",
+          title: "Comp-off Request Rejected",
+          message: `Your comp-off request for ${new Date(leaveDate).toLocaleDateString()} was rejected${reason ? `: ${reason}` : ''}`,
+          type: "comp_off_rejected"
+        });
+      } catch (notifErr) {
+        console.warn('⚠️ Notification error (non-critical):', notifErr.message);
       }
     }
 
-    await request.save();
-
-    const updatedRequest = await ExtraDayCompOff.findById(id);
+    const updatedData = extraDayReq || compOffReq;
 
     res.status(200).json({
       success: true,
       message: `Comp-off request ${status} successfully`,
-      data: updatedRequest
+      data: updatedData
     });
 
   } catch (error) {
