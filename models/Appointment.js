@@ -337,6 +337,9 @@ categoryPayment: {
 
     isOP: { type: Boolean, default: false },
 
+     customPID:   { type: String, default: "", index: true },  // ✅ "TH261003"
+  bookingType: { type: String, default: "", index: true },  // ✅ "" | "N-Walkin" | "R-Walkin"
+
     // =============================================
     // STATUS TRACKING
     // =============================================
@@ -400,11 +403,7 @@ categoryPayment: {
     patientFeedback: { type: String, default: "" },
 
 
-    bookingType: {
-      type: String,
-      enum: ["Walk-In", "Online"],
-      default: "Walk-In",
-    },
+
 
     isOnline: {
       type: Boolean,

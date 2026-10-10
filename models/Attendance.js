@@ -198,16 +198,45 @@ const attendanceSchema = new mongoose.Schema(
       type: Date,
     },
 
+    // ✅ NEW: hours field (frontend/backend se aata hai)
+    hours: {
+      type: Number,
+      default: 0,
+    },
+
+    // ✅ NEW: dayType field (calculateShiftDayType se aata hai)
+    dayType: {
+      type: String,
+      default: null,
+    },
+
+    // ✅ NEW: region field (admin updates se aata hai)
+    region: {
+      type: String,
+      default: null,
+    },
+
+    // ✅ NEW: IP validation (check-in QR se)
+    ipAddress: {
+      type: String,
+      default: "",
+    },
+
+    ipValid: {
+      type: Boolean,
+      default: false,
+    },
+
     // models/Attendance.js ke schema mein add karein
-checkoutReminders: [
-  {
-    sentAt: { type: Date, default: Date.now },
-    lateMinutes: { type: Number },
-    mobileNumber: { type: String },
-    status: { type: String, enum: ["sent", "failed"], default: "sent" },
-    error: { type: String },
-  },
-],
+    checkoutReminders: [
+      {
+        sentAt: { type: Date, default: Date.now },
+        lateMinutes: { type: Number },
+        mobileNumber: { type: String },
+        status: { type: String, enum: ["sent", "failed"], default: "sent" },
+        error: { type: String },
+      },
+    ],
 
     status: {
       type: String,
@@ -345,12 +374,12 @@ checkoutReminders: [
     // =========================
 
     checkInImage: {
-      type: String, // ✅ "/uploads/attendanceimage/filename.jpg"
+      type: String,
       default: null,
     },
 
     checkOutImage: {
-      type: String, // ✅ "/uploads/attendanceimage/filename.jpg"
+      type: String,
       default: null,
     },
 
@@ -365,6 +394,11 @@ checkoutReminders: [
     comment: {
       type: String,
       default: "",
+    },
+
+    updatedAt: {
+      type: Date,
+      default: Date.now,
     },
   },
 

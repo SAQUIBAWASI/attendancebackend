@@ -194,14 +194,38 @@ const updateReferralContact = async (req, res) => {
     const { id } = req.params;
     const updateData = { ...req.body };
 
+    // ═════════════════════════════════════════════════════════
+    // ✅ LEGACY MIGRATION: Agar purana client `clinicCommission` 
+    // bhej de, to use `serviceCommission` mein map karo.
+    // (Schema mein clinicCommission nahi hai, Mongoose silently drop kar deta hai)
+    // ═════════════════════════════════════════════════════════
+    if (
+      updateData.clinicCommission !== undefined &&
+      updateData.serviceCommission === undefined
+    ) {
+      updateData.serviceCommission = updateData.clinicCommission;
+      delete updateData.clinicCommission;
+    }
+    if (
+      updateData.clinicCommissionType !== undefined &&
+      updateData.serviceCommissionType === undefined
+    ) {
+      updateData.serviceCommissionType = updateData.clinicCommissionType;
+      delete updateData.clinicCommissionType;
+    }
+
+    // Safety: agar kisi bhi tarah `clinicCommission` reh gaya, remove karo
+    delete updateData.clinicCommission;
+    delete updateData.clinicCommissionType;
+
     // 🔹 Auto-calculate total commission
     if (
-      updateData.serviceCommission !== undefined ||    // ✅ renamed
+      updateData.serviceCommission !== undefined ||
       updateData.pharmacyCommission !== undefined ||
       updateData.labCommission !== undefined ||
       updateData.feesCommission !== undefined
     ) {
-      const service  = parseFloat(updateData.serviceCommission) || 0;   // ✅ renamed
+      const service  = parseFloat(updateData.serviceCommission) || 0;
       const pharmacy = parseFloat(updateData.pharmacyCommission) || 0;
       const lab      = parseFloat(updateData.labCommission) || 0;
       const fees     = parseFloat(updateData.feesCommission) || 0;
@@ -209,7 +233,7 @@ const updateReferralContact = async (req, res) => {
     }
 
     // 🔹 Normalize commission values
-    if (updateData.serviceCommission !== undefined) {       // ✅ renamed
+    if (updateData.serviceCommission !== undefined) {
       updateData.serviceCommission = parseFloat(updateData.serviceCommission) || 0;
     }
     if (updateData.pharmacyCommission !== undefined) {
@@ -223,7 +247,7 @@ const updateReferralContact = async (req, res) => {
     }
 
     // 🔹 Normalize commission types
-    if (updateData.serviceCommissionType !== undefined) {   // ✅ renamed
+    if (updateData.serviceCommissionType !== undefined) {
       updateData.serviceCommissionType = updateData.serviceCommissionType === '₹' ? '₹' : '%';
     }
     if (updateData.pharmacyCommissionType !== undefined) {
@@ -291,6 +315,15 @@ const updateReferralContact = async (req, res) => {
         message: 'Referral contact not found'
       });
     }
+
+    // 🔴 Debug log — confirm serviceCommission actually save hua
+    console.log(`🔴 UPDATE ${contact.customerName || contact.doctorName}:`, {
+      serviceCommission: contact.serviceCommission,
+      serviceCommissionType: contact.serviceCommissionType,
+      pharmacyCommission: contact.pharmacyCommission,
+      labCommission: contact.labCommission,
+      feesCommission: contact.feesCommission,
+    });
 
     res.status(200).json({
       success: true,

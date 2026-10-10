@@ -53,6 +53,7 @@ const {
   getWeekOffConfig,
   getEditedAttendanceRecords,
   getSummaryPageData,
+  updatePayrollStatus
 } = require("../controller/attendanceSummary.controller");
 
 // 📊 Attendance Summary Routes
@@ -85,5 +86,9 @@ router.get("/bulk-payroll", getBulkPayrollData);
 
 // ✅ Add this:
 router.get('/page-data', getSummaryPageData);
+
+
+// ✅ Payroll status update route
+router.post("/updatePayroll", updatePayrollStatus);
 
 module.exports = router;

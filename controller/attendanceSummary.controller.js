@@ -9783,25 +9783,78 @@ exports.updateAttendance = async (req, res) => {
 
     console.log('📝 Update request received:', { attendanceId, hours, region, reason, employeeId, date, checkInTime, checkOutTime, comment });
 
+    // ✅ SANITIZE: AM/PM strip karke valid ISO banao
+    const sanitizeDateTime = (str) => {
+      if (!str) return null;
+      let s = String(str).trim();
+
+      // "2026-09-01T11:00 AM:00" → "2026-09-01T11:00:00"
+      s = s.replace(/T(\d{1,2}):(\d{2})\s*(AM|PM):/i, (m, h, mn, ap) => {
+        let hh = parseInt(h);
+        const apU = ap.toUpperCase();
+        if (apU === 'PM' && hh < 12) hh += 12;
+        if (apU === 'AM' && hh === 12) hh = 0;
+        return `T${String(hh).padStart(2, '0')}:${mn}:`;
+      });
+
+      // "2026-09-01T11:00 AM" → "2026-09-01T11:00"
+      s = s.replace(/T(\d{1,2}):(\d{2})\s*(AM|PM)$/i, (m, h, mn, ap) => {
+        let hh = parseInt(h);
+        const apU = ap.toUpperCase();
+        if (apU === 'PM' && hh < 12) hh += 12;
+        if (apU === 'AM' && hh === 12) hh = 0;
+        return `T${String(hh).padStart(2, '0')}:${mn}`;
+      });
+
+      // "2026-09-01T11:00 AM:00:00" type bhi handle
+      s = s.replace(/\s*(AM|PM)/gi, '');
+
+      return s;
+    };
+
+    const sanitizedCheckIn = sanitizeDateTime(checkInTime);
+    const sanitizedCheckOut = sanitizeDateTime(checkOutTime);
+
+    console.log('🔧 Sanitized:', { sanitizedCheckIn, sanitizedCheckOut });
+
     let updatedRecord;
     let targetDate;
 
+    // ============================================================
+    // CASE 1: Update by attendanceId
+    // ============================================================
     if (attendanceId) {
       const updateData = {};
-      if (hours !== undefined) updateData.totalHours = parseFloat(hours);
+      if (hours !== undefined && hours !== null && hours !== "") {
+        updateData.totalHours = parseFloat(hours) || 0;
+        updateData.hours = parseFloat(hours) || 0;
+      }
       if (region !== undefined) updateData.region = region;
       if (reason !== undefined) updateData.reason = reason;
       if (comment !== undefined) updateData.comment = comment;
 
-      if (checkInTime) updateData.checkInTime = new Date(checkInTime);
-      if (checkOutTime) updateData.checkOutTime = new Date(checkOutTime);
+      if (sanitizedCheckIn) {
+        const d = new Date(sanitizedCheckIn);
+        if (isNaN(d.getTime())) {
+          return res.status(400).json({ success: false, message: `Invalid checkInTime: ${checkInTime}` });
+        }
+        updateData.checkInTime = d;
+      }
+      if (sanitizedCheckOut) {
+        const d = new Date(sanitizedCheckOut);
+        if (isNaN(d.getTime())) {
+          return res.status(400).json({ success: false, message: `Invalid checkOutTime: ${checkOutTime}` });
+        }
+        updateData.checkOutTime = d;
+      }
 
-      if (checkInTime && checkOutTime) {
-        const start = new Date(checkInTime);
-        const end = new Date(checkOutTime);
+      if (sanitizedCheckIn && sanitizedCheckOut) {
+        const start = new Date(sanitizedCheckIn);
+        const end = new Date(sanitizedCheckOut);
         updateData.status = "checked-out";
-        if (hours === undefined) {
+        if (hours === undefined || hours === null) {
           updateData.totalHours = parseFloat(((end - start) / (1000 * 60 * 60)).toFixed(2));
+          updateData.hours = updateData.totalHours;
         }
       }
 
@@ -9815,63 +9868,150 @@ exports.updateAttendance = async (req, res) => {
         }
       }
 
-      updatedRecord = await Attendance.findByIdAndUpdate(attendanceId, updateData, { new: true, runValidators: true });
+      updatedRecord = await Attendance.findByIdAndUpdate(
+        attendanceId,
+        updateData,
+        { new: true, runValidators: false }
+      );
 
       if (!updatedRecord) {
         return res.status(404).json({ success: false, message: 'Attendance record not found' });
       }
 
       targetDate = updatedRecord.checkInTime;
-    } else if (employeeId && date && checkInTime) {
-      const newCheckIn = new Date(checkInTime);
-      const newCheckOut = checkOutTime ? new Date(checkOutTime) : null;
-      let totalHours = 0;
+    }
 
+    // ============================================================
+    // CASE 2: Create or Update by employeeId + date + checkInTime
+    // ✅ FIX: Sanitized date + duplicate check
+    // ============================================================
+    else if (employeeId && date && sanitizedCheckIn) {
+      const newCheckIn = new Date(sanitizedCheckIn);
+      if (isNaN(newCheckIn.getTime())) {
+        return res.status(400).json({ success: false, message: `Invalid checkInTime: ${checkInTime} → ${sanitizedCheckIn}` });
+      }
+
+      let newCheckOut = null;
+      if (sanitizedCheckOut) {
+        newCheckOut = new Date(sanitizedCheckOut);
+        if (isNaN(newCheckOut.getTime())) {
+          return res.status(400).json({ success: false, message: `Invalid checkOutTime: ${checkOutTime}` });
+        }
+      }
+
+      let totalHours = 0;
       if (newCheckOut) {
         totalHours = parseFloat(((newCheckOut - newCheckIn) / (1000 * 60 * 60)).toFixed(2));
       } else if (hours) {
         totalHours = parseFloat(hours);
       }
 
-      const allShifts = await Shift.find({});
-      const masterShifts = allShifts.filter(s => s.isMasterShift);
-      const shiftInfo = getEmployeeShift(employeeId, allShifts, masterShifts);
+      // ✅ Check if record already exists for this employee + date
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
 
-      updatedRecord = await Attendance.create({
+      const existingRecord = await Attendance.findOne({
         employeeId,
-        checkInTime: newCheckIn,
-        checkOutTime: newCheckOut,
-        totalHours,
-        reason: reason || "Onsite",
-        comment: comment || "Admin created",
-        status: newCheckOut ? "checked-out" : "checked-in",
-        onsite: reason === "Onsite",
-        dayType: calculateShiftDayType(totalHours, shiftInfo?.duration || 9)
+        checkInTime: { $gte: startOfDay, $lte: endOfDay }
       });
+
+      if (existingRecord) {
+        // ✅ UPDATE existing record
+        const updateData = {
+          checkInTime: newCheckIn,
+          totalHours,
+          hours: totalHours,
+          reason: reason || existingRecord.reason || "Onsite",
+          comment: comment || existingRecord.comment || "Admin updated",
+          onsite: reason === "Onsite",
+          updatedAt: new Date(),
+        };
+        if (newCheckOut) {
+          updateData.checkOutTime = newCheckOut;
+          updateData.status = "checked-out";
+        }
+
+        const allShifts = await Shift.find({});
+        const masterShifts = allShifts.filter(s => s.isMasterShift);
+        const shiftInfo = getEmployeeShift(employeeId, allShifts, masterShifts);
+        updateData.dayType = calculateShiftDayType(totalHours, shiftInfo?.duration || 9);
+
+        updatedRecord = await Attendance.findByIdAndUpdate(
+          existingRecord._id,
+          updateData,
+          { new: true, runValidators: false }
+        );
+
+        console.log('✅ Existing record updated:', existingRecord._id);
+      } else {
+        // ✅ CREATE new record
+        const allShifts = await Shift.find({});
+        const masterShifts = allShifts.filter(s => s.isMasterShift);
+        const shiftInfo = getEmployeeShift(employeeId, allShifts, masterShifts);
+
+        const emp = await Employee.findOne({ employeeId });
+
+        updatedRecord = await Attendance.create({
+          employeeId,
+          employeeEmail: emp ? emp.email : "",
+          name: emp ? emp.name : "",
+          checkInTime: newCheckIn,
+          checkOutTime: newCheckOut,
+          totalHours,
+          hours: totalHours,
+          reason: reason || "Onsite",
+          comment: comment || "Admin created",
+          status: newCheckOut ? "checked-out" : "checked-in",
+          onsite: reason === "Onsite",
+          dayType: calculateShiftDayType(totalHours, shiftInfo?.duration || 9)
+        });
+
+        console.log('✅ New record created:', updatedRecord._id);
+      }
 
       targetDate = newCheckIn;
     } else {
-      return res.status(400).json({ success: false, message: 'Attendance ID OR (Employee ID + Date + Check-In) is required' });
+      return res.status(400).json({
+        success: false,
+        message: 'Attendance ID OR (Employee ID + Date + Check-In) is required'
+      });
     }
 
     console.log('✅ Attendance record saved. Comment:', updatedRecord.comment);
 
-    const d = new Date(targetDate);
-    const monthForSummary = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    // Recalculate summary for the month
+    try {
+      const d = new Date(targetDate);
+      const monthForSummary = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
-    await AttendanceSummary.deleteMany({ month: monthForSummary });
-    await exports.calculateSummary(
-      { body: { month: monthForSummary } },
-      { json: () => { } }
-    );
+      await AttendanceSummary.deleteMany({ month: monthForSummary });
+      await exports.calculateSummary(
+        { body: { month: monthForSummary } },
+        { json: () => { } }
+      );
+    } catch (summaryErr) {
+      console.error('⚠️ Summary recalc failed (non-fatal):', summaryErr.message);
+    }
 
-    res.json({ success: true, message: 'Attendance record updated successfully', record: updatedRecord });
+    res.json({
+      success: true,
+      message: 'Attendance record updated successfully',
+      record: updatedRecord
+    });
   } catch (error) {
     console.error('❌ Error updating attendance:', error);
-    res.status(500).json({ success: false, message: 'Error updating attendance record', error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Error: ' + error.message,
+      error: error.message,
+      details: error.errors
+        ? Object.keys(error.errors).map(k => `${k}: ${error.errors[k].message}`)
+        : undefined
+    });
   }
 };
-
 exports.calculateSummary = async (req, res) => {
   try {
     const { fromDate, toDate, month } = req.body;
@@ -11498,5 +11638,55 @@ exports.getSummaryPageData = async (req, res) => {
   } catch (error) {
     console.error('❌ getSummaryPageData error:', error);
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+
+
+exports.updatePayrollStatus = async (req, res) => {
+  try {
+    const { employeeId, month, paymentStatus } = req.body;
+
+    if (!employeeId || !month || !paymentStatus) {
+      return res.status(400).json({
+        success: false,
+        message: "employeeId, month and paymentStatus are required"
+      });
+    }
+
+    if (!["Paid", "Pending"].includes(paymentStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "paymentStatus must be 'Paid' or 'Pending'"
+      });
+    }
+
+    const AttendanceSummary = require("../models/AttendanceSummary");
+
+    const updated = await AttendanceSummary.findOneAndUpdate(
+      { employeeId, month },
+      { 
+        $set: { 
+          paymentStatus,
+          isProcessed: paymentStatus === "Paid",
+          updatedAt: new Date()
+        } 
+      },
+      { new: true, upsert: true }
+    );
+
+    return res.json({
+      success: true,
+      message: `Payroll status updated to ${paymentStatus}`,
+      data: updated
+    });
+
+  } catch (error) {
+    console.error("❌ updatePayrollStatus error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
