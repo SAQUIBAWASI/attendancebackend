@@ -745,11 +745,13 @@ router.get("/getallbookings", async (req, res) => {
     // ═══════════════════════════════════════════════════════════
     // 2️⃣ FETCH
     // ═══════════════════════════════════════════════════════════
-    const bookings = await Appointment.find(mongoQuery).sort({ createdAt: -1 });
+const bookings = await Appointment.find(mongoQuery)
+  .populate("slotId")
+  .sort({ createdAt: -1 });
 
-    for (const b of bookings) {
-      await migrateCategoryPayment(b);
-    }
+for (const b of bookings) {
+  await migrateCategoryPayment(b);
+}
 
     // ═══════════════════════════════════════════════════════════
     // 3️⃣ TRANSFORM
@@ -4250,6 +4252,7 @@ router.put("/updateop/:bookingId", async (req, res) => {
     const {
       slotId,
       appointmentDate,
+      doctorId,                    // ✅ accept doctorId
       patientTitle,
       patientName,
       patientAge,
@@ -4280,7 +4283,7 @@ router.put("/updateop/:bookingId", async (req, res) => {
       discount,
       discountType,
 
-      // ===== FRONTEND-COMPUTED (TRUST THESE) =====
+      // ===== FRONTEND-COMPUTED =====
       subtotal: clientSubtotal,
       commissionAmount: clientCommissionAmount,
       finalPayable: clientFinalPayable,
@@ -4296,16 +4299,15 @@ router.put("/updateop/:bookingId", async (req, res) => {
       status,
       medicineTotal: reqMedicineTotal,
       labTotal: reqLabTotal,
-
-      // ✅ Individual lab & pharmacy items
       labItems: reqLabItems,
       medicineItems: reqMedicineItems,
-
-      // ✅ NEW: Per-category payment tracking
       categoryPayment: reqCategoryPayment,
     } = req.body;
 
     console.log("📥 Update request received");
+    console.log("🔍 doctorId from request:", doctorId);
+    console.log("🔍 slotId from request:", slotId);
+    console.log("🔍 appointmentDate from request:", appointmentDate);
     console.log("🔍 Frontend financials:", {
       clientSubtotal,
       clientCommissionAmount,
@@ -4315,7 +4317,6 @@ router.put("/updateop/:bookingId", async (req, res) => {
       clientBalanceAmount,
       paymentStatus,
     });
-    console.log("💰 Category payment:", reqCategoryPayment);
 
     // ===== NORMALIZE REFERRALS =====
     let finalReferralContactId = existing.referralContactId || null;
@@ -4342,20 +4343,19 @@ router.put("/updateop/:bookingId", async (req, res) => {
       (Array.isArray(services) && services.length > 0 && services) ||
       [];
 
-    // ✅ FIX: Added paymentMode + category preservation for clinic per-item payment tracking
     const normalizedServices = finalServices.map((s) => ({
       serviceId: s.serviceId || s._id || "",
       name: s.name || "Service",
       price: Number(s.price) || 0,
       description: s.description || "",
-      category: s.category || s.serviceCategory || s.type || "",        // ✅ NEW — preserve category
-      paymentMode: s.paymentMode || "",                                  // ✅ FIX — save clinic paymentMode
+      category: s.category || s.serviceCategory || s.type || "",
+      paymentMode: s.paymentMode || "",
       paymentStatus:
         s.paymentStatus && s.paymentStatus !== "Pending" ? s.paymentStatus : "Due",
       addedAt: s.addedAt || new Date(),
     }));
 
-    // ===== ✅ NORMALIZE LAB ITEMS =====
+    // ===== NORMALIZE LAB ITEMS =====
     const normalizedLabItems = Array.isArray(reqLabItems)
       ? reqLabItems.map((item) => ({
         serviceId: item.serviceId || item._id || "",
@@ -4363,12 +4363,12 @@ router.put("/updateop/:bookingId", async (req, res) => {
         price: Number(item.price) || 0,
         description: item.description || "",
         category: "lab",
-        paymentMode: item.paymentMode || "Cash",        // ✅ NEW
-        paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
+        paymentMode: item.paymentMode || "Cash",
+        paymentStatus: item.paymentStatus || "Due",
       }))
       : [];
 
-    // ===== ✅ NORMALIZE MEDICINE ITEMS =====
+    // ===== NORMALIZE MEDICINE ITEMS =====
     const normalizedMedicineItems = Array.isArray(reqMedicineItems)
       ? reqMedicineItems.map((item) => ({
         serviceId: item.serviceId || item._id || "",
@@ -4376,14 +4376,13 @@ router.put("/updateop/:bookingId", async (req, res) => {
         price: Number(item.price) || 0,
         description: item.description || "",
         category: "pharmacy",
-        paymentMode: item.paymentMode || "Cash",        // ✅ NEW
-        paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
+        paymentMode: item.paymentMode || "Cash",
+        paymentStatus: item.paymentStatus || "Due",
       }))
       : [];
 
-    // ===== ✅ COMPUTE FINANCIALS — TRUST FRONTEND FIRST =====
+    // ===== COMPUTE FINANCIALS =====
     const servicesTotal = normalizedServices.reduce((sum, s) => sum + (s.price || 0), 0);
-
     const computedLabFromItems = normalizedLabItems.reduce((s, x) => s + (x.price || 0), 0);
     const computedMedFromItems = normalizedMedicineItems.reduce((s, x) => s + (x.price || 0), 0);
 
@@ -4401,15 +4400,12 @@ router.put("/updateop/:bookingId", async (req, res) => {
           ? Number(reqLabTotal)
           : Number(existing.labTotal) || 0);
 
-    // ===== Server-side fallback calc =====
     const commissionPercent = parseFloat(referralCommission) || 0;
     const serverSubtotal = servicesTotal + medicineTotal + labTotal;
     const serverCommissionAmount = (serverSubtotal * commissionPercent) / 100;
     const serverDiscountAmount = Number(discount) || 0;
-    const serverFinalPayable =
-      serverSubtotal - serverCommissionAmount - serverDiscountAmount;
+    const serverFinalPayable = serverSubtotal - serverCommissionAmount - serverDiscountAmount;
 
-    // ✅ Trust frontend if provided, else fallback
     const subtotal =
       Number.isFinite(Number(clientSubtotal)) && Number(clientSubtotal) > 0
         ? Number(clientSubtotal)
@@ -4432,7 +4428,6 @@ router.put("/updateop/:bookingId", async (req, res) => {
     const finalPayable =
       finalPayableFromClient > 0 ? finalPayableFromClient : serverFinalPayable;
 
-    // ✅ AMOUNT PAID / BALANCE — trust frontend explicitly
     const parsedPartial = Number(partialAmount) || 0;
     const clientSentAmountPaid = Number(clientAmountPaid);
     const clientSentBalance = Number(clientBalanceAmount);
@@ -4441,7 +4436,6 @@ router.put("/updateop/:bookingId", async (req, res) => {
       Number.isFinite(clientSentBalance) &&
       (clientSentAmountPaid > 0 || clientSentBalance > 0);
 
-    // ✅ Normalize: treat "Pending" as "Due"
     let finalPaymentStatus =
       !paymentStatus || paymentStatus === "Pending" ? "Due" : paymentStatus;
     let finalAmountPaid = 0;
@@ -4496,13 +4490,6 @@ router.put("/updateop/:bookingId", async (req, res) => {
       }
     }
 
-    console.log("💰 Computed FINAL:", {
-      subtotal, commissionAmount, discountAmount, finalPayable,
-      finalAmountPaid, finalBalanceAmount, finalPaymentStatus,
-      labItemsCount: normalizedLabItems.length,
-      medicineItemsCount: normalizedMedicineItems.length,
-    });
-
     // ===== UPDATE DATA =====
     const updateData = {
       patientTitle: patientTitle || "Mr.",
@@ -4530,15 +4517,9 @@ router.put("/updateop/:bookingId", async (req, res) => {
       referredByDoctor: referredByDoctor || "",
       referralCommission: referralCommission || "",
       referralCommissionType: referralCommissionType || "",
-
-      // ✅ Services — NOW WITH paymentMode
       services: normalizedServices,
-
-      // ✅ Lab & Pharmacy items
       labItems: normalizedLabItems,
       medicineItems: normalizedMedicineItems,
-
-      // ✅ Totals — all synced
       servicesTotal,
       medicineTotal,
       labTotal,
@@ -4551,28 +4532,42 @@ router.put("/updateop/:bookingId", async (req, res) => {
       grandTotal: finalPayable,
       totalAmount: finalPayable,
       totalFee: finalPayable,
-
       status: status || existing.status,
     };
 
-    // ✅ NEW: Save category payment only when explicitly provided
+    // ✅ doctorId update karo
+    if (doctorId && mongoose.Types.ObjectId.isValid(doctorId)) {
+      updateData.doctorId = doctorId;
+      console.log("✅ doctorId will be updated to:", doctorId);
+    } else {
+      console.log("⚠️ doctorId NOT provided or invalid — skipping");
+    }
+
+    // ✅ slotId update karo
+    if (slotId && mongoose.Types.ObjectId.isValid(slotId)) {
+      updateData.slotId = slotId;
+      console.log("✅ slotId will be updated to:", slotId);
+    }
+
+    // ✅ appointmentDate update karo
+    if (appointmentDate) {
+      updateData.appointmentDate = appointmentDate;
+      console.log("✅ appointmentDate will be updated to:", appointmentDate);
+    }
+
     if (reqCategoryPayment !== undefined && reqCategoryPayment !== null) {
       updateData.categoryPayment = reqCategoryPayment;
     }
 
-    if (appointmentDate) updateData.appointmentDate = appointmentDate;
-    if (slotId && mongoose.Types.ObjectId.isValid(slotId)) updateData.slotId = slotId;
-
-    const updated = await Appointment.findByIdAndUpdate(bookingId, updateData, {
+    await Appointment.findByIdAndUpdate(bookingId, updateData, {
       new: true,
       runValidators: false,
     });
 
     // ============================================================
-    // ✅ CRITICAL FIX: FORCE OVERRIDE after update
+    // ✅ FORCE OVERRIDE after update
     // ============================================================
     const forceSet = {
-      // ✅ Services bhi force set karo (paymentMode guaranteed)
       services: normalizedServices,
       labItems: normalizedLabItems,
       medicineItems: normalizedMedicineItems,
@@ -4594,33 +4589,42 @@ router.put("/updateop/:bookingId", async (req, res) => {
       paymentStatus: finalPaymentStatus,
     };
 
-    // ✅ NEW: only override categoryPayment if provided
+    if (doctorId && mongoose.Types.ObjectId.isValid(doctorId)) {
+      forceSet.doctorId = doctorId;
+    }
+
+    if (slotId && mongoose.Types.ObjectId.isValid(slotId)) {
+      forceSet.slotId = slotId;
+    }
+
+    if (appointmentDate) {
+      forceSet.appointmentDate = appointmentDate;
+    }
+
     if (reqCategoryPayment !== undefined && reqCategoryPayment !== null) {
       forceSet.categoryPayment = reqCategoryPayment;
     }
 
-    await Appointment.updateOne(
-      { _id: bookingId },
-      { $set: forceSet }
-    );
+    await Appointment.updateOne({ _id: bookingId }, { $set: forceSet });
 
     console.log("✅ Force override applied to DB");
 
-    // ===== FETCH FRESH DOCUMENT =====
+    // ===== FETCH FRESH DOCUMENT (with safe populate) =====
     const populatedAppointment = await Appointment.findById(bookingId)
       .populate("referralContactId")
       .populate("referralCustomerId")
-      .populate("referralDoctorId");
+      .populate("referralDoctorId")
+      .populate("slotId")
+      .setOptions({ strictPopulate: false });  // ✅ prevents crash on unknown populate paths
 
     console.log("🎯 Final DB values:", {
+      doctorId: populatedAppointment.doctorId,
+      slotId: populatedAppointment.slotId,
+      appointmentDate: populatedAppointment.appointmentDate,
       finalPayable: populatedAppointment.finalPayable,
       amountPaid: populatedAppointment.amountPaid,
       balanceAmount: populatedAppointment.balanceAmount,
       paymentStatus: populatedAppointment.paymentStatus,
-      labItemsCount: populatedAppointment.labItems?.length || 0,
-      medicineItemsCount: populatedAppointment.medicineItems?.length || 0,
-      servicesSample: populatedAppointment.services?.[0],
-      categoryPayment: populatedAppointment.categoryPayment,
     });
 
     return res.status(200).json({
