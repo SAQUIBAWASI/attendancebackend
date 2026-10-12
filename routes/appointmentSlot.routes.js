@@ -7,7 +7,7 @@ const Appointment = require("../models/Appointment");
 const Razorpay = require("razorpay");
 const puppeteer = require("puppeteer");
 const axios = require("axios");
-
+const BankCredit = require("../models/BankCredit");
 
 
 
@@ -1135,6 +1135,874 @@ for (const b of bookings) {
     });
   }
 });
+
+
+
+// ═══════════════════════════════════════════════════════
+// HELPERS (backend-side)
+// ═══════════════════════════════════════════════════════
+const classifyService = (svc) => {
+  if (!svc) return "clinic";
+  const cat = (svc.category || svc.serviceCategory || svc.type || "").toString().toLowerCase();
+  const name = (svc.name || "").toString().toLowerCase();
+  if (cat.includes("pharm") || cat.includes("medic") || name.includes("pharm") || name.includes("medic")) return "pharmacy";
+  if (cat.includes("lab") || cat.includes("test") || cat.includes("diagnos") || name.includes("lab") || name.includes("test")) return "lab";
+  return "clinic";
+};
+
+const addToBucket = (bucket, mode, amount) => {
+  if (!amount || amount <= 0) return;
+  const m = String(mode || "").trim().toLowerCase();
+  if (m === "cash" || m === "wallet" || m === "") bucket.cash += amount;
+  else if (m === "online") bucket.online += amount;
+  else if (m === "card" || m === "credit card") bucket.card += amount;
+  else if (m === "insurance") bucket.insurance += amount;
+};
+
+const emptyCat = () => ({ total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 });
+
+// ═══════════════════════════════════════════════════════
+// GET /api/op-dashboard-stats
+// ⚡ FAST — aggregated data only, no bookings array
+// ═══════════════════════════════════════════════════════
+router.get("/op-dashboard-stats", async (req, res) => {
+  try {
+    const {
+      apptFrom, apptTo, regFrom, regTo, month,
+      doctor, paymentType, paymentStatus, bookingType,
+      search, timeFilter, revenueCategory,
+      trendMonth, // optional: for daily trend chart (YYYY-MM)
+    } = req.query;
+
+    // ─── BUILD MONGO QUERY ───
+    const mongoQuery = { isActive: { $ne: false } };
+
+    if (timeFilter && timeFilter !== "All" && !apptFrom && !apptTo && !month) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const pad = (n) => String(n).padStart(2, "0");
+      const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      let from = null, to = null;
+
+      if (timeFilter === "today") { from = fmt(today); to = from; }
+      else if (timeFilter === "yesterday") {
+        const y = new Date(today); y.setDate(y.getDate() - 1);
+        from = fmt(y); to = from;
+      } else if (timeFilter === "thisWeek") {
+        const dow = today.getDay();
+        const diff = dow === 0 ? 6 : dow - 1;
+        const monday = new Date(today); monday.setDate(monday.getDate() - diff);
+        from = fmt(monday); to = fmt(today);
+      } else if (timeFilter === "thisMonth") {
+        from = fmt(new Date(today.getFullYear(), today.getMonth(), 1));
+        to = fmt(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+      } else if (timeFilter === "lastMonth") {
+        from = fmt(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+        to = fmt(new Date(today.getFullYear(), today.getMonth(), 0));
+      } else if (timeFilter === "thisYear") {
+        from = fmt(new Date(today.getFullYear(), 0, 1));
+        to = fmt(new Date(today.getFullYear(), 11, 31));
+      }
+      if (from && to) mongoQuery.appointmentDate = { $gte: from, $lte: to };
+    }
+
+    if (apptFrom || apptTo) {
+      const df = {};
+      if (apptFrom) df.$gte = apptFrom;
+      if (apptTo) df.$lte = apptTo;
+      mongoQuery.appointmentDate = df;
+    }
+
+    if (regFrom || regTo) {
+      const rf = {};
+      if (regFrom) { const f = new Date(regFrom); f.setHours(0, 0, 0, 0); rf.$gte = f; }
+      if (regTo) { const t = new Date(regTo); t.setHours(23, 59, 59, 999); rf.$lte = t; }
+      mongoQuery.createdAt = rf;
+    }
+
+    if (month && !apptFrom && !apptTo && (!timeFilter || timeFilter === "All")) {
+      mongoQuery.appointmentDate = new RegExp(`^${month}`);
+    }
+
+    if (doctor && doctor !== "All") mongoQuery["slotDetails.doctorName"] = doctor;
+    if (paymentType && paymentType !== "All") mongoQuery.paymentType = paymentType.toLowerCase();
+    if (paymentStatus && paymentStatus !== "All") mongoQuery.paymentStatus = paymentStatus;
+    if (bookingType && bookingType !== "All") {
+      if (bookingType === "Walk-In") mongoQuery.isOP = true;
+      else if (bookingType === "Online") mongoQuery.isOP = { $ne: true };
+    }
+
+    if (search && search.trim()) {
+      const rx = new RegExp(search.trim(), "i");
+      mongoQuery.$or = [
+        { patientName: rx }, { patientPhone: rx }, { purpose: rx },
+        { customPID: rx }, { bookingType: rx }, { doctorName: rx },
+        { referredByCustomer: rx }, { referredByDoctor: rx }, { referredBy: rx },
+      ];
+    }
+
+    // ⚡ LEAN PROJECTION — sirf jo dashboard ko chahiye
+    // (bada payload skip: patientAddress, patientEmail, symptoms, notes, clinicalNotes, etc.)
+    const projection = {
+      patientName: 1, patientPhone: 1, patientGender: 1, patientAge: 1,
+      patientTitle: 1, customPID: 1,
+      date: 1, appointmentDate: 1, startTime: 1, endTime: 1,
+      "slotDetails.doctorName": 1, "slotDetails.date": 1, "slotDetails.startTime": 1, "slotDetails.endTime": 1,
+      doctorName: 1, purpose: 1,
+      paymentStatus: 1, paymentType: 1, status: 1,
+      services: 1, serviceItems: 1,
+      labItems: 1, medicineItems: 1,
+      labTotal: 1, medicineTotal: 1,
+      subtotal: 1, discount: 1, commissionAmount: 1,
+      finalPayable: 1, finalPayableAmount: 1, grandTotal: 1, totalAmount: 1,
+      amountPaid: 1, balanceAmount: 1,
+      categoryPayment: 1,
+      offerApplied: 1, offerDeduction: 1,
+      reviews: 1, isReviewed: 1, reviewDate: 1,
+      isOP: 1, isActive: 1,
+      createdAt: 1, bookedAt: 1,
+      referredByCustomer: 1, referredByDoctor: 1,
+    };
+
+    // ⚡ LEAN — no populate (joins slow banate hain), projection ke saath
+    const bookings = await Appointment.find(mongoQuery, projection)
+      .sort({ createdAt: -1 })
+      .lean(); // ⚡ lean = plain JS objects (much faster than Mongoose docs)
+
+    // ═══════════════════════════════════════════════════════
+    // AGGREGATE STATS
+    // ═══════════════════════════════════════════════════════
+    const stats = {
+      totalPatients: 0,
+      active: 0,
+      inactive: 0,
+      paid: 0,
+      partial: 0,
+      due: 0,
+      pending: 0,
+      totalRevenue: 0,
+    };
+
+    const categoryBreakdown = {
+      clinic: emptyCat(),
+      lab: emptyCat(),
+      pharmacy: emptyCat(),
+    };
+
+    // Unique patients tracker
+    const uniquePatients = new Set();
+
+    // Trend data — day-wise (for selected trend month)
+    const trendDayMap = {};
+    if (trendMonth && /^\d{4}-\d{2}$/.test(trendMonth)) {
+      const [y, m] = trendMonth.split("-");
+      const year = parseInt(y, 10);
+      const monthIdx = parseInt(m, 10) - 1;
+      const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+      const dateObj = new Date(year, monthIdx, 1);
+      const monthShort = dateObj.toLocaleDateString("en-IN", { month: "short" });
+      for (let d = 1; d <= daysInMonth; d++) {
+        const fd = String(d).padStart(2, "0");
+        trendDayMap[d] = {
+          day: fd,
+          dateLabel: `${fd} ${monthShort}`,
+          patients: 0, paidPatients: 0, pendingPatients: 0, revenue: 0, bookings: 0,
+        };
+      }
+    }
+
+    // Payment method counts (for Paid bookings)
+    const methodCounts = { cash: 0, online: 0, card: 0, insurance: 0 };
+
+    // Gender demographics
+    const genderCounts = { Male: 0, Female: 0, Other: 0 };
+    const seenGender = new Set();
+
+    // Review stats
+    let reviewedCount = 0;
+    let totalReviewServices = 0;
+    let offersCount = 0;
+    let totalOfferDeduction = 0;
+
+    // ═══════════════════════════════════════════════════════
+    // LOOP BOOKINGS (single pass)
+    // ═══════════════════════════════════════════════════════
+    for (const b of bookings) {
+      const patientKey = (b.patientPhone || b.patientName || "").toString().trim();
+      if (patientKey) uniquePatients.add(patientKey);
+
+      if (b.isActive === false) stats.inactive++;
+      else stats.active++;
+
+      // ─── Services ───
+      const baseServices =
+        (Array.isArray(b.services) && b.services.length > 0 && b.services) ||
+        (Array.isArray(b.serviceItems) && b.serviceItems.length > 0 && b.serviceItems) ||
+        [];
+
+      // ─── Category TOTALS ───
+      let clinic = 0, lab = 0, pharmacy = 0;
+      baseServices.forEach((s) => {
+        const price = Number(s.price) || 0;
+        if (price <= 0) return;
+        const cat = classifyService(s);
+        if (cat === "lab") lab += price;
+        else if (cat === "pharmacy") pharmacy += price;
+        else clinic += price;
+      });
+
+      const labItemsArr = Array.isArray(b.labItems) ? b.labItems : [];
+      const medItemsArr = Array.isArray(b.medicineItems) ? b.medicineItems : [];
+      const hasLabItems = labItemsArr.length > 0;
+      const hasMedItems = medItemsArr.length > 0;
+
+      if (hasLabItems) {
+        lab = labItemsArr.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+      } else {
+        lab = Math.max(lab, Number(b.labTotal) || 0);
+      }
+
+      if (hasMedItems) {
+        pharmacy = medItemsArr.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+      } else {
+        pharmacy = Math.max(pharmacy, Number(b.medicineTotal) || 0);
+      }
+
+      // Reviews (clinic)
+      const reviewsArr = Array.isArray(b.reviews) ? b.reviews : [];
+      reviewsArr.forEach((r) => { clinic += Number(r.price) || 0; });
+
+      if (b.isReviewed === true) reviewedCount++;
+      totalReviewServices += reviewsArr.length;
+
+      // ─── Per-category PAID ───
+      const cp = b.categoryPayment || {};
+      const clinicPaid = Number(cp.clinic?.paidAmount) || 0;
+
+      const labPaid = hasLabItems
+        ? labItemsArr.reduce(
+            (sum, it) => sum + ((it.paymentStatus || "").toLowerCase() === "paid" ? (Number(it.price) || 0) : 0),
+            0
+          )
+        : (Number(cp.lab?.paidAmount) || 0);
+
+      const pharmacyPaid = hasMedItems
+        ? medItemsArr.reduce(
+            (sum, it) => sum + ((it.paymentStatus || "").toLowerCase() === "paid" ? (Number(it.price) || 0) : 0),
+            0
+          )
+        : (Number(cp.pharmacy?.paidAmount) || 0);
+
+      const clinicDue = Math.max(0, clinic - clinicPaid);
+      const labDue = Math.max(0, lab - labPaid);
+      const pharmacyDue = Math.max(0, pharmacy - pharmacyPaid);
+
+      const paid = clinicPaid + labPaid + pharmacyPaid;
+      const due = clinicDue + labDue + pharmacyDue;
+      const totalPayable = clinic + lab + pharmacy;
+
+      // ─── Effective status ───
+      let effectiveStatus = "pending";
+      if (totalPayable > 0 && paid >= totalPayable - 0.5) effectiveStatus = "paid";
+      else if (paid > 0 && paid < totalPayable) effectiveStatus = "partial";
+      else if (paid === 0) effectiveStatus = "due";
+
+      if (effectiveStatus === "paid") stats.paid++;
+      else if (effectiveStatus === "partial") stats.partial++;
+      else if (effectiveStatus === "due") stats.due++;
+      else stats.pending++;
+
+      // ─── Footfall ───
+      if (clinic > 0) categoryBreakdown.clinic.footFall++;
+      if (lab > 0) categoryBreakdown.lab.footFall++;
+      if (pharmacy > 0) categoryBreakdown.pharmacy.footFall++;
+
+      // ─── CLINIC buckets (per-item mode) ───
+      categoryBreakdown.clinic.total += clinic;
+      categoryBreakdown.clinic.due += clinicDue;
+
+      const fallbackMode = (b.paymentType || "cash").toString().toLowerCase();
+      const clinicServicesForMode = baseServices.filter((s) => classifyService(s) === "clinic");
+      let clinicPaidDistributed = 0;
+      const hasExplicitClinicMode = clinicServicesForMode.some(
+        (s) => s.paymentMode && String(s.paymentMode).trim() !== "" && String(s.paymentMode).trim().toLowerCase() !== "n/a"
+      );
+
+      if (hasExplicitClinicMode) {
+        clinicServicesForMode.forEach((svc) => {
+          if ((svc.paymentStatus || "").toLowerCase() !== "paid") return;
+          const price = Number(svc.price) || 0;
+          addToBucket(categoryBreakdown.clinic, svc.paymentMode, price);
+          clinicPaidDistributed += price;
+        });
+      }
+      const clinicRemaining = Math.max(0, clinicPaid - clinicPaidDistributed);
+      if (clinicRemaining > 0) addToBucket(categoryBreakdown.clinic, fallbackMode, clinicRemaining);
+
+      // ─── LAB buckets ───
+      categoryBreakdown.lab.total += lab;
+      categoryBreakdown.lab.due += labDue;
+
+      if (hasLabItems) {
+        labItemsArr.forEach((it) => {
+          if ((it.paymentStatus || "").toLowerCase() !== "paid") return;
+          const price = Number(it.price) || 0;
+          addToBucket(categoryBreakdown.lab, it.paymentMode || fallbackMode, price);
+        });
+      } else if (labPaid > 0) {
+        addToBucket(categoryBreakdown.lab, fallbackMode, labPaid);
+      }
+
+      // ─── PHARMACY buckets ───
+      categoryBreakdown.pharmacy.total += pharmacy;
+      categoryBreakdown.pharmacy.due += pharmacyDue;
+
+      if (hasMedItems) {
+        medItemsArr.forEach((it) => {
+          if ((it.paymentStatus || "").toLowerCase() !== "paid") return;
+          const price = Number(it.price) || 0;
+          addToBucket(categoryBreakdown.pharmacy, it.paymentMode || fallbackMode, price);
+        });
+      } else if (pharmacyPaid > 0) {
+        addToBucket(categoryBreakdown.pharmacy, fallbackMode, pharmacyPaid);
+      }
+
+      // ─── Payment method counts (for Paid) ───
+      if (effectiveStatus === "paid") {
+        const m = (b.paymentType || "cash").toLowerCase();
+        if (m === "cash" || m === "") methodCounts.cash++;
+        else if (m === "online") methodCounts.online++;
+        else if (m === "card") methodCounts.card++;
+        else if (m === "insurance") methodCounts.insurance++;
+      }
+
+      // ─── Gender (unique) ───
+      if (patientKey && !seenGender.has(patientKey)) {
+        seenGender.add(patientKey);
+        const g = b.patientGender || "Other";
+        if (genderCounts[g] !== undefined) genderCounts[g]++;
+        else genderCounts.Other++;
+      }
+
+      // ─── Offers ───
+      if (b.offerApplied && Number(b.offerApplied.offerAmount) > 0) {
+        offersCount++;
+        totalOfferDeduction += Number(b.offerApplied.offerAmount) || 0;
+      }
+
+      // ─── Trend (day-wise for selected trendMonth) ───
+      if (trendMonth && b.createdAt) {
+        const d = new Date(b.createdAt);
+        const [y, m] = trendMonth.split("-");
+        if (d.getFullYear() === parseInt(y, 10) && d.getMonth() === parseInt(m, 10) - 1) {
+          const day = d.getDate();
+          if (trendDayMap[day]) {
+            trendDayMap[day].patients++;
+            trendDayMap[day].bookings++;
+            trendDayMap[day].revenue += paid;
+            if (effectiveStatus === "paid") trendDayMap[day].paidPatients++;
+            else trendDayMap[day].pendingPatients++;
+          }
+        }
+      }
+    }
+
+    // ─── Revenue totals ───
+    const totalCollected =
+      categoryBreakdown.clinic.cash + categoryBreakdown.clinic.online +
+      categoryBreakdown.clinic.card + categoryBreakdown.clinic.insurance +
+      categoryBreakdown.lab.cash + categoryBreakdown.lab.online +
+      categoryBreakdown.lab.card + categoryBreakdown.lab.insurance +
+      categoryBreakdown.pharmacy.cash + categoryBreakdown.pharmacy.online +
+      categoryBreakdown.pharmacy.card + categoryBreakdown.pharmacy.insurance;
+
+    const totalDue =
+      categoryBreakdown.clinic.due + categoryBreakdown.lab.due + categoryBreakdown.pharmacy.due;
+
+    stats.totalPatients = uniquePatients.size;
+    stats.totalRevenue = Math.round(totalCollected);
+
+    // Round categoryBreakdown
+    Object.keys(categoryBreakdown).forEach((cat) => {
+      Object.keys(categoryBreakdown[cat]).forEach((k) => {
+        if (k === "footFall") categoryBreakdown[cat][k] = Number(categoryBreakdown[cat][k]) || 0;
+        else categoryBreakdown[cat][k] = Math.round(categoryBreakdown[cat][k]);
+      });
+    });
+
+    // Trend data array
+    const trendData = trendMonth ? Object.values(trendDayMap) : [];
+    const totalTrendBookings = trendData.reduce((s, d) => s + d.patients, 0);
+    const totalTrendRevenue = trendData.reduce((s, d) => s + d.revenue, 0);
+    let peakDay = "-";
+    let maxV = -1;
+    trendData.forEach((d) => {
+      if (d.patients > maxV && d.patients > 0) {
+        maxV = d.patients;
+        peakDay = `${d.dateLabel} (${d.patients} bookings)`;
+      }
+    });
+
+    const trendMonthLabel = (() => {
+      if (!trendMonth) return "";
+      const [y, m] = trendMonth.split("-");
+      return new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1).toLocaleDateString("en-IN", {
+        month: "long", year: "numeric",
+      });
+    })();
+
+    // ═══════════════════════════════════════════════════════
+    // RESPONSE — compact, no bookings array
+    // ═══════════════════════════════════════════════════════
+    return res.status(200).json({
+      success: true,
+      stats: {
+        ...stats,
+        totalCollected: Math.round(totalCollected),
+        totalDue: Math.round(totalDue),
+        totalBilled: Math.round(totalCollected + totalDue),
+      },
+      categoryBreakdown,
+      genderData: [
+        { name: "Male", value: genderCounts.Male, color: "#3b82f6" },
+        { name: "Female", value: genderCounts.Female, color: "#ec4899" },
+        { name: "Other", value: genderCounts.Other, color: "#a855f7" },
+      ],
+      paymentStatusData: [
+        { name: "Paid", value: stats.paid, color: "#10b981" },
+        { name: "Partial", value: stats.partial, color: "#f59e0b" },
+        { name: "Pending", value: stats.due + stats.pending, color: "#ef4444" },
+      ],
+      paymentMethodData: [
+        { name: "Cash", value: methodCounts.cash, color: "#10b981" },
+        { name: "Online", value: methodCounts.online, color: "#6366f1" },
+        { name: "Insurance", value: methodCounts.insurance, color: "#8b5cf6" },
+        { name: "Card", value: methodCounts.card, color: "#06b6d4" },
+      ],
+      trend: {
+        monthLabel: trendMonthLabel,
+        daysData: trendData,
+        totalMonthPatients: totalTrendBookings,
+        totalMonthRevenue: Math.round(totalTrendRevenue),
+        peakDay,
+      },
+      extras: {
+        reviewedCount,
+        totalReviewServices,
+        offersCount,
+        totalOfferDeduction: Math.round(totalOfferDeduction),
+      },
+      count: bookings.length,
+    });
+  } catch (error) {
+    console.error("Dashboard stats error:", error);
+    return res.status(500).json({ success: false, message: "Failed", error: error.message });
+  }
+});
+
+
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// NEW: Optimized Revenue Analytics API
+// File: routes/appointmentSlots.js (or wherever your routes are)
+// Add this new route ALONGSIDE your existing /getallbookings route
+// ═══════════════════════════════════════════════════════════════════════
+
+router.get("/revenue-analytics", async (req, res) => {
+  try {
+    // ═══════════════════════════════════════════════════════════
+    // 1️⃣ BUILD MONGO QUERY (date filter only — lightweight)
+    // ═══════════════════════════════════════════════════════════
+    const mongoQuery = {
+      isActive: { $ne: false },
+    };
+
+    const { from, to, timeFilter } = req.query;
+
+    // ✅ Track resolved dates for Bank Credit lookup
+    let resolvedFrom = from || null;
+    let resolvedTo = to || null;
+
+    // Priority 1: Explicit from/to dates
+    if (from || to) {
+      const dateFilter = {};
+      if (from) dateFilter.$gte = from;
+      if (to) dateFilter.$lte = to;
+      mongoQuery.appointmentDate = dateFilter;
+    }
+    // Priority 2: timeFilter preset
+    else if (timeFilter && timeFilter !== "All") {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const pad = (n) => String(n).padStart(2, "0");
+      const fmtDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+      let fromDate = null, toDate = null;
+
+      if (timeFilter === "today") {
+        fromDate = fmtDate(today); toDate = fromDate;
+      } else if (timeFilter === "yesterday") {
+        const y = new Date(today); y.setDate(y.getDate() - 1);
+        fromDate = fmtDate(y); toDate = fromDate;
+      } else if (timeFilter === "thisWeek") {
+        const dow = today.getDay();
+        const diff = dow === 0 ? 6 : dow - 1;
+        const mon = new Date(today); mon.setDate(mon.getDate() - diff);
+        fromDate = fmtDate(mon); toDate = fmtDate(today);
+      } else if (timeFilter === "thisMonth") {
+        const first = new Date(today.getFullYear(), today.getMonth(), 1);
+        const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        fromDate = fmtDate(first); toDate = fmtDate(last);
+      } else if (timeFilter === "lastMonth") {
+        const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const last = new Date(today.getFullYear(), today.getMonth(), 0);
+        fromDate = fmtDate(first); toDate = fmtDate(last);
+      } else if (timeFilter === "thisYear") {
+        const first = new Date(today.getFullYear(), 0, 1);
+        const last = new Date(today.getFullYear(), 11, 31);
+        fromDate = fmtDate(first); toDate = fmtDate(last);
+      }
+
+      if (fromDate && toDate) {
+        mongoQuery.appointmentDate = { $gte: fromDate, $lte: toDate };
+        resolvedFrom = fromDate;
+        resolvedTo = toDate;
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 2️⃣ FETCH — use .lean() and select only needed fields
+    // ═══════════════════════════════════════════════════════════
+    const bookings = await Appointment.find(mongoQuery)
+      .select({
+        appointmentDate: 1,
+        paymentType: 1,
+        paymentStatus: 1,
+        amountPaid: 1,
+        finalPayable: 1,
+        finalPayableAmount: 1,
+        grandTotal: 1,
+        totalAmount: 1,
+        labTotal: 1,
+        medicineTotal: 1,
+        services: 1,
+        serviceItems: 1,
+        labItems: 1,
+        medicineItems: 1,
+        categoryPayment: 1,
+        reviews: 1,
+        isActive: 1,
+      })
+      .lean();
+
+    // ═══════════════════════════════════════════════════════════
+    // 3️⃣ HELPERS
+    // ═══════════════════════════════════════════════════════════
+    const classifyService = (svc) => {
+      if (!svc) return "clinic";
+      const cat = (svc.category || svc.serviceCategory || svc.type || "").toString().toLowerCase();
+      const name = (svc.name || "").toString().toLowerCase();
+      if (cat.includes("pharm") || cat.includes("medic") || name.includes("pharm") || name.includes("medic")) return "pharmacy";
+      if (cat.includes("lab") || cat.includes("test") || cat.includes("diagnos") || name.includes("lab") || name.includes("test")) return "lab";
+      return "clinic";
+    };
+
+    const addToBucket = (bucket, mode, amount) => {
+      if (!amount || amount <= 0) return;
+      const m = String(mode || "").trim().toLowerCase();
+      if (m === "cash") bucket.cash += amount;
+      else if (m === "online") bucket.online += amount;
+      else if (m === "card") bucket.card += amount;
+      else if (m === "insurance") bucket.insurance += amount;
+    };
+
+    // ═══════════════════════════════════════════════════════════
+    // 4️⃣ AGGREGATE — build categoryBreakdown in a single pass
+    // ═══════════════════════════════════════════════════════════
+    const categoryBreakdown = {
+      clinic: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
+      lab: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
+      pharmacy: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
+    };
+
+    bookings.forEach((b) => {
+      const labItemsArr = Array.isArray(b.labItems) ? b.labItems : [];
+      const medItemsArr = Array.isArray(b.medicineItems) ? b.medicineItems : [];
+      const hasLabItems = labItemsArr.length > 0;
+      const hasMedItems = medItemsArr.length > 0;
+
+      const baseServices =
+        (Array.isArray(b.services) && b.services.length > 0 && b.services) ||
+        (Array.isArray(b.serviceItems) && b.serviceItems.length > 0 && b.serviceItems) ||
+        [];
+
+      // ─── Category totals ───
+      let clinic = 0, lab = 0, pharmacy = 0;
+      baseServices.forEach((s) => {
+        const price = Number(s.price) || 0;
+        if (price <= 0) return;
+        const cat = classifyService(s);
+        if (cat === "lab") lab += price;
+        else if (cat === "pharmacy") pharmacy += price;
+        else clinic += price;
+      });
+
+      if (hasLabItems) {
+        lab = labItemsArr.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+      } else {
+        lab = Math.max(lab, Number(b.labTotal) || 0);
+      }
+
+      if (hasMedItems) {
+        pharmacy = medItemsArr.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+      } else {
+        pharmacy = Math.max(pharmacy, Number(b.medicineTotal) || 0);
+      }
+
+      (Array.isArray(b.reviews) ? b.reviews : []).forEach((r) => {
+        clinic += Number(r.price) || 0;
+      });
+
+      // ─── Per-category PAID ───
+      const cp = b.categoryPayment || {};
+      const clinicPaid = Number(cp.clinic?.paidAmount) || 0;
+
+      const labPaid = hasLabItems
+        ? labItemsArr.reduce(
+          (sum, item) =>
+            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
+          0
+        )
+        : (Number(cp.lab?.paidAmount) || 0);
+
+      const pharmacyPaid = hasMedItems
+        ? medItemsArr.reduce(
+          (sum, item) =>
+            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
+          0
+        )
+        : (Number(cp.pharmacy?.paidAmount) || 0);
+
+      const clinicDue = Math.max(0, clinic - clinicPaid);
+      const labDue = Math.max(0, lab - labPaid);
+      const pharmacyDue = Math.max(0, pharmacy - pharmacyPaid);
+
+      // ─── Footfall ───
+      if (clinic > 0) categoryBreakdown.clinic.footFall += 1;
+      if (lab > 0) categoryBreakdown.lab.footFall += 1;
+      if (pharmacy > 0) categoryBreakdown.pharmacy.footFall += 1;
+
+      const fallbackMode = (b.paymentType || "cash").toString().toLowerCase();
+
+      // ═══ CLINIC ═══
+      categoryBreakdown.clinic.total += clinic;
+      categoryBreakdown.clinic.due += clinicDue;
+
+      const clinicServicesForMode = baseServices.filter((s) => classifyService(s) === "clinic");
+      let clinicPaidDistributed = 0;
+
+      if (clinicServicesForMode.length > 0 && clinicServicesForMode.some((s) => s.paymentMode && String(s.paymentMode).trim() !== "")) {
+        clinicServicesForMode.forEach((svc) => {
+          const isPaid = (svc.paymentStatus || "").toLowerCase() === "paid";
+          if (!isPaid) return;
+          const price = Number(svc.price) || 0;
+          addToBucket(categoryBreakdown.clinic, svc.paymentMode, price);
+          clinicPaidDistributed += price;
+        });
+      }
+
+      const clinicRemaining = Math.max(0, clinicPaid - clinicPaidDistributed);
+      if (clinicRemaining > 0) {
+        addToBucket(categoryBreakdown.clinic, fallbackMode, clinicRemaining);
+      }
+
+      // ═══ LAB ═══
+      categoryBreakdown.lab.total += lab;
+      categoryBreakdown.lab.due += labDue;
+
+      if (hasLabItems) {
+        labItemsArr.forEach((item) => {
+          if ((item.paymentStatus || "").toLowerCase() !== "paid") return;
+          const price = Number(item.price) || 0;
+          addToBucket(categoryBreakdown.lab, item.paymentMode || fallbackMode, price);
+        });
+      } else if (labPaid > 0) {
+        addToBucket(categoryBreakdown.lab, fallbackMode, labPaid);
+      }
+
+      // ═══ PHARMACY ═══
+      categoryBreakdown.pharmacy.total += pharmacy;
+      categoryBreakdown.pharmacy.due += pharmacyDue;
+
+      if (hasMedItems) {
+        medItemsArr.forEach((item) => {
+          if ((item.paymentStatus || "").toLowerCase() !== "paid") return;
+          const price = Number(item.price) || 0;
+          addToBucket(categoryBreakdown.pharmacy, item.paymentMode || fallbackMode, price);
+        });
+      } else if (pharmacyPaid > 0) {
+        addToBucket(categoryBreakdown.pharmacy, fallbackMode, pharmacyPaid);
+      }
+    });
+
+    // ✅ Round all values
+    Object.keys(categoryBreakdown).forEach((cat) => {
+      Object.keys(categoryBreakdown[cat]).forEach((k) => {
+        if (k === "footFall") {
+          categoryBreakdown[cat][k] = Number(categoryBreakdown[cat][k]) || 0;
+        } else {
+          categoryBreakdown[cat][k] = Math.round(categoryBreakdown[cat][k]);
+        }
+      });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // 5️⃣ FETCH SAVED BANK CREDIT (if any for this date range)
+    // ═══════════════════════════════════════════════════════════
+    let bankCreditData = null;
+    if (resolvedFrom && resolvedTo) {
+      try {
+        bankCreditData = await BankCredit.findOne({
+          fromDate: resolvedFrom,
+          toDate: resolvedTo,
+        }).lean();
+      } catch (bcErr) {
+        console.warn("Bank credit fetch failed (non-blocking):", bcErr.message);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 6️⃣ RESPONSE — includes both categoryBreakdown + bankCredit
+    // ═══════════════════════════════════════════════════════════
+    return res.status(200).json({
+      success: true,
+      message: "Revenue analytics fetched successfully",
+      count: bookings.length,
+      categoryBreakdown,
+      bankCredit: bankCreditData || null,  // ✅ Saved bank credit included
+      dateRange: {
+        from: resolvedFrom,
+        to: resolvedTo,
+      },
+    });
+
+  } catch (error) {
+    console.error("Error in revenue-analytics:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch revenue analytics",
+      error: error.message,
+    });
+  }
+});
+
+
+
+
+
+router.post("/save-bank-credit", async (req, res) => {
+  try {
+    // ═══════════════════════════════════════════════════════════
+    // 1️⃣ EXTRACT + VALIDATE PAYLOAD
+    // ═══════════════════════════════════════════════════════════
+    const {
+      fromDate,
+      toDate,
+      bankCredit,
+      grandTotal,
+      creditedDiff,
+      diffStatus,
+      savedBy,
+      notes,
+    } = req.body;
+
+    // ── Validation ──
+    if (!fromDate || !toDate) {
+      return res.status(400).json({
+        success: false,
+        message: "fromDate and toDate are required",
+      });
+    }
+
+    if (bankCredit === undefined || bankCredit === null) {
+      return res.status(400).json({
+        success: false,
+        message: "bankCredit amount is required",
+      });
+    }
+
+    const bc = Number(bankCredit) || 0;
+    if (bc < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "bankCredit cannot be negative",
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 2️⃣ AUTO-COMPUTE DIFF + STATUS (if not provided)
+    // ═══════════════════════════════════════════════════════════
+    const gt = Number(grandTotal) || 0;
+    const diff = creditedDiff !== undefined ? Number(creditedDiff) : (bc - gt);
+    const absDiff = Math.abs(diff);
+
+    let status = diffStatus;
+    if (!status) {
+      if (!bc && !gt) status = "—";
+      else if (absDiff < 0.5) status = "MATCHED";
+      else if (diff > 0) status = "CREDIT MORE";
+      else status = "CREDIT LESS";
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 3️⃣ UPSERT — Create or update for this date range
+    // ═══════════════════════════════════════════════════════════
+    const savedRecord = await BankCredit.findOneAndUpdate(
+      { fromDate, toDate },
+      {
+        $set: {
+          fromDate,
+          toDate,
+          bankCredit: bc,
+          grandTotal: gt,
+          creditedDiff: diff,
+          diffStatus: status,
+          savedBy: savedBy || "Admin",
+          savedAt: new Date(),
+          notes: notes || "",
+        },
+      },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+        runValidators: true,
+      }
+    );
+
+    // ═══════════════════════════════════════════════════════════
+    // 4️⃣ RESPONSE
+    // ═══════════════════════════════════════════════════════════
+    return res.status(200).json({
+      success: true,
+      message: "Bank credit saved successfully",
+      data: savedRecord,
+    });
+
+  } catch (error) {
+    console.error("Error saving bank credit:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to save bank credit",
+      error: error.message,
+    });
+  }
+});
+
+
+
+
 // ✅ GET ALL INACTIVE BOOKINGS
 // Route: GET /getallinactivebookings
 router.get("/getallinactivebookings", async (req, res) => {

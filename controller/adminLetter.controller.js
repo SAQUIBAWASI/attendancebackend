@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const AdminLetter = require('../models/AdminLetter');
 const Employee = require('../models/Employee');
 const Notification = require('../models/Notification');
+const Resignation = require('../models/Resignation');
 
 // Helper to resolve employee
 const resolveEmployee = async (identifier) => {
@@ -223,7 +224,7 @@ exports.getLetterById = async (req, res) => {
   }
 };
 
-// Get Letters by Employee ID
+// Get Letters by Employee ID (with resignation data)
 exports.getLettersByEmployeeId = async (req, res) => {
   try {
     const { employeeId } = req.params;
@@ -231,18 +232,254 @@ exports.getLettersByEmployeeId = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Employee ID is required' });
     }
 
-    const letters = await AdminLetter.find({ employeeId: employeeId.trim() });
-    if (!letters || letters.length === 0) {
-      return res.status(404).json({ success: false, message: 'No letters found for this employee' });
+    const cleanEmployeeId = employeeId.trim();
+
+    // ✅ Fetch letters for this employee
+    const letters = await AdminLetter.find({ employeeId: cleanEmployeeId });
+
+    // ✅ Fetch resignation for this employee (if any)
+    let resignation = null;
+    try {
+      resignation = await Resignation.findOne({ employeeId: cleanEmployeeId }).sort({ createdAt: -1 });
+    } catch (rErr) {
+      console.warn('Resignation fetch failed (non-blocking):', rErr.message);
+    }
+
+    // If no letters AND no resignation — return empty (200 with empty data instead of 404)
+    if ((!letters || letters.length === 0) && !resignation) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        message: 'No letters or resignation found for this employee',
+        data: [],
+        resignation: null,
+      });
     }
 
     return res.status(200).json({
       success: true,
-      count: letters.length,
-      data: letters
+      count: letters ? letters.length : 0,
+      data: letters || [],
+      resignation: resignation || null,   // ✅ Resignation bhi bhej do
     });
   } catch (error) {
     console.error('Error getting letters by employee id:', error);
-    return res.status(500).json({ success: false, message: 'Failed to get letters', error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get letters',
+      error: error.message,
+    });
+  }
+};
+
+
+// GET ALL RESIGNATIONS
+exports.getAllResignations = async (req, res) => {
+  try {
+    const resignations = await Resignation.find().sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      message: "All resignations fetched successfully",
+      count: resignations.length,
+      data: resignations,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+// ═══════════════════════════════════════════════════════════
+// UPDATE RESIGNATION — Controller
+// ═══════════════════════════════════════════════════════════
+exports.updateResignation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, approvedBy, rejectedReason, adminRemark } = req.body;
+
+    // ── Validate status ──
+    const allowedStatuses = ['pending', 'approved', 'rejected', 'withdrawn'];
+    if (!status || !allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}`,
+      });
+    }
+
+    // ── Find resignation ──
+    const resignation = await Resignation.findById(id);
+    if (!resignation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Resignation not found',
+      });
+    }
+
+    // ── Build update payload ──
+    const updatePayload = {
+      status,
+      adminRemark: adminRemark || '',
+    };
+
+    // If approved → set approvedBy & approvedAt
+    if (status === 'approved') {
+      updatePayload.approvedBy = approvedBy || 'Admin';
+      updatePayload.approvedAt = new Date();
+      updatePayload.rejectedReason = '';
+    }
+
+    // If rejected → require reason
+    if (status === 'rejected') {
+      if (!rejectedReason || !rejectedReason.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Rejection reason is required',
+        });
+      }
+      updatePayload.rejectedReason = rejectedReason.trim();
+      updatePayload.approvedBy = approvedBy || 'Admin';
+      updatePayload.approvedAt = new Date();
+    }
+
+    // If withdrawn → no approval fields
+    if (status === 'withdrawn') {
+      updatePayload.rejectedReason = '';
+    }
+
+    // ── Update ──
+    const updatedResignation = await Resignation.findByIdAndUpdate(
+      id,
+      { $set: updatePayload },
+      { new: true, runValidators: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Resignation ${status} successfully`,
+      data: updatedResignation,
+    });
+  } catch (error) {
+    console.error('Error updating resignation:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+exports.submitResignation = async (req, res) => {
+  try {
+    const {
+      employeeId,
+      resignationDate,
+      lastWorkingDate,
+      noticePeriodDays,
+      reasonCategory,
+      reason,
+      comments,
+    } = req.body;
+
+    // ── Validation ──
+    if (!employeeId || employeeId.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Employee ID is required",
+      });
+    }
+
+    if (!reason || reason.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Reason is required",
+      });
+    }
+
+    if (!lastWorkingDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Last working date is required",
+      });
+    }
+
+    // ── Find employee ──
+    const employee = await Employee.findOne({ employeeId: employeeId.trim() });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found with this ID",
+      });
+    }
+
+    // ── Check if already has pending resignation ──
+    const existingPending = await Resignation.findOne({
+      employeeId: employeeId.trim(),
+      status: "pending",
+    });
+
+    if (existingPending) {
+      return res.status(400).json({
+        success: false,
+        message: "You already have a pending resignation request",
+      });
+    }
+
+    // ── Calculate short notice (if LWD < resignation date + notice period) ──
+    const resignDate = resignationDate ? new Date(resignationDate) : new Date();
+    const lwdDate = new Date(lastWorkingDate);
+    const expectedLWD = new Date(resignDate);
+    expectedLWD.setDate(expectedLWD.getDate() + (Number(noticePeriodDays) || 30));
+
+    let isShortNotice = false;
+    let shortNoticeDays = 0;
+
+    if (lwdDate < expectedLWD) {
+      const diffMs = expectedLWD - lwdDate;
+      shortNoticeDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      isShortNotice = true;
+    }
+
+    // ── Create resignation record ──
+    const resignation = await Resignation.create({
+      employeeId: employeeId.trim(),
+      employeeObjectId: employee._id,
+      employeeName: employee.name || "",
+      email: employee.email || "",
+      department: employee.department || "",
+      designation: employee.role || employee.designation || "",
+      joiningDate: employee.joinDate || null,
+      resignationDate: resignDate,
+      lastWorkingDate: lwdDate,
+      noticePeriodDays: Number(noticePeriodDays) || 30,
+      reasonCategory: reasonCategory || "Other",
+      reason: reason.trim(),
+      comments: comments || "",
+      status: "pending",
+      isShortNotice,
+      shortNoticeDays,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Resignation request submitted successfully",
+      data: resignation,
+    });
+  } catch (error) {
+    console.error("Error submitting resignation:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to submit resignation",
+      error: error.message,
+    });
   }
 };

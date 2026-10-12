@@ -6714,6 +6714,32 @@ const isPayslipAllowed = (month) => {
   return true;
 };
 
+// ✅ NEW HELPER — Get employee's effective start day within a month
+// Returns 1 if joined before month start, else joining date day; -1 if joined after month end
+const getEffectiveStartDay = (employee, year, monthNum) => {
+  const joiningDateRaw = employee.joiningDate || employee.joinDate;
+  if (!joiningDateRaw) return 1;
+
+  const jd = new Date(joiningDateRaw);
+  if (isNaN(jd.getTime())) return 1;
+
+  const monthStart = new Date(year, monthNum - 1, 1);
+  const monthEnd = new Date(year, monthNum, 0);
+
+  if (jd > monthEnd) return -1;
+  if (jd <= monthStart) return 1;
+  return jd.getDate();
+};
+
+// ✅ NEW HELPER — Check if employee joined mid-month
+const isJoiningMonth = (employee, year, monthNum) => {
+  const joiningDateRaw = employee.joiningDate || employee.joinDate;
+  if (!joiningDateRaw) return false;
+  const jd = new Date(joiningDateRaw);
+  if (isNaN(jd.getTime())) return false;
+  return jd.getFullYear() === year && (jd.getMonth() + 1) === monthNum;
+};
+
 // ============================================
 // LEAVES PER MONTH
 // ============================================
@@ -6774,14 +6800,17 @@ const processLeavesForMonth = (leaves, targetMonth) => {
 };
 
 // ============================================
-// WEEK-OFF CALC
+// WEEK-OFF CALC — ✅ FIXED with joining date filter
 // ============================================
 const calculateEarnedWeekOffs = (
-  employeeId, year, monthNum, attendance, leavesMap, weekOffDay, shiftHours, holidayCount
+  employeeId, year, monthNum, attendance, leavesMap, weekOffDay, shiftHours, holidayCount, effectiveStartDay = 1
 ) => {
   const weekOffNum = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].indexOf(weekOffDay);
   const firstDay = new Date(year, monthNum - 1, 1);
   const lastDay = new Date(year, monthNum, 0);
+
+  // ✅ Effective start = max(month first day, joining day)
+  const effectiveStartDate = new Date(year, monthNum - 1, Math.max(1, effectiveStartDay));
 
   const attMap = new Map();
   (attendance || []).forEach((r) => {
@@ -6821,6 +6850,9 @@ const calculateEarnedWeekOffs = (
 
     for (let d = new Date(curr); d <= weekEnd; d.setDate(d.getDate() + 1)) {
       if (d < firstDay || d > lastDay) continue;
+      // ✅ Skip days before joining
+      if (d < effectiveStartDate) continue;
+
       totDays++;
       if (d.getDay() === weekOffNum) { wo++; continue; }
       actualWork++;
@@ -6834,8 +6866,11 @@ const calculateEarnedWeekOffs = (
 
     const eff = present + half + leaves;
     let eligible = false;
-    if (totDays === 7) eligible = eff >= 5;
-    else eligible = (present + half >= actualWork) && actualWork >= 3;
+    // ✅ Only mark eligible if week has meaningful days after joining
+    if (totDays > 0) {
+      if (totDays === 7) eligible = eff >= 5;
+      else eligible = (present + half >= actualWork) && actualWork >= 1;
+    }
 
     weeklyBreakdown.push({
       weekNumber: weekNum, daysInMonth: totDays, presentDays: present, halfDays: half,
@@ -6848,8 +6883,10 @@ const calculateEarnedWeekOffs = (
     weekNum++;
   }
 
+  // ✅ Count total week-off days only after effectiveStart
   let totalWeekOffDays = 0;
   for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
+    if (d < effectiveStartDate) continue;
     if (d.getDay() === weekOffNum) totalWeekOffDays++;
   }
 
@@ -6861,7 +6898,7 @@ const calculateEarnedWeekOffs = (
 };
 
 // ============================================
-// MAIN COMPUTE
+// MAIN COMPUTE — ✅ FIXED for mid-month joining
 // ============================================
 const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, allCompOffs) => {
   const [year, monthNum] = month.split("-").map(Number);
@@ -6871,6 +6908,40 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
   const isCurr = isCurrentMonth(month);
   const canDl = isPayslipAllowed(month);
   const empId = String(employee.employeeId).trim();
+
+  // ✅ NEW: Effective start day + joining month flag
+  const effectiveStartDay = getEffectiveStartDay(employee, year, monthNum);
+  const isJoiningMonthFlag = isJoiningMonth(employee, year, monthNum);
+
+  // Agar employee joined later than this month → empty record
+  if (effectiveStartDay === -1) {
+    return {
+      month, monthFormatted: formatMonthDisplay(month), monthDays: daysInMonth,
+      presentDays: 0, halfDays: 0, halfDayWorking: 0,
+      totalWorkingDays: 0, workingDays: 0,
+      fullDayNotWorking: 0, overTimeHours: 0, overTimeHoursFormatted: "0h 0m",
+      weekOffs: 0, earnedWeekOffs: 0, defaultWeekOffs: 0, targetWeekOffCount: 0,
+      weekOffDay: employee.weekOffDay || "Sunday", weeklyBreakdown: [],
+      salaryPerMonth: employee.salaryPerMonth || 0, originalSalary: employee.salaryPerMonth || 0,
+      salaryPerDay: "0.00", dailyRate: "0.00",
+      calculatedSalary: 0, baseCalculatedSalary: 0, finalPay: 0,
+      finalOTAmount: 0, otAmount: 0, hasApprovedOT: false,
+      approvedOTAmount: 0, approvedOTHours: 0,
+      holidayCount: 0, compOffEarned: 0, compOffUsed: 0, compOffBalance: 0,
+      totalLeaves: 0,
+      leavesBreakdown: { CL:0, SL:0, EL:0, COFF:0, LOP:0, Other:0, leaveDetails: [] },
+      expectedWorkingDays: 0, payablePresentDays: 0, carryForwardDays: 0,
+      includeWeekOffInSalary: includeWO,
+      isHistoricalMonth: isHist, isCurrentMonth: isCurr, canDownload: false,
+      incrementDetails: null,
+      employeeId: employee.employeeId, name: employee.name,
+      department: employee.department || "N/A",
+      designation: employee.designation || employee.role || "N/A",
+      role: employee.role || employee.designation || "N/A",
+      shiftHours: employee.shiftHours || 8,
+      joiningDate: employee.joinDate || employee.joiningDate || "",
+    };
+  }
 
   // ---- Leaves ----
   const leavesMap = processLeavesForMonth(allLeaves, month);
@@ -6922,11 +6993,11 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
     ],
   });
 
-  // ---- Week-offs ----
+  // ✅ Week-offs — pass effectiveStartDay
   const weekOffDay = employee.weekOffDay || "Sunday";
   const weekOffData = calculateEarnedWeekOffs(
     empId, year, monthNum, attendanceRecords, leavesMap, weekOffDay,
-    employee.shiftHours || 8, holidayCount
+    employee.shiftHours || 8, holidayCount, effectiveStartDay
   );
 
   // ---- Department flags ----
@@ -6939,6 +7010,13 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
 
   let earned = weekOffData.earnedWeekOffs;
   let defaultWO = isConsultant ? 2 : (employee.weekOffPerMonth || 4);
+
+  // ✅ Mid-month joining → cap week-offs to actual eligible
+  if (isJoiningMonthFlag) {
+    defaultWO = Math.min(defaultWO, weekOffData.totalWeekOffDays || 0);
+    earned = Math.min(earned, defaultWO);
+  }
+
   if (isDevOrMkt) {
     defaultWO = weekOffData.totalWeekOffDays || 5;
     earned = defaultWO;
@@ -6971,10 +7049,23 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
   if (workingDays === undefined || workingDays === null) workingDays = presentDays + halfDays * 0.5;
 
   // ---- Expected working days / payable ----
-  const expectedWorkingDays = daysInMonth - finalWO;
-  const actualWorked = presentDays + halfDays * 0.5;
-  const payablePresent = Math.min(actualWorked, expectedWorkingDays);
-  const carryForward = Math.max(0, Math.round((actualWorked - expectedWorkingDays) * 100) / 100);
+  // ✅ Mid-month joining → expected = actual working days from joining
+  let expectedWorkingDays;
+  let payablePresent;
+  let carryForward;
+
+  if (isJoiningMonthFlag) {
+    const totalDaysFromJoin = daysInMonth - effectiveStartDay + 1;
+    const workingDaysFromJoin = totalDaysFromJoin - (weekOffData.totalWeekOffDays || 0);
+    expectedWorkingDays = Math.max(0, workingDaysFromJoin);
+    payablePresent = presentDays + halfDays * 0.5;
+    carryForward = 0;
+  } else {
+    expectedWorkingDays = daysInMonth - finalWO;
+    const actualWorked = presentDays + halfDays * 0.5;
+    payablePresent = Math.min(actualWorked, expectedWorkingDays);
+    carryForward = Math.max(0, Math.round((actualWorked - expectedWorkingDays) * 100) / 100);
+  }
 
   let calculatedSalary = 0;
   if (salaryForMonth > 0 && daysInMonth > 0) {
@@ -7123,7 +7214,7 @@ const getEmployeeSalarySummary = async (req, res) => {
     }
     records.sort((a, b) => b.month.localeCompare(a.month));
 
-    // ✅ totalNetPay ab finalPay se banega (OT-free)
+    // ✅ totalNetPay from finalPay
     const totalNetPay = records.reduce((s, r) => s + (r.finalPay || 0), 0);
     const payslipsAvailable = records.filter((r) => r.canDownload).length;
     const avgSalary = records.length ? Math.round(totalNetPay / records.length) : 0;
@@ -7154,6 +7245,7 @@ const getEmployeeSalarySummary = async (req, res) => {
     });
   }
 };
+
 
 
 module.exports = {

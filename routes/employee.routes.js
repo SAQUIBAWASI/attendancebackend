@@ -342,7 +342,7 @@ const {
   employeeDashboard,
   getEmployeeSalarySummary
 } = require("../controller/employee.controller");
-const { sendLetter, saveLetterDraft, getLetterById, getLettersByEmployeeId } = require("../controller/adminLetter.controller");
+const { sendLetter, saveLetterDraft, getLetterById, getLettersByEmployeeId, getAllResignations, updateResignation, submitResignation } = require("../controller/adminLetter.controller");
 
 const { uploadLetterSingle } = require('../middleware/uploadLetter');
 
@@ -411,6 +411,10 @@ router.post('/admin-letters', uploadLetterSingle, saveLetterDraft);
 router.get("/admin-letters/:employeeId/:letterId", getLetterById);
 router.get('/admin-letters/:employeeId', getLettersByEmployeeId);
 
+
+router.get("/all-resignations", getAllResignations);
+router.post("/submit-resignation", submitResignation);
+router.put('/update-resignation/:id', updateResignation);
 
 // =====================================================
 // ✅ EMPLOYEE DOCUMENT ROUTES (PAN / Aadhaar)
