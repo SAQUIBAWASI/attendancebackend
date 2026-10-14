@@ -4435,7 +4435,7 @@ const addEmployee = async (req, res) => {
       pfNumber,
       esicNumber,
 
-      // ✅ NEW: Document URLs & metadata
+      // ✅ Document URLs & metadata
       panDocumentUrl,
       panDocumentFileName,
       panDocumentFileType,
@@ -4446,7 +4446,9 @@ const addEmployee = async (req, res) => {
       aadharDocumentFileSize
     } = req.body;
 
+    // ✅ FIX: name = firstName + lastName (trim only — case preserve)
     const name = `${firstName || ''} ${lastName || ''}`.trim();
+    
     const existingEmployee = await Employee.findOne({ $or: [{ email }, { employeeId }, { phone }] });
 
     if (existingEmployee) {
@@ -4483,7 +4485,7 @@ const addEmployee = async (req, res) => {
       pfNumber: pfNumber || "",
       esicNumber: esicNumber || "",
 
-      // ✅ NEW: Document data
+      // Document data
       panDocumentUrl: panDocumentUrl || "",
       panDocumentFileName: panDocumentFileName || "",
       panDocumentFileType: panDocumentFileType || "",
@@ -4512,10 +4514,13 @@ const addEmployee = async (req, res) => {
       assignedWorkingDays: assignedWorkingDays > 0 ? assignedWorkingDays : 26
     });
     await newEmployee.save();
+    
+    // ✅ FIX: Dono "data" aur "employee" keys bhejo
     res.status(201).json({ 
       success: true, 
       message: "Employee added successfully", 
-      employee: newEmployee 
+      data: newEmployee,        // frontend "data" use karta hai
+      employee: newEmployee     // backward compat
     });
   } catch (error) {
     console.error("Add employee error:", error);
@@ -4770,6 +4775,7 @@ const getAssignedLocationByEmployeeId = async (req, res) => {
 };
 
 // ==================== UPDATE EMPLOYEE ====================
+// ==================== UPDATE EMPLOYEE ====================
 const updateEmployee = async (req, res) => {
   try {
     const { id } = req.params;
@@ -4778,6 +4784,15 @@ const updateEmployee = async (req, res) => {
     const existingEmployee = await Employee.findById(id);
     if (!existingEmployee) {
       return res.status(404).json({ success: false, message: "Employee not found" });
+    }
+    
+    // ✅✅✅ FIX: Agar firstName ya lastName change hua hai, toh "name" bhi recompute karo
+    // Kyunki pre('save') middleware findByIdAndUpdate pe nahi chalti
+    if (updateData.firstName !== undefined || updateData.lastName !== undefined) {
+      const newFirstName = updateData.firstName !== undefined ? updateData.firstName : existingEmployee.firstName;
+      const newLastName = updateData.lastName !== undefined ? updateData.lastName : existingEmployee.lastName;
+      updateData.name = `${newFirstName || ''} ${newLastName || ''}`.trim();
+      console.log("✅ [UPDATE] Name recomputed:", updateData.name);
     }
     
     // ✅ PAN Card - Always uppercase
@@ -4873,9 +4888,12 @@ const updateEmployee = async (req, res) => {
       runValidators: true 
     });
     
+    console.log("✅ [UPDATE] Employee updated. New name:", updatedEmployee.name);
+    
     res.status(200).json({ 
       success: true, 
       message: "Employee updated successfully", 
+      data: updatedEmployee,        // ✅ "data" key bhi bhejo
       employee: updatedEmployee 
     });
   } catch (error) {
@@ -4883,7 +4901,6 @@ const updateEmployee = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error", error: error.message });
   }
 };
-
 // ==================== DELETE EMPLOYEE ====================
 const deleteEmployee = async (req, res) => {
   try {
