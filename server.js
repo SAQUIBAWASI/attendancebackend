@@ -151,6 +151,10 @@ app.use("/api/partners", require("./routes/partner.routes"));
 app.use("/api/patients", patientRoutes);
 
 
+
+app.use("/api/targetrev", require("./routes/revenueTargetRoutes"));
+
+
 // ✅ Simple Test Route to verify server update
 app.get("/api/test-application-routes", (req, res) => {
   res.json({ message: "Job Application Routes are active!" });

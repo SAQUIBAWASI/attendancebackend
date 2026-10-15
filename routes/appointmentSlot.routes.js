@@ -1915,6 +1915,7 @@ router.post("/save-bank-credit", async (req, res) => {
       diffStatus,
       savedBy,
       notes,
+      retailPharmacy, // ✅ NAYA
     } = req.body;
 
     // ── Validation ──
@@ -1939,6 +1940,23 @@ router.post("/save-bank-credit", async (req, res) => {
         message: "bankCredit cannot be negative",
       });
     }
+
+    // ✅ Sanitize retailPharmacy object
+    const safeNum = (v) => {
+      const n = Number(v);
+      return isNaN(n) ? 0 : n;
+    };
+
+    const rp = retailPharmacy || {};
+    const retailPharmacyData = {
+      cash: safeNum(rp.cash),
+      online: safeNum(rp.online),
+      due: safeNum(rp.due),
+      total: safeNum(rp.total) || (safeNum(rp.cash) + safeNum(rp.online)),
+      card: safeNum(rp.card),
+      insurance: safeNum(rp.insurance),
+      footFall: safeNum(rp.footFall),
+    };
 
     // ═══════════════════════════════════════════════════════════
     // 2️⃣ AUTO-COMPUTE DIFF + STATUS (if not provided)
@@ -1971,6 +1989,7 @@ router.post("/save-bank-credit", async (req, res) => {
           savedBy: savedBy || "Admin",
           savedAt: new Date(),
           notes: notes || "",
+          retailPharmacy: retailPharmacyData, // ✅ NAYA
         },
       },
       {
@@ -1999,7 +2018,6 @@ router.post("/save-bank-credit", async (req, res) => {
     });
   }
 });
-
 
 
 
