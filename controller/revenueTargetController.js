@@ -86,10 +86,8 @@ exports.getRevenueTarget = async (req, res) => {
 /* ============================================================ */
 exports.saveRevenueTarget = async (req, res) => {
   try {
-    // ✅ Sirf month, year, amount lo
-    const { month, year, amount } = req.body;
+    const { month, year, amount, category } = req.body;
 
-    // ── Validation ──
     if (!month || !year || amount === undefined || amount === null) {
       return res.status(400).json({
         success: false,
@@ -115,15 +113,20 @@ exports.saveRevenueTarget = async (req, res) => {
       });
     }
 
-    // ── Upsert — sirf target save karo, achieved ko touch na karo ──
+    // ✅ Category validation — default "clinic" (backward compat)
+    const VALID_CATEGORIES = ["clinic", "lab", "clinicPharmacy", "retailPharmacy"];
+    const categoryKey = category && VALID_CATEGORIES.includes(category)
+      ? category
+      : "clinic";
+
     const target = await RevenueTarget.findOneAndUpdate(
-      { month: monthNum, year: yearNum },
+      { month: monthNum, year: yearNum, category: categoryKey },
       {
         month: monthNum,
         year: yearNum,
+        category: categoryKey,
         amount: amountNum,
         savedAt: new Date(),
-        // ❌ achieved, status, diff — ye sab future ke liye
       },
       {
         new: true,
@@ -147,7 +150,6 @@ exports.saveRevenueTarget = async (req, res) => {
     });
   }
 };
-
 /* ============================================================ */
 /* PUT /api/appointment-slots/update-revenue-target/:id          */
 /* Full update — amount + achieved dono (ya sirf ek bhi)         */
@@ -262,18 +264,33 @@ exports.updateAchievedByMonth = async (req, res) => {
 /* ============================================================ */
 exports.getAllRevenueTargets = async (req, res) => {
   try {
-    const { year, status } = req.query;
-
-    const filter = {};
-    if (year) filter.year = Number(year);
-    if (status) filter.status = status;
-
-    const targets = await RevenueTarget.find(filter).sort({ year: -1, month: -1 });
+    const aggregated = await RevenueTarget.aggregate([
+      {
+        $group: {
+          _id: { month: "$month", year: "$year" },
+          amount: { $sum: "$amount" },
+          achieved: { $sum: { $ifNull: ["$achieved", 0] } },
+          lastSavedAt: { $max: "$savedAt" },
+          firstId: { $first: "$_id" },
+        },
+      },
+      {
+        $project: {
+          _id: "$firstId",
+          month: "$_id.month",
+          year: "$_id.year",
+          amount: 1,
+          achieved: 1,
+          savedAt: "$lastSavedAt",
+        },
+      },
+      { $sort: { year: -1, month: -1 } },
+    ]);
 
     return res.status(200).json({
       success: true,
-      count: targets.length,
-      targets,
+      targets: aggregated,
+      count: aggregated.length,
     });
   } catch (error) {
     console.error("❌ getAllRevenueTargets error:", error);

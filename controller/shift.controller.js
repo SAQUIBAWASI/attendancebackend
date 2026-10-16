@@ -977,6 +977,69 @@ const applyScheduledChangeIfDue = async (assignment) => {
   return true;
 };
 
+// ✅ Helper to sync Employee Shift assignment in Shift collection
+const syncEmployeeShift = async (employeeId, employeeName, shiftType) => {
+  if (!employeeId || !shiftType) return null;
+  const cleanEmpId = String(employeeId).trim();
+  const cleanShiftType = String(shiftType).toUpperCase().trim();
+
+  const { masterShift, timeRange, description } = await getMasterShiftDetails(cleanShiftType);
+
+  let assignment = await Shift.findOne({ 
+    "employeeAssignment.employeeId": { $regex: new RegExp(`^${cleanEmpId}$`, "i") },
+    isActive: true,
+    isMasterShift: false
+  });
+
+  if (!assignment) {
+    assignment = await Shift.findOne({ 
+      employeeId: { $regex: new RegExp(`^${cleanEmpId}$`, "i") },
+      isMasterShift: { $exists: false }
+    });
+  }
+
+  if (assignment) {
+    applyShiftTypeToAssignment(assignment, cleanShiftType, masterShift, timeRange, description);
+    assignment.isMasterShift = false;
+    assignment.isActive = true;
+    if (!assignment.employeeAssignment) {
+      assignment.employeeAssignment = {};
+    }
+    assignment.employeeAssignment.employeeId = cleanEmpId;
+    if (employeeName) assignment.employeeAssignment.employeeName = employeeName.trim();
+    assignment.employeeAssignment.selectedTimeRange = timeRange;
+    assignment.employeeAssignment.selectedDescription = description;
+    assignment.employeeAssignment.assignedDate = assignment.employeeAssignment.assignedDate || new Date();
+    assignment.employeeAssignment.effectiveFrom = new Date();
+    delete assignment.employeeAssignment.scheduledChange;
+    assignment.markModified("employeeAssignment");
+    await assignment.save();
+    return assignment;
+  } else {
+    const newAssignment = new Shift({
+      shiftType: cleanShiftType,
+      shiftName: masterShift?.shiftName || `Shift ${cleanShiftType}`,
+      shiftCategory: masterShift?.shiftCategory || 'Regular',
+      timeSlots: masterShift?.timeSlots || [],
+      isBrakeShift: masterShift?.isBrakeShift || false,
+      employeeAssignment: {
+        employeeId: cleanEmpId,
+        employeeName: (employeeName || cleanEmpId).trim(),
+        selectedSlotId: null,
+        selectedTimeRange: timeRange,
+        selectedDescription: description,
+        assignedDate: new Date(),
+        effectiveFrom: new Date()
+      },
+      isMasterShift: false,
+      isActive: true
+    });
+    await newAssignment.save();
+    return newAssignment;
+  }
+};
+exports.syncEmployeeShift = syncEmployeeShift;
+
 // ============================================================================
 // ✅ COMP-OFF HELPERS — inline
 // ============================================================================
@@ -1519,106 +1582,121 @@ exports.getEmployeeAssignments = async (req, res) => {
   }
 };
 
-// ✅ 5. ASSIGN SHIFT TO EMPLOYEE
+// ✅ 5. ASSIGN OR UPDATE SHIFT FOR EMPLOYEE
 exports.assignShiftToEmployee = async (req, res) => {
   try {
-    const { employeeId, employeeName, shiftType, selectedSlotId, selectedTimeRange, selectedDescription } = req.body;
+    const { employeeId, employeeName, shiftType, selectedSlotId, selectedTimeRange, selectedDescription, startTime, endTime } = req.body;
 
     if (!employeeId || !employeeName || !shiftType) {
       return res.status(400).json({ 
-        success: false,
+        success: false, 
         message: "Employee ID, Name and Shift Type are required" 
       });
     }
 
+    const cleanEmpId = String(employeeId).trim();
+    const cleanShiftType = String(shiftType).toUpperCase().trim();
+
     const existingNewAssignment = await Shift.findOne({ 
-      "employeeAssignment.employeeId": employeeId,
-      isActive: true 
+      "employeeAssignment.employeeId": { $regex: new RegExp(`^${cleanEmpId}$`, "i") },
+      isActive: true,
+      isMasterShift: false
     });
     
     const existingLegacyAssignment = await Shift.findOne({ 
-      employeeId: employeeId,
+      employeeId: { $regex: new RegExp(`^${cleanEmpId}$`, "i") },
       isMasterShift: { $exists: false }
     });
-    
-    if (existingNewAssignment || existingLegacyAssignment) {
-      return res.status(400).json({ 
-        success: false,
-        message: "This employee already has a shift assigned" 
-      });
+
+    const { masterShift, timeRange: computedTimeRange, description: computedDesc } = await getMasterShiftDetails(cleanShiftType);
+    let timeRange = selectedTimeRange;
+    if (!timeRange && startTime && endTime) {
+      timeRange = `${startTime} - ${endTime}`;
     }
+    if (!timeRange) {
+      timeRange = computedTimeRange;
+    }
+    const description = selectedDescription || computedDesc;
 
-    const masterShift = await Shift.findOne({ 
-      shiftType: shiftType.toUpperCase(),
-      isMasterShift: true
-    });
+    let assignment = existingNewAssignment || existingLegacyAssignment;
+    let isUpdate = false;
 
-    let timeRange = selectedTimeRange || "Not specified";
-    let description = selectedDescription || "No description";
-    
-    if (masterShift && masterShift.timeSlots && masterShift.timeSlots.length > 0) {
-      if (masterShift.isBrakeShift && masterShift.timeSlots.length > 1) {
-        timeRange = `${masterShift.timeSlots[0].timeRange} - ${masterShift.timeSlots[1].timeRange}`;
-        description = "Brake shift with afternoon break";
-      } else {
-        const timeSlot = masterShift.timeSlots[0];
-        timeRange = timeSlot.timeRange;
-        description = timeSlot.description;
+    if (assignment) {
+      isUpdate = true;
+      applyShiftTypeToAssignment(assignment, cleanShiftType, masterShift, timeRange, description);
+      assignment.isMasterShift = false;
+      assignment.isActive = true;
+
+      if (!assignment.employeeAssignment) {
+        assignment.employeeAssignment = {};
       }
+      assignment.employeeAssignment.employeeId = cleanEmpId;
+      assignment.employeeAssignment.employeeName = employeeName.trim();
+      assignment.employeeAssignment.selectedSlotId = selectedSlotId || null;
+      assignment.employeeAssignment.selectedTimeRange = timeRange;
+      assignment.employeeAssignment.selectedDescription = description;
+      assignment.employeeAssignment.assignedDate = assignment.employeeAssignment.assignedDate || new Date();
+      assignment.employeeAssignment.effectiveFrom = new Date();
+      delete assignment.employeeAssignment.scheduledChange;
+      assignment.markModified("employeeAssignment");
+
+      await assignment.save();
+    } else {
+      assignment = new Shift({
+        shiftType: cleanShiftType,
+        shiftName: masterShift?.shiftName || `Shift ${cleanShiftType}`,
+        shiftCategory: masterShift?.shiftCategory || 'Regular',
+        timeSlots: masterShift?.timeSlots || [],
+        isBrakeShift: masterShift?.isBrakeShift || false,
+        employeeAssignment: {
+          employeeId: cleanEmpId,
+          employeeName: employeeName.trim(),
+          selectedSlotId: selectedSlotId || null,
+          selectedTimeRange: timeRange,
+          selectedDescription: description,
+          assignedDate: new Date(),
+          effectiveFrom: new Date()
+        },
+        isMasterShift: false,
+        isActive: true
+      });
+
+      await assignment.save();
     }
 
-    const newAssignment = new Shift({
-      shiftType: shiftType.toUpperCase(),
-      shiftName: masterShift?.shiftName || shiftType,
-      shiftCategory: masterShift?.shiftCategory || 'Regular',
-      timeSlots: masterShift?.timeSlots || [],
-      isBrakeShift: masterShift?.isBrakeShift || false,
-      employeeAssignment: {
-        employeeId: employeeId.trim(),
-        employeeName: employeeName.trim(),
-        selectedSlotId: selectedSlotId || null,
-        selectedTimeRange: timeRange,
-        selectedDescription: description,
-        assignedDate: new Date()
-      },
-      isMasterShift: false,
-      isActive: true
-    });
-
-    await newAssignment.save();
+    // Ensure Employee document is synced
+    await Employee.findOneAndUpdate(
+      { employeeId: { $regex: new RegExp(`^${cleanEmpId}$`, "i") } },
+      { shiftType: cleanShiftType }
+    );
 
     await Notification.create({
-      userId: employeeId,
+      userId: cleanEmpId,
       role: "employee",
-      title: "New Shift Assigned",
-      message: `You have been assigned to Shift ${shiftType} (${timeRange})`,
+      title: isUpdate ? "Shift Updated" : "New Shift Assigned",
+      message: isUpdate 
+        ? `Your shift has been updated to Shift ${cleanShiftType} (${timeRange})`
+        : `You have been assigned to Shift ${cleanShiftType} (${timeRange})`,
       type: "attendance"
     });
     
-    sendPushToUser(employeeId, {
-      title: "Shift Assigned",
-      body: `Admin assigned you Shift ${shiftType}`,
+    sendPushToUser(cleanEmpId, {
+      title: isUpdate ? "Shift Updated" : "Shift Assigned",
+      body: `Admin ${isUpdate ? "updated" : "assigned"} your shift to Shift ${cleanShiftType}`,
       url: "/employee/dashboard"
     });
     
-    res.status(201).json({ 
-      success: true,
-      message: "Shift assigned successfully", 
-      data: newAssignment 
+    res.status(isUpdate ? 200 : 201).json({ 
+      success: true, 
+      message: isUpdate ? "Shift updated successfully" : "Shift assigned successfully", 
+      data: assignment 
     });
   } catch (error) {
-    console.error("❌ ASSIGN SHIFT ERROR:", error);
-    
-    if (error.code === 11000) {
-      return res.status(400).json({ 
-        success: false,
-        message: "This employee already has a shift assigned" 
-      });
-    }
-    
+    console.error("❌ ASSIGN/UPDATE SHIFT ERROR:", error);
     res.status(500).json({ 
-      success: false,
-      message: "Server error"
+      success: false, 
+      message: "Server error",
+      error: error.message
     });
   }
 };
@@ -1894,13 +1972,26 @@ exports.getShiftForEmployee = async (req, res) => {
 
     if (!employeeId) {
       return res.status(400).json({ 
-        success: false,
+        success: false, 
         message: "Employee ID is required" 
       });
     }
 
+    const trimmedId = employeeId.trim();
+
+    // 1. First, check Employee record
+    const mongoose = require("mongoose");
+    let employee = await Employee.findOne({ 
+      $or: [
+        { employeeId: { $regex: new RegExp(`^${trimmedId}$`, "i") } },
+        ...(mongoose.Types.ObjectId.isValid(trimmedId) ? [{ _id: trimmedId }] : [])
+      ]
+    });
+
+    const canonicalEmpId = employee?.employeeId || trimmedId;
+
     let employeeShift = await Shift.findOne({ 
-      "employeeAssignment.employeeId": employeeId,
+      "employeeAssignment.employeeId": { $regex: new RegExp(`^${canonicalEmpId}$`, "i") },
       isActive: true,
       isMasterShift: false
     });
@@ -1908,7 +1999,7 @@ exports.getShiftForEmployee = async (req, res) => {
     if (employeeShift) {
       await applyScheduledChangeIfDue(employeeShift);
       employeeShift = await Shift.findOne({ 
-        "employeeAssignment.employeeId": employeeId,
+        "employeeAssignment.employeeId": { $regex: new RegExp(`^${canonicalEmpId}$`, "i") },
         isActive: true,
         isMasterShift: false
       });
@@ -1916,16 +2007,26 @@ exports.getShiftForEmployee = async (req, res) => {
 
     if (!employeeShift) {
       employeeShift = await Shift.findOne({ 
-        employeeId: employeeId,
+        employeeId: { $regex: new RegExp(`^${canonicalEmpId}$`, "i") },
         isMasterShift: { $exists: false }
       });
     }
 
+    // 2. If Employee has shiftType in Employee document, ensure Shift collection matches!
+    if (employee && employee.shiftType) {
+      const scheduledChange = employeeShift?.employeeAssignment?.scheduledChange;
+      // If no assignment exists, OR if shiftType in Employee collection was updated and differs from assignment (without future scheduled change)
+      if (!employeeShift || (employeeShift.shiftType !== employee.shiftType && !scheduledChange)) {
+        console.log(`🔄 Syncing Shift collection for ${canonicalEmpId} to Employee.shiftType: ${employee.shiftType}`);
+        employeeShift = await syncEmployeeShift(canonicalEmpId, employee.name, employee.shiftType);
+      }
+    }
+
     if (!employeeShift) {
       return res.status(404).json({ 
-        success: false,
-        message: "No shift assigned to this employee",
-        data: null
+        success: false, 
+        message: "No shift assigned to this employee", 
+        data: null 
       });
     }
 
@@ -1966,15 +2067,15 @@ exports.getShiftForEmployee = async (req, res) => {
     }
 
     res.status(200).json({ 
-      success: true,
-      data: responseData
+      success: true, 
+      data: responseData 
     });
     
   } catch (error) {
     console.error("❌ GET SHIFT FOR EMPLOYEE ERROR:", error);
     res.status(500).json({ 
-      success: false,
-      message: "Server error",
+      success: false, 
+      message: "Server error", 
       error: error.message 
     });
   }

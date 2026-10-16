@@ -4406,6 +4406,7 @@ const getEmployeeByPhone = async (req, res) => {
 };
 
 // ==================== ADD EMPLOYEE ====================
+// ==================== ADD EMPLOYEE ====================
 const addEmployee = async (req, res) => {
   try {
     const {
@@ -4514,6 +4515,16 @@ const addEmployee = async (req, res) => {
       assignedWorkingDays: assignedWorkingDays > 0 ? assignedWorkingDays : 26
     });
     await newEmployee.save();
+
+    if (shiftType) {
+      try {
+        const { syncEmployeeShift } = require("./shift.controller");
+        await syncEmployeeShift(newEmployee.employeeId, newEmployee.name, shiftType);
+        console.log(`✅ [ADD] Shift synced to ${shiftType} for ${newEmployee.employeeId}`);
+      } catch (shiftSyncErr) {
+        console.error("⚠️ Failed to sync shift on employee add:", shiftSyncErr.message);
+      }
+    }
     
     // ✅ FIX: Dono "data" aur "employee" keys bhejo
     res.status(201).json({ 
@@ -4527,7 +4538,6 @@ const addEmployee = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error", error: error.message });
   }
 };
-
 // ==================== GET ALL EMPLOYEES ====================
 const getEmployees = async (req, res) => {
   try {
@@ -4889,6 +4899,16 @@ const updateEmployee = async (req, res) => {
     });
     
     console.log("✅ [UPDATE] Employee updated. New name:", updatedEmployee.name);
+
+    if (updateData.shiftType) {
+      try {
+        const { syncEmployeeShift } = require("./shift.controller");
+        await syncEmployeeShift(updatedEmployee.employeeId, updatedEmployee.name, updateData.shiftType);
+        console.log(`✅ [UPDATE] Shift synced to ${updateData.shiftType} for ${updatedEmployee.employeeId}`);
+      } catch (shiftSyncErr) {
+        console.error("⚠️ Failed to sync shift on employee update:", shiftSyncErr.message);
+      }
+    }
     
     res.status(200).json({ 
       success: true, 

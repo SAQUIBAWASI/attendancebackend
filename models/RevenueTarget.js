@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════
-// NEW: Revenue Target Schema
+// Revenue Target Schema (with category support)
 // File: models/RevenueTarget.js
 // ═══════════════════════════════════════════════════════════════════════
 const mongoose = require("mongoose");
@@ -12,6 +12,13 @@ const revenueTargetSchema = new mongoose.Schema(
     },
     year: {
       type: Number,
+    },
+
+    // ── 🆕 Category (Clinic / Lab / Clinic Pharmacy / Retail Pharmacy) ──
+    category: {
+      type: String,
+      enum: ["clinic", "lab", "clinicPharmacy", "retailPharmacy"],
+      default: "clinic",
     },
 
     // ── Target Details ──
@@ -50,6 +57,10 @@ const revenueTargetSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-revenueTargetSchema.index({ month: 1, year: 1 }, { unique: true });
+// ── 🔑 Compound unique index — same month+year me har category ka apna target ──
+// (clinic, lab, clinicPharmacy, retailPharmacy) — 4 rows per month max
+revenueTargetSchema.index(
+  { month: 1, year: 1, category: 1 },
+);
 
 module.exports = mongoose.model("RevenueTarget", revenueTargetSchema);

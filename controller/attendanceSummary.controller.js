@@ -9640,6 +9640,45 @@ const calculateWeekOffsForDay = (year, month, targetDay) => {
   return count;
 };
 
+
+
+
+const parseHMGlobal = (t) => {
+  if (!t) return null;
+  const m = String(t).trim().match(/(\d{1,2})[:.](\d{2})\s*(AM|PM|am|pm)?/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const mn = parseInt(m[2], 10);
+  const ampm = m[3] ? m[3].toUpperCase() : null;
+  if (ampm === 'PM' && h < 12) h += 12;
+  if (ampm === 'AM' && h === 12) h = 0;
+  const formatted24 = `${String(h).padStart(2, '0')}:${String(mn).padStart(2, '0')}`;
+  return { h, m: mn, formatted24 };
+};
+
+const HARDCODED_SHIFT_TIMES_GLOBAL = {
+  "A":  { start: "07:00", end: "17:00" },
+  "B":  { start: "10:00", end: "19:00" },
+  "C":  { start: "11:00", end: "20:00" },
+  "D":  { start: "09:00", end: "21:00" },
+  "E":  { start: "07:00", end: "21:30" },
+  "F":  { start: "06:30", end: "22:00" },
+  "G":  { start: "16:00", end: "23:00" },
+  "H":  { start: "17:00", end: "22:00" },
+  "I":  { start: "18:00", end: "22:00" },
+  "J":  { start: "10:00", end: "22:00" },
+  "K":  { start: "10:00", end: "21:30" },
+  "L":  { start: "01:00", end: "12:00" },
+  "M":  { start: "08:00", end: "14:00" },
+  "N":  { start: "18:00", end: "23:00" },
+  "O":  { start: "17:00", end: "23:00" },
+  "P":  { start: "06:30", end: "17:00" },
+  "S":  { start: "06:30", end: "13:00" },
+  "BR": { start: "07:00", end: "21:30" },
+};
+
+
+
 const getDefaultShiftTime = (shiftType) => {
   switch (shiftType) {
     case "Morning": return { start: "06:00", end: "15:00" };
@@ -9650,24 +9689,25 @@ const getDefaultShiftTime = (shiftType) => {
   }
 };
 
-const getEmployeeShift = (employeeId, shiftsData, masterShifts) => {
-  if (!shiftsData || !masterShifts) return null;
 
-  let assignedShift = shiftsData.find(
+
+
+const getEmployeeShift = (employeeId, shiftsData = [], masterShifts = [], emp = null) => {
+  let startTime = null;
+  let endTime = null;
+  let shiftName = "General";
+  let shiftType = emp?.shiftType || "General";
+  let duration = 9;
+
+  let assignedShift = Array.isArray(shiftsData) ? shiftsData.find(
     (s) =>
       s.employeeAssignment &&
       (s.employeeAssignment.employeeId === employeeId || s.employeeAssignment.employeeId === String(employeeId))
-  );
-
-  let startTime = "10:00";
-  let endTime = "19:00";
-  let shiftName = "General";
-  let shiftType = "General";
-  let duration = 9;
+  ) : null;
 
   if (assignedShift && assignedShift.employeeAssignment) {
-    shiftName = assignedShift.shiftName;
-    shiftType = assignedShift.shiftType;
+    shiftName = assignedShift.shiftName || shiftName;
+    shiftType = assignedShift.shiftType || shiftType;
 
     const empAssign = assignedShift.employeeAssignment;
 
@@ -9675,7 +9715,7 @@ const getEmployeeShift = (employeeId, shiftsData, masterShifts) => {
       startTime = empAssign.startTime;
       endTime = empAssign.endTime;
     } else if (empAssign.selectedTimeRange) {
-      const parts = empAssign.selectedTimeRange.split("-").map(p => p.trim());
+      const parts = String(empAssign.selectedTimeRange).split(/[-]| to /i).map(p => p.trim());
       if (parts.length === 2) {
         startTime = parts[0];
         endTime = parts[1];
@@ -9683,38 +9723,63 @@ const getEmployeeShift = (employeeId, shiftsData, masterShifts) => {
     }
   }
 
-  if (startTime && endTime) {
-    const start = new Date(`2000-01-01T${startTime}`);
-    const end = new Date(`2000-01-01T${endTime}`);
-    if (end < start) end.setDate(end.getDate() + 1);
-    const diff = (end - start) / (1000 * 60 * 60);
-    duration = Number(diff.toFixed(2));
+  // Fallback to emp properties
+  if ((!startTime || !endTime) && emp) {
+    if (emp.shiftStart && emp.shiftEnd) {
+      startTime = emp.shiftStart;
+      endTime = emp.shiftEnd;
+    }
+    if (emp.shiftType) {
+      shiftType = emp.shiftType;
+    }
   }
+
+  // Fallback to HARDCODED map
+  if ((!startTime || !endTime) && shiftType && HARDCODED_SHIFT_TIMES_GLOBAL[shiftType]) {
+    startTime = HARDCODED_SHIFT_TIMES_GLOBAL[shiftType].start;
+    endTime = HARDCODED_SHIFT_TIMES_GLOBAL[shiftType].end;
+  }
+
+  if (!startTime) startTime = "09:00";
+  if (!endTime) endTime = "18:00";
+
+  const st = parseHMGlobal(startTime) || { h: 9, m: 0, formatted24: "09:00" };
+  const en = parseHMGlobal(endTime) || { h: 18, m: 0, formatted24: "18:00" };
+
+  let sm = st.h * 60 + st.m;
+  let em = en.h * 60 + en.m;
+  if (em <= sm) em += 24 * 60;
+  duration = Number(((em - sm) / 60).toFixed(2));
 
   return {
     name: shiftName,
     type: shiftType,
-    startTime: startTime,
-    endTime: endTime,
-    duration: duration,
+    startTime: st.formatted24,
+    endTime: en.formatted24,
+    startHour: st.h,
+    startMinute: st.m,
+    endHour: en.h,
+    endMinute: en.m,
+    duration: (duration > 0 && duration <= 24) ? duration : 9,
     isBrakeShift: assignedShift ? (assignedShift.isBrakeShift || assignedShift.shiftCategory === 'Brake') : false
   };
 };
 
+
+
 const calculateShiftDayType = (hours, shiftDuration) => {
   const h = parseFloat(hours) || 0;
-  const shift = parseFloat(shiftDuration) || 9;
+  const shift = (parseFloat(shiftDuration) > 0 && !isNaN(shiftDuration)) ? parseFloat(shiftDuration) : 9;
 
-  if (shift >= 3 && shift <= 6) {
-    if (h >= shift * 0.9) return "full";
-    if (h >= shift * 0.5) return "half";
-    return "full_leave";
-  }
+  const fullDayThreshold = shift * 0.85;
+  const halfDayThreshold = shift * 0.45;
 
-  if (h >= shift * 0.9) return "full";
-  if (h >= shift * 0.5) return "half";
+  if (h >= fullDayThreshold) return "full";
+  if (h >= halfDayThreshold) return "half";
   return "full_leave";
 };
+
+
 
 const calculateShiftOT = (checkOutTime, shiftEndTimeStr, checkInTime, actualHours, shiftDuration) => {
   if (actualHours && shiftDuration) {
@@ -9851,10 +9916,14 @@ exports.updateAttendance = async (req, res) => {
       if (sanitizedCheckIn && sanitizedCheckOut) {
         const start = new Date(sanitizedCheckIn);
         const end = new Date(sanitizedCheckOut);
+        let diffMs = end.getTime() - start.getTime();
+        if (diffMs < 0) diffMs += 24 * 60 * 60 * 1000;
+        const diffHours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
+
         updateData.status = "checked-out";
-        if (hours === undefined || hours === null) {
-          updateData.totalHours = parseFloat(((end - start) / (1000 * 60 * 60)).toFixed(2));
-          updateData.hours = updateData.totalHours;
+        if (hours === undefined || hours === null || hours === "" || parseFloat(hours) <= 0) {
+          updateData.totalHours = diffHours;
+          updateData.hours = diffHours;
         }
       }
 
@@ -10012,6 +10081,8 @@ exports.updateAttendance = async (req, res) => {
     });
   }
 };
+
+
 exports.calculateSummary = async (req, res) => {
   try {
     const { fromDate, toDate, month } = req.body;
@@ -10270,24 +10341,49 @@ exports.calculateSummary = async (req, res) => {
     const summaryArray = Object.values(summaryMap);
 
     if (summaryArray.length > 0 && processedMonth) {
+      // ✅ Preserve existing paymentStatus and isProcessed before refreshing summaries
+      const existingSummaries = await AttendanceSummary.find(
+        { month: processedMonth },
+        "employeeId paymentStatus isProcessed"
+      ).lean();
+      const existingStatusMap = {};
+      existingSummaries.forEach(e => {
+        if (e.employeeId && e.paymentStatus) {
+          const k = String(e.employeeId).trim().toUpperCase();
+          existingStatusMap[k] = {
+            paymentStatus: e.paymentStatus,
+            isProcessed: e.isProcessed !== undefined ? e.isProcessed : (e.paymentStatus === "Paid")
+          };
+        }
+      });
+
       await AttendanceSummary.deleteMany({ month: processedMonth });
 
-      const summariesToSave = summaryArray.map(s => ({
-        ...s,
-        month: processedMonth,
-        salaryPerMonthSnapshot: s.salaryPerMonth,
-        basicPaySnapshot: s.basicPay,
-        hraSnapshot: s.hra,
-        conveyanceAllowanceSnapshot: s.conveyanceAllowance,
-        medicalAllowanceSnapshot: s.medicalAllowance,
-        performanceAllowanceSnapshot: s.performanceAllowance,
-        specialAllowanceSnapshot: s.specialAllowance,
-        ptaxSnapshot: s.ptax,
-        gmcAmountSnapshot: s.gmcAmount,
-        otherDeductionsSnapshot: s.otherDeductions,
-        calculatedAt: new Date(),
-        createdAt: new Date()
-      }));
+      const summariesToSave = summaryArray.map(s => {
+        const k = String(s.employeeId || "").trim().toUpperCase();
+        const prev = existingStatusMap[k] || {};
+        const finalPaymentStatus = prev.paymentStatus || s.paymentStatus || "Pending";
+        const finalIsProcessed = prev.isProcessed !== undefined ? prev.isProcessed : (finalPaymentStatus === "Paid");
+        return {
+          ...s,
+          month: processedMonth,
+          paymentStatus: finalPaymentStatus,
+          isProcessed: finalIsProcessed,
+          salaryPerMonthSnapshot: s.salaryPerMonth,
+          basicPaySnapshot: s.basicPay,
+          hraSnapshot: s.hra,
+          conveyanceAllowanceSnapshot: s.conveyanceAllowance,
+          medicalAllowanceSnapshot: s.medicalAllowance,
+          performanceAllowanceSnapshot: s.performanceAllowance,
+          specialAllowanceSnapshot: s.specialAllowance,
+          ptaxSnapshot: s.ptax,
+          gmcAmountSnapshot: s.gmcAmount,
+          otherDeductionsSnapshot: s.otherDeductions,
+          calculatedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+      });
 
       await AttendanceSummary.insertMany(summariesToSave);
     }
@@ -10314,41 +10410,66 @@ exports.saveSummary = async (req, res) => {
       deleteQuery.toDate = toDate;
     }
 
+    // ✅ Preserve existing paymentStatus and isProcessed before refreshing summaries
+    const existingSummaries = await AttendanceSummary.find(
+      deleteQuery,
+      "employeeId paymentStatus isProcessed"
+    ).lean();
+    const existingStatusMap = {};
+    existingSummaries.forEach(e => {
+      if (e.employeeId && e.paymentStatus) {
+        const k = String(e.employeeId).trim().toUpperCase();
+        existingStatusMap[k] = {
+          paymentStatus: e.paymentStatus,
+          isProcessed: e.isProcessed !== undefined ? e.isProcessed : (e.paymentStatus === "Paid")
+        };
+      }
+    });
+
     if (Object.keys(deleteQuery).length > 0) {
       await AttendanceSummary.deleteMany(deleteQuery);
     }
 
-    const insertData = summaries.map((summary) => ({
-      employeeId: summary.employeeId,
-      name: summary.name,
-      month: summary.month,
-      presentDays: summary.presentDays || 0,
-      lateDays: summary.lateDays || 0,
-      onsiteDays: summary.onsiteDays || 0,
-      halfDayWorking: summary.halfDayWorking || summary.halfDayLeaves || 0,
-      fullDayNotWorking: summary.fullDayNotWorking || summary.fullDayLeaves || 0,
-      totalWorkingDays: summary.totalWorkingDays || 0,
-      fromDate: fromDate || null,
-      toDate: toDate || null,
-      calculatedSalary: summary.calculatedSalary || 0,
-      workingDays: summary.workingDays || 0,
-      overTimeHours: summary.overTimeHours || 0,
-      onsiteYesDays: summary.onsiteYesDays || 0,
-      onsiteNoDays: summary.onsiteNoDays || 0,
-      reasonCount: summary.reasonCount || { onsite: 0, fieldWork: 0, workFromHome: 0 },
-      extraWork: summary.extraWork || { extraDays: 0, extraHours: 0, bonus: 0, deductions: 0, reason: "" },
-      salaryPerMonthSnapshot: summary.salaryPerMonthSnapshot || summary.salaryPerMonth || 0,
-      basicPaySnapshot: summary.basicPaySnapshot || summary.basicPay || 0,
-      hraSnapshot: summary.hraSnapshot || summary.hra || 0,
-      conveyanceAllowanceSnapshot: summary.conveyanceAllowanceSnapshot || summary.conveyanceAllowance || 0,
-      medicalAllowanceSnapshot: summary.medicalAllowanceSnapshot || summary.medicalAllowance || 0,
-      performanceAllowanceSnapshot: summary.performanceAllowanceSnapshot || summary.performanceAllowance || 0,
-      specialAllowanceSnapshot: summary.specialAllowanceSnapshot || summary.specialAllowance || 0,
-      ptaxSnapshot: summary.ptaxSnapshot || summary.ptax || 0,
-      gmcAmountSnapshot: summary.gmcAmountSnapshot || summary.gmcAmount || 0,
-      otherDeductionsSnapshot: summary.otherDeductionsSnapshot || summary.otherDeductions || 0,
-      createdAt: new Date()
-    }));
+    const insertData = summaries.map((summary) => {
+      const k = String(summary.employeeId || "").trim().toUpperCase();
+      const prev = existingStatusMap[k] || {};
+      const finalPaymentStatus = summary.paymentStatus || prev.paymentStatus || "Pending";
+      const finalIsProcessed = summary.isProcessed !== undefined ? summary.isProcessed : (prev.isProcessed !== undefined ? prev.isProcessed : (finalPaymentStatus === "Paid"));
+      return {
+        employeeId: summary.employeeId,
+        name: summary.name,
+        month: summary.month,
+        presentDays: summary.presentDays || 0,
+        lateDays: summary.lateDays || 0,
+        onsiteDays: summary.onsiteDays || 0,
+        halfDayWorking: summary.halfDayWorking || summary.halfDayLeaves || 0,
+        fullDayNotWorking: summary.fullDayNotWorking || summary.fullDayLeaves || 0,
+        totalWorkingDays: summary.totalWorkingDays || 0,
+        fromDate: fromDate || null,
+        toDate: toDate || null,
+        calculatedSalary: summary.calculatedSalary || 0,
+        workingDays: summary.workingDays || 0,
+        overTimeHours: summary.overTimeHours || 0,
+        onsiteYesDays: summary.onsiteYesDays || 0,
+        onsiteNoDays: summary.onsiteNoDays || 0,
+        reasonCount: summary.reasonCount || { onsite: 0, fieldWork: 0, workFromHome: 0 },
+        extraWork: summary.extraWork || { extraDays: 0, extraHours: 0, bonus: 0, deductions: 0, reason: "" },
+        salaryPerMonthSnapshot: summary.salaryPerMonthSnapshot || summary.salaryPerMonth || 0,
+        basicPaySnapshot: summary.basicPaySnapshot || summary.basicPay || 0,
+        hraSnapshot: summary.hraSnapshot || summary.hra || 0,
+        conveyanceAllowanceSnapshot: summary.conveyanceAllowanceSnapshot || summary.conveyanceAllowance || 0,
+        medicalAllowanceSnapshot: summary.medicalAllowanceSnapshot || summary.medicalAllowance || 0,
+        performanceAllowanceSnapshot: summary.performanceAllowanceSnapshot || summary.performanceAllowance || 0,
+        specialAllowanceSnapshot: summary.specialAllowanceSnapshot || summary.specialAllowance || 0,
+        ptaxSnapshot: summary.ptaxSnapshot || summary.ptax || 0,
+        gmcAmountSnapshot: summary.gmcAmountSnapshot || summary.gmcAmount || 0,
+        otherDeductionsSnapshot: summary.otherDeductionsSnapshot || summary.otherDeductions || 0,
+        paymentStatus: finalPaymentStatus,
+        isProcessed: finalIsProcessed,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+    });
 
     const result = await AttendanceSummary.insertMany(insertData);
 
@@ -10358,6 +10479,9 @@ exports.saveSummary = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+
+
 
 exports.getSummary = async (req, res) => {
   try {
@@ -11203,7 +11327,14 @@ exports.getBulkPayrollData = async (req, res) => {
 
     const summaryMap = {};
     summaries.forEach(s => {
-      summaryMap[s.employeeId] = s;
+      if (s.employeeId) {
+        const raw = String(s.employeeId);
+        const trimmed = raw.trim();
+        const upper = trimmed.toUpperCase();
+        summaryMap[raw] = s;
+        summaryMap[trimmed] = s;
+        summaryMap[upper] = s;
+      }
     });
 
     res.json({
@@ -11370,6 +11501,7 @@ exports.getSummaryPageData = async (req, res) => {
       "N":  { start: "18:00", end: "23:00" },
       "O":  { start: "17:00", end: "23:00" },
       "P":  { start: "06:30", end: "17:00" },
+      "S":  { start: "06:30", end: "13:00" },
       "BR": { start: "07:00", end: "21:30" },
     };
 
@@ -11446,9 +11578,9 @@ exports.getSummaryPageData = async (req, res) => {
 
     const getDayType = (hours, shiftHrs) => {
       const h = parseFloat(hours) || 0;
-      const sh = shiftHrs || 9;
-      if (h >= sh * 0.9) return 'full';
-      if (h >= sh * 0.5) return 'half';
+      const sh = (parseFloat(shiftHrs) > 0 && !isNaN(shiftHrs)) ? parseFloat(shiftHrs) : 9;
+      if (h >= sh * 0.85) return 'full';
+      if (h >= sh * 0.45) return 'half';
       return 'full_leave';
     };
 
@@ -11643,7 +11775,6 @@ exports.getSummaryPageData = async (req, res) => {
 
 
 
-
 exports.updatePayrollStatus = async (req, res) => {
   try {
     const { employeeId, month, paymentStatus } = req.body;
@@ -11664,12 +11795,35 @@ exports.updatePayrollStatus = async (req, res) => {
 
     const AttendanceSummary = require("../models/AttendanceSummary");
 
-    const updated = await AttendanceSummary.findOneAndUpdate(
-      { employeeId, month },
+    const cleanEmpId = String(employeeId).trim();
+    const cleanMonth = String(month).trim();
+    const isPaid = paymentStatus === "Paid";
+
+    await AttendanceSummary.updateMany(
+      { 
+        employeeId: { $regex: new RegExp("^" + cleanEmpId + "$", "i") },
+        month: cleanMonth
+      },
       { 
         $set: { 
           paymentStatus,
-          isProcessed: paymentStatus === "Paid",
+          isProcessed: isPaid,
+          updatedAt: new Date()
+        } 
+      }
+    );
+
+    const updated = await AttendanceSummary.findOneAndUpdate(
+      { 
+        employeeId: cleanEmpId, 
+        month: cleanMonth 
+      },
+      { 
+        $set: { 
+          employeeId: cleanEmpId,
+          month: cleanMonth,
+          paymentStatus,
+          isProcessed: isPaid,
           updatedAt: new Date()
         } 
       },
@@ -11688,5 +11842,173 @@ exports.updatePayrollStatus = async (req, res) => {
       success: false,
       message: error.message
     });
+  }
+};
+
+
+
+// =========================================================================
+// 🚀 BULK UPDATE ATTENDANCE (1-Click Bulk Save for Attendance Modal)
+// =========================================================================
+exports.bulkUpdateAttendance = async (req, res) => {
+  try {
+    const { employeeId, month, updates } = req.body;
+
+    if (!employeeId || !Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'employeeId and a non-empty updates array are required'
+      });
+    }
+
+    const Attendance = require("../models/Attendance");
+    const Employee = require("../models/Employee");
+    const Shift = require("../models/Shift");
+
+    const emp = await Employee.findOne({ employeeId });
+    const allShifts = await Shift.find({});
+    const masterShifts = allShifts.filter(s => s.isMasterShift);
+    const shiftInfo = getEmployeeShift(employeeId, allShifts, masterShifts, emp);
+    const shiftDuration = (shiftInfo?.duration && !isNaN(shiftInfo.duration)) ? shiftInfo.duration : (emp?.shiftHours || 9);
+
+    const sanitizeDateTime = (str) => {
+      if (!str) return null;
+      let s = String(str).trim();
+      s = s.replace(/T(\d{1,2}):(\d{2})\s*(AM|PM):/i, (m, h, mn, ap) => {
+        let hh = parseInt(h, 10);
+        const apU = ap.toUpperCase();
+        if (apU === 'PM' && hh < 12) hh += 12;
+        if (apU === 'AM' && hh === 12) hh = 0;
+        return `T${String(hh).padStart(2, '0')}:${mn}:`;
+      });
+      s = s.replace(/T(\d{1,2}):(\d{2})\s*(AM|PM)$/i, (m, h, mn, ap) => {
+        let hh = parseInt(h, 10);
+        const apU = ap.toUpperCase();
+        if (apU === 'PM' && hh < 12) hh += 12;
+        if (apU === 'AM' && hh === 12) hh = 0;
+        return `T${String(hh).padStart(2, '0')}:${mn}`;
+      });
+      s = s.replace(/\s*(AM|PM)/gi, '');
+      return s;
+    };
+
+    let updatedCount = 0;
+    let targetMonth = month;
+
+    for (const item of updates) {
+      const { attendanceId, date, hours, region, reason, checkInTime, checkOutTime, comment } = item;
+      const sanitizedCheckIn = sanitizeDateTime(checkInTime);
+      const sanitizedCheckOut = sanitizeDateTime(checkOutTime);
+
+      let newCheckIn = sanitizedCheckIn ? new Date(sanitizedCheckIn) : null;
+      if (newCheckIn && isNaN(newCheckIn.getTime())) newCheckIn = null;
+
+      let newCheckOut = sanitizedCheckOut ? new Date(sanitizedCheckOut) : null;
+      if (newCheckOut && isNaN(newCheckOut.getTime())) newCheckOut = null;
+
+      let totalHours = parseFloat(hours);
+      if (isNaN(totalHours) || totalHours <= 0) {
+        if (newCheckIn && newCheckOut) {
+          let diffMs = newCheckOut.getTime() - newCheckIn.getTime();
+          if (diffMs < 0) diffMs += 24 * 60 * 60 * 1000;
+          totalHours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
+        } else {
+          totalHours = shiftDuration;
+        }
+      }
+
+      if (!targetMonth && newCheckIn) {
+        targetMonth = `${newCheckIn.getFullYear()}-${String(newCheckIn.getMonth() + 1).padStart(2, "0")}`;
+      } else if (!targetMonth && date) {
+        targetMonth = String(date).slice(0, 7);
+      }
+
+      if (attendanceId) {
+        const updateData = {
+          totalHours,
+          hours: totalHours,
+          reason: reason || "Onsite",
+          comment: comment || "Bulk updated by Admin",
+          status: newCheckOut ? "checked-out" : "checked-in",
+          onsite: reason === "Onsite",
+          dayType: calculateShiftDayType(totalHours, shiftDuration),
+          updatedAt: new Date()
+        };
+        if (newCheckIn) updateData.checkInTime = newCheckIn;
+        if (newCheckOut) updateData.checkOutTime = newCheckOut;
+        if (region !== undefined) updateData.region = region;
+
+        await Attendance.findByIdAndUpdate(attendanceId, updateData, { new: true, runValidators: false });
+        updatedCount++;
+      } else if (date) {
+        const effectiveCheckIn = newCheckIn || (shiftInfo.startTime ? new Date(`${date}T${shiftInfo.startTime}:00`) : new Date(`${date}T09:00:00`));
+        const effectiveCheckOut = newCheckOut || (shiftInfo.endTime ? new Date(`${date}T${shiftInfo.endTime}:00`) : new Date(`${date}T18:00:00`));
+
+        const startOfDay = new Date(date);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(date);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const existingRecord = await Attendance.findOne({
+          employeeId,
+          checkInTime: { $gte: startOfDay, $lte: endOfDay }
+        });
+
+        if (existingRecord) {
+          await Attendance.findByIdAndUpdate(existingRecord._id, {
+            totalHours,
+            hours: totalHours,
+            reason: reason || "Onsite",
+            comment: comment || "Bulk updated by Admin",
+            checkInTime: effectiveCheckIn,
+            checkOutTime: effectiveCheckOut,
+            status: effectiveCheckOut ? "checked-out" : "checked-in",
+            onsite: reason === "Onsite",
+            dayType: calculateShiftDayType(totalHours, shiftDuration),
+            updatedAt: new Date()
+          });
+        } else {
+          await Attendance.create({
+            employeeId,
+            employeeEmail: emp ? emp.email : "",
+            name: emp ? emp.name : "",
+            checkInTime: effectiveCheckIn,
+            checkOutTime: effectiveCheckOut,
+            totalHours,
+            hours: totalHours,
+            reason: reason || "Onsite",
+            comment: comment || "Bulk updated by Admin",
+            status: effectiveCheckOut ? "checked-out" : "checked-in",
+            onsite: reason === "Onsite",
+            dayType: calculateShiftDayType(totalHours, shiftDuration)
+          });
+        }
+        updatedCount++;
+      }
+    }
+
+    if (targetMonth) {
+      try {
+        await exports.calculateSummary(
+          null,
+          null,
+          targetMonth,
+          null,
+          true
+        );
+      } catch (err) {
+        console.warn("⚠️ calculateSummary warning after bulkUpdateAttendance:", err.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Successfully updated ${updatedCount} attendance records`,
+      count: updatedCount
+    });
+
+  } catch (error) {
+    console.error("❌ Error in bulkUpdateAttendance:", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };

@@ -1612,56 +1612,45 @@ router.get("/op-dashboard-stats", async (req, res) => {
 router.get("/revenue-analytics", async (req, res) => {
   try {
     // ═══════════════════════════════════════════════════════════
-    // 1️⃣ BUILD MONGO QUERY (date filter only — lightweight)
+    // 1️⃣ BUILD MONGO QUERY (unchanged)
     // ═══════════════════════════════════════════════════════════
-    const mongoQuery = {
-      isActive: { $ne: false },
-    };
-
+    const mongoQuery = { isActive: { $ne: false } };
     const { from, to, timeFilter } = req.query;
 
-    // ✅ Track resolved dates for Bank Credit lookup
     let resolvedFrom = from || null;
     let resolvedTo = to || null;
 
-    // Priority 1: Explicit from/to dates
     if (from || to) {
       const dateFilter = {};
       if (from) dateFilter.$gte = from;
       if (to) dateFilter.$lte = to;
       mongoQuery.appointmentDate = dateFilter;
-    }
-    // Priority 2: timeFilter preset
-    else if (timeFilter && timeFilter !== "All") {
+    } else if (timeFilter && timeFilter !== "All") {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const pad = (n) => String(n).padStart(2, "0");
-      const fmtDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const padFn = (n) => String(n).padStart(2, "0");
+      const fmtD = (d) => `${d.getFullYear()}-${padFn(d.getMonth() + 1)}-${padFn(d.getDate())}`;
 
       let fromDate = null, toDate = null;
 
-      if (timeFilter === "today") {
-        fromDate = fmtDate(today); toDate = fromDate;
-      } else if (timeFilter === "yesterday") {
-        const y = new Date(today); y.setDate(y.getDate() - 1);
-        fromDate = fmtDate(y); toDate = fromDate;
-      } else if (timeFilter === "thisWeek") {
-        const dow = today.getDay();
-        const diff = dow === 0 ? 6 : dow - 1;
+      if (timeFilter === "today") { fromDate = fmtD(today); toDate = fromDate; }
+      else if (timeFilter === "yesterday") { const y = new Date(today); y.setDate(y.getDate() - 1); fromDate = fmtD(y); toDate = fromDate; }
+      else if (timeFilter === "thisWeek") {
+        const dow = today.getDay(); const diff = dow === 0 ? 6 : dow - 1;
         const mon = new Date(today); mon.setDate(mon.getDate() - diff);
-        fromDate = fmtDate(mon); toDate = fmtDate(today);
+        fromDate = fmtD(mon); toDate = fmtD(today);
       } else if (timeFilter === "thisMonth") {
         const first = new Date(today.getFullYear(), today.getMonth(), 1);
         const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-        fromDate = fmtDate(first); toDate = fmtDate(last);
+        fromDate = fmtD(first); toDate = fmtD(last);
       } else if (timeFilter === "lastMonth") {
         const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
         const last = new Date(today.getFullYear(), today.getMonth(), 0);
-        fromDate = fmtDate(first); toDate = fmtDate(last);
+        fromDate = fmtD(first); toDate = fmtD(last);
       } else if (timeFilter === "thisYear") {
         const first = new Date(today.getFullYear(), 0, 1);
         const last = new Date(today.getFullYear(), 11, 31);
-        fromDate = fmtDate(first); toDate = fmtDate(last);
+        fromDate = fmtD(first); toDate = fmtD(last);
       }
 
       if (fromDate && toDate) {
@@ -1672,32 +1661,19 @@ router.get("/revenue-analytics", async (req, res) => {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 2️⃣ FETCH — use .lean() and select only needed fields
+    // 2️⃣ FETCH (unchanged)
     // ═══════════════════════════════════════════════════════════
     const bookings = await Appointment.find(mongoQuery)
       .select({
-        appointmentDate: 1,
-        paymentType: 1,
-        paymentStatus: 1,
-        amountPaid: 1,
-        finalPayable: 1,
-        finalPayableAmount: 1,
-        grandTotal: 1,
-        totalAmount: 1,
-        labTotal: 1,
-        medicineTotal: 1,
-        services: 1,
-        serviceItems: 1,
-        labItems: 1,
-        medicineItems: 1,
-        categoryPayment: 1,
-        reviews: 1,
-        isActive: 1,
+        appointmentDate: 1, paymentType: 1, paymentStatus: 1, amountPaid: 1,
+        finalPayable: 1, finalPayableAmount: 1, grandTotal: 1, totalAmount: 1,
+        labTotal: 1, medicineTotal: 1, services: 1, serviceItems: 1,
+        labItems: 1, medicineItems: 1, categoryPayment: 1, reviews: 1, isActive: 1,
       })
       .lean();
 
     // ═══════════════════════════════════════════════════════════
-    // 3️⃣ HELPERS
+    // 3️⃣ HELPERS (unchanged)
     // ═══════════════════════════════════════════════════════════
     const classifyService = (svc) => {
       if (!svc) return "clinic";
@@ -1717,16 +1693,15 @@ router.get("/revenue-analytics", async (req, res) => {
       else if (m === "insurance") bucket.insurance += amount;
     };
 
-    // ═══════════════════════════════════════════════════════════
-    // 4️⃣ AGGREGATE — build categoryBreakdown in a single pass
-    // ═══════════════════════════════════════════════════════════
-    const categoryBreakdown = {
+    // ✅ NAYA — reusable bucket factory
+    const makeBucket = () => ({
       clinic: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
       lab: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
       pharmacy: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
-    };
+    });
 
-    bookings.forEach((b) => {
+    // ✅ NAYA — reusable aggregate function (ek booking → bucket)
+    const aggregateBooking = (b, categoryBreakdown) => {
       const labItemsArr = Array.isArray(b.labItems) ? b.labItems : [];
       const medItemsArr = Array.isArray(b.medicineItems) ? b.medicineItems : [];
       const hasLabItems = labItemsArr.length > 0;
@@ -1737,7 +1712,6 @@ router.get("/revenue-analytics", async (req, res) => {
         (Array.isArray(b.serviceItems) && b.serviceItems.length > 0 && b.serviceItems) ||
         [];
 
-      // ─── Category totals ───
       let clinic = 0, lab = 0, pharmacy = 0;
       baseServices.forEach((s) => {
         const price = Number(s.price) || 0;
@@ -1748,124 +1722,218 @@ router.get("/revenue-analytics", async (req, res) => {
         else clinic += price;
       });
 
-      if (hasLabItems) {
-        lab = labItemsArr.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
-      } else {
-        lab = Math.max(lab, Number(b.labTotal) || 0);
-      }
+      if (hasLabItems) lab = labItemsArr.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+      else lab = Math.max(lab, Number(b.labTotal) || 0);
 
-      if (hasMedItems) {
-        pharmacy = medItemsArr.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
-      } else {
-        pharmacy = Math.max(pharmacy, Number(b.medicineTotal) || 0);
-      }
+      if (hasMedItems) pharmacy = medItemsArr.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+      else pharmacy = Math.max(pharmacy, Number(b.medicineTotal) || 0);
 
       (Array.isArray(b.reviews) ? b.reviews : []).forEach((r) => {
         clinic += Number(r.price) || 0;
       });
 
-      // ─── Per-category PAID ───
       const cp = b.categoryPayment || {};
       const clinicPaid = Number(cp.clinic?.paidAmount) || 0;
 
       const labPaid = hasLabItems
-        ? labItemsArr.reduce(
-          (sum, item) =>
-            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
-          0
-        )
+        ? labItemsArr.reduce((sum, item) =>
+            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0), 0)
         : (Number(cp.lab?.paidAmount) || 0);
 
       const pharmacyPaid = hasMedItems
-        ? medItemsArr.reduce(
-          (sum, item) =>
-            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
-          0
-        )
+        ? medItemsArr.reduce((sum, item) =>
+            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0), 0)
         : (Number(cp.pharmacy?.paidAmount) || 0);
 
       const clinicDue = Math.max(0, clinic - clinicPaid);
       const labDue = Math.max(0, lab - labPaid);
       const pharmacyDue = Math.max(0, pharmacy - pharmacyPaid);
 
-      // ─── Footfall ───
       if (clinic > 0) categoryBreakdown.clinic.footFall += 1;
       if (lab > 0) categoryBreakdown.lab.footFall += 1;
       if (pharmacy > 0) categoryBreakdown.pharmacy.footFall += 1;
 
       const fallbackMode = (b.paymentType || "cash").toString().toLowerCase();
 
-      // ═══ CLINIC ═══
+      // CLINIC
       categoryBreakdown.clinic.total += clinic;
       categoryBreakdown.clinic.due += clinicDue;
-
       const clinicServicesForMode = baseServices.filter((s) => classifyService(s) === "clinic");
       let clinicPaidDistributed = 0;
-
       if (clinicServicesForMode.length > 0 && clinicServicesForMode.some((s) => s.paymentMode && String(s.paymentMode).trim() !== "")) {
         clinicServicesForMode.forEach((svc) => {
-          const isPaid = (svc.paymentStatus || "").toLowerCase() === "paid";
-          if (!isPaid) return;
+          if ((svc.paymentStatus || "").toLowerCase() !== "paid") return;
           const price = Number(svc.price) || 0;
           addToBucket(categoryBreakdown.clinic, svc.paymentMode, price);
           clinicPaidDistributed += price;
         });
       }
-
       const clinicRemaining = Math.max(0, clinicPaid - clinicPaidDistributed);
-      if (clinicRemaining > 0) {
-        addToBucket(categoryBreakdown.clinic, fallbackMode, clinicRemaining);
-      }
+      if (clinicRemaining > 0) addToBucket(categoryBreakdown.clinic, fallbackMode, clinicRemaining);
 
-      // ═══ LAB ═══
+      // LAB
       categoryBreakdown.lab.total += lab;
       categoryBreakdown.lab.due += labDue;
-
       if (hasLabItems) {
         labItemsArr.forEach((item) => {
           if ((item.paymentStatus || "").toLowerCase() !== "paid") return;
-          const price = Number(item.price) || 0;
-          addToBucket(categoryBreakdown.lab, item.paymentMode || fallbackMode, price);
+          addToBucket(categoryBreakdown.lab, item.paymentMode || fallbackMode, Number(item.price) || 0);
         });
       } else if (labPaid > 0) {
         addToBucket(categoryBreakdown.lab, fallbackMode, labPaid);
       }
 
-      // ═══ PHARMACY ═══
+      // PHARMACY
       categoryBreakdown.pharmacy.total += pharmacy;
       categoryBreakdown.pharmacy.due += pharmacyDue;
-
       if (hasMedItems) {
         medItemsArr.forEach((item) => {
           if ((item.paymentStatus || "").toLowerCase() !== "paid") return;
-          const price = Number(item.price) || 0;
-          addToBucket(categoryBreakdown.pharmacy, item.paymentMode || fallbackMode, price);
+          addToBucket(categoryBreakdown.pharmacy, item.paymentMode || fallbackMode, Number(item.price) || 0);
         });
       } else if (pharmacyPaid > 0) {
         addToBucket(categoryBreakdown.pharmacy, fallbackMode, pharmacyPaid);
       }
-    });
+    };
 
-    // ✅ Round all values
-    Object.keys(categoryBreakdown).forEach((cat) => {
-      Object.keys(categoryBreakdown[cat]).forEach((k) => {
-        if (k === "footFall") {
-          categoryBreakdown[cat][k] = Number(categoryBreakdown[cat][k]) || 0;
-        } else {
-          categoryBreakdown[cat][k] = Math.round(categoryBreakdown[cat][k]);
-        }
+    // ✅ Round helper
+    const roundBucket = (bucket) => {
+      Object.keys(bucket).forEach((cat) => {
+        Object.keys(bucket[cat]).forEach((k) => {
+          if (k === "footFall") bucket[cat][k] = Number(bucket[cat][k]) || 0;
+          else bucket[cat][k] = Math.round(bucket[cat][k]);
+        });
       });
-    });
+    };
 
     // ═══════════════════════════════════════════════════════════
-    // 5️⃣ FETCH SAVED BANK CREDIT (if any for this date range)
+    // 4️⃣ OVERALL AGGREGATE
+    // ═══════════════════════════════════════════════════════════
+    const categoryBreakdown = makeBucket();
+    bookings.forEach((b) => aggregateBooking(b, categoryBreakdown));
+    roundBucket(categoryBreakdown);
+
+    // ═══════════════════════════════════════════════════════════
+    // 5️⃣ BUILD ROWS — daily (≤31 days) or monthly (>31 days)
+    // ═══════════════════════════════════════════════════════════
+    const padL = (n) => String(n).padStart(2, "0");
+    const fmtDateL = (d) => `${d.getFullYear()}-${padL(d.getMonth() + 1)}-${padL(d.getDate())}`;
+    const parseYMD = (s) => {
+      const [y, m, d] = s.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    };
+
+    const rows = [];
+
+    if (resolvedFrom && resolvedTo) {
+      const fromD = parseYMD(resolvedFrom);
+      const toD = parseYMD(resolvedTo);
+      const diffDays = Math.round((toD - fromD) / (1000 * 60 * 60 * 24)) + 1;
+
+      if (diffDays <= 31) {
+        // ✅ DAILY rows
+        const dailyMap = new Map();
+        for (let i = 0; i < diffDays; i++) {
+          const d = new Date(fromD);
+          d.setDate(d.getDate() + i);
+          const key = fmtDateL(d);
+          dailyMap.set(key, { date: key, label: key, bucket: makeBucket(), count: 0 });
+        }
+
+        bookings.forEach((b) => {
+          const key = b.appointmentDate;
+          if (!dailyMap.has(key)) return;
+          const row = dailyMap.get(key);
+          aggregateBooking(b, row.bucket);
+          row.count += 1;
+        });
+
+        dailyMap.forEach((row) => {
+          roundBucket(row.bucket);
+          rows.push({
+            date: row.date,
+            label: row.label,
+            count: row.count,
+            categoryBreakdown: row.bucket,
+          });
+        });
+      } else {
+        // ✅ MONTHLY rows
+        const monthlyMap = new Map();
+        const cursor = new Date(fromD.getFullYear(), fromD.getMonth(), 1);
+        const endMonth = new Date(toD.getFullYear(), toD.getMonth(), 1);
+
+        while (cursor <= endMonth) {
+          const y = cursor.getFullYear();
+          const m = cursor.getMonth() + 1;
+          const key = `${y}-${padL(m)}`;
+          monthlyMap.set(key, {
+            date: key, label: key,
+            year: y, month: m,
+            bucket: makeBucket(), count: 0,
+          });
+          cursor.setMonth(cursor.getMonth() + 1);
+        }
+
+        bookings.forEach((b) => {
+          if (!b.appointmentDate) return;
+          const [y, m] = b.appointmentDate.split("-").map(Number);
+          const key = `${y}-${padL(m)}`;
+          if (!monthlyMap.has(key)) return;
+          const row = monthlyMap.get(key);
+          aggregateBooking(b, row.bucket);
+          row.count += 1;
+        });
+
+        monthlyMap.forEach((row) => {
+          roundBucket(row.bucket);
+          rows.push({
+            date: row.date, label: row.label,
+            year: row.year, month: row.month,
+            count: row.count,
+            categoryBreakdown: row.bucket,
+          });
+        });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 5.5️⃣ ✅ ATTACH PER-ROW BANK CREDIT
+    // ═══════════════════════════════════════════════════════════
+    if (rows.length > 0) {
+      try {
+        const rowKeys = rows.map((r) => r.date);
+        const perRowCredits = await BankCredit.find({
+          rowKey: { $in: rowKeys },
+        }).lean();
+
+        const creditMap = new Map();
+        perRowCredits.forEach((bc) => creditMap.set(bc.rowKey, bc));
+
+        rows.forEach((r) => {
+          const bc = creditMap.get(r.date);
+          r.bankCredit = bc ? {
+            bankCredit: Number(bc.bankCredit) || 0,
+            grandTotal: Number(bc.grandTotal) || 0,
+            creditedDiff: Number(bc.creditedDiff) || 0,
+            diffStatus: bc.diffStatus || "—",
+            retailPharmacy: bc.retailPharmacy || {},
+          } : null;
+        });
+      } catch (bcErr) {
+        console.warn("Per-row bank credit fetch failed:", bcErr.message);
+        rows.forEach((r) => { r.bankCredit = null; });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 6️⃣ FETCH OVERALL BANK CREDIT (only __total__ rowKey)
     // ═══════════════════════════════════════════════════════════
     let bankCreditData = null;
     if (resolvedFrom && resolvedTo) {
       try {
         bankCreditData = await BankCredit.findOne({
-          fromDate: resolvedFrom,
-          toDate: resolvedTo,
+          rowKey: "__total__",
         }).lean();
       } catch (bcErr) {
         console.warn("Bank credit fetch failed (non-blocking):", bcErr.message);
@@ -1873,18 +1941,16 @@ router.get("/revenue-analytics", async (req, res) => {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 6️⃣ RESPONSE — includes both categoryBreakdown + bankCredit
+    // 7️⃣ RESPONSE
     // ═══════════════════════════════════════════════════════════
     return res.status(200).json({
       success: true,
       message: "Revenue analytics fetched successfully",
       count: bookings.length,
       categoryBreakdown,
-      bankCredit: bankCreditData || null,  // ✅ Saved bank credit included
-      dateRange: {
-        from: resolvedFrom,
-        to: resolvedTo,
-      },
+      rows,
+      bankCredit: bankCreditData || null,
+      dateRange: { from: resolvedFrom, to: resolvedTo },
     });
 
   } catch (error) {
@@ -1900,7 +1966,6 @@ router.get("/revenue-analytics", async (req, res) => {
 
 
 
-
 router.post("/save-bank-credit", async (req, res) => {
   try {
     // ═══════════════════════════════════════════════════════════
@@ -1909,39 +1974,28 @@ router.post("/save-bank-credit", async (req, res) => {
     const {
       fromDate,
       toDate,
+      rowKey,           // ✅ NAYA — "YYYY-MM-DD" | "YYYY-MM" | "__total__"
       bankCredit,
       grandTotal,
       creditedDiff,
       diffStatus,
       savedBy,
       notes,
-      retailPharmacy, // ✅ NAYA
+      retailPharmacy,
     } = req.body;
 
-    // ── Validation ──
     if (!fromDate || !toDate) {
-      return res.status(400).json({
-        success: false,
-        message: "fromDate and toDate are required",
-      });
+      return res.status(400).json({ success: false, message: "fromDate and toDate are required" });
     }
-
     if (bankCredit === undefined || bankCredit === null) {
-      return res.status(400).json({
-        success: false,
-        message: "bankCredit amount is required",
-      });
+      return res.status(400).json({ success: false, message: "bankCredit amount is required" });
     }
 
     const bc = Number(bankCredit) || 0;
     if (bc < 0) {
-      return res.status(400).json({
-        success: false,
-        message: "bankCredit cannot be negative",
-      });
+      return res.status(400).json({ success: false, message: "bankCredit cannot be negative" });
     }
 
-    // ✅ Sanitize retailPharmacy object
     const safeNum = (v) => {
       const n = Number(v);
       return isNaN(n) ? 0 : n;
@@ -1959,7 +2013,7 @@ router.post("/save-bank-credit", async (req, res) => {
     };
 
     // ═══════════════════════════════════════════════════════════
-    // 2️⃣ AUTO-COMPUTE DIFF + STATUS (if not provided)
+    // 2️⃣ AUTO-COMPUTE DIFF + STATUS
     // ═══════════════════════════════════════════════════════════
     const gt = Number(grandTotal) || 0;
     const diff = creditedDiff !== undefined ? Number(creditedDiff) : (bc - gt);
@@ -1974,14 +2028,23 @@ router.post("/save-bank-credit", async (req, res) => {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 3️⃣ UPSERT — Create or update for this date range
+    // 3️⃣ UPSERT — rowKey based
+    //    • rowKey present → upsert by rowKey
+    //    • rowKey null    → upsert by fromDate+toDate (legacy)
     // ═══════════════════════════════════════════════════════════
+    const normalizedRowKey = rowKey ? String(rowKey).trim() : null;
+
+    const filter = normalizedRowKey
+      ? { rowKey: normalizedRowKey }
+      : { fromDate, toDate, rowKey: null };
+
     const savedRecord = await BankCredit.findOneAndUpdate(
-      { fromDate, toDate },
+      filter,
       {
         $set: {
           fromDate,
           toDate,
+          rowKey: normalizedRowKey,   // ✅ NAYA
           bankCredit: bc,
           grandTotal: gt,
           creditedDiff: diff,
@@ -1989,7 +2052,7 @@ router.post("/save-bank-credit", async (req, res) => {
           savedBy: savedBy || "Admin",
           savedAt: new Date(),
           notes: notes || "",
-          retailPharmacy: retailPharmacyData, // ✅ NAYA
+          retailPharmacy: retailPharmacyData,
         },
       },
       {
@@ -2000,9 +2063,6 @@ router.post("/save-bank-credit", async (req, res) => {
       }
     );
 
-    // ═══════════════════════════════════════════════════════════
-    // 4️⃣ RESPONSE
-    // ═══════════════════════════════════════════════════════════
     return res.status(200).json({
       success: true,
       message: "Bank credit saved successfully",
