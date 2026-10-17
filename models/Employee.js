@@ -41,7 +41,7 @@
 //     type: Number,
 //     default: 0
 //   },
-  
+
 //   employeeId: { type: String, unique: true, required: true },
 
 //   location: { 
@@ -81,7 +81,7 @@
 //     type: Number,
 //     default: 0
 //   },
-  
+
 //   employeeId: { type: String, unique: true, required: true },
 
 //   location: { 
@@ -106,11 +106,11 @@
 //   name: { type: String, required: true },
 //   email: { type: String, required: true },
 //   password: { type: String, required: true },
-  
+
 //   // ✅ EXISTING FIELDS (कुछ employees में ये fields होंगे)
 //   department: { type: String },
 //   role: { type: String },
-  
+
 //   // ✅ NEW FIELDS (Reference के लिए)
 //   departmentId: { 
 //     type: mongoose.Schema.Types.ObjectId,
@@ -122,7 +122,7 @@
 //     ref: 'Role',
 //     default: null
 //   },
-  
+
 //   // ✅ REST OF YOUR FIELDS
 //   employeeId: { type: String, unique: true, required: true },
 //   joinDate: { type: Date },
@@ -145,7 +145,7 @@
 //   name: { type: String, required: true },
 //   email: { type: String, required: true },
 //   password: { type: String, required: true },
-  
+
 //   departmentId: { 
 //     type: mongoose.Schema.Types.ObjectId,
 //     ref: 'Department',
@@ -158,11 +158,11 @@
 //   },
 //   department: { type: String },
 //   role: { type: String },
-  
+
 //   employeeId: { type: String, unique: true, required: true },
 //   joinDate: { type: Date },
 //   dob: { type: Date },
-  
+
 //   // ✅ COMPLETE ADDRESS FIELDS
 //   addressLine1: { type: String },
 //   addressLine2: { type: String },
@@ -170,7 +170,7 @@
 //   state: { type: String },
 //   pinCode: { type: String },
 //   country: { type: String, default: "India" },
-  
+
 //   // Keep for backward compatibility
 //   address: { type: String },
 //   phone: { type: String },
@@ -179,7 +179,7 @@
 //   salaryPerMonth: { type: Number, default: 0 },
 //   shiftHours: { type: Number, default: 0 },
 //   weekOffPerMonth: { type: Number, default: 0 },
-  
+
 //   weekOffType: { 
 //     type: String, 
 //     enum: ['day', 'number', ''], 
@@ -212,7 +212,7 @@
 //   phone: { type: String, required: true, unique: true },
 //   alternateNumber: { type: String },
 //   parentsName: { type: String },
-  
+
 //   // Bank & Statutory Details
 //   bankName: { type: String, default: "" },
 //   bankAccountNo: { type: String, default: "" },
@@ -222,12 +222,12 @@
 //   uanNumber: { type: String, default: "" },
 //   esicNumber: { type: String, default: "" },
 //   branch: { type: String, default: "" },
-  
+
 //   // Employment Info
 //   employeeId: { type: String, unique: true, required: true },
 //   joinDate: { type: Date, required: true },
 //   dob: { type: Date },
-  
+
 //   // Department & Role
 //   departmentId: { 
 //     type: mongoose.Schema.Types.ObjectId,
@@ -241,7 +241,7 @@
 //   },
 //   department: { type: String, required: true },
 //   role: { type: String, required: true },
-  
+
 //   // Address
 //   addressLine1: { type: String, required: true },
 //   addressLine2: { type: String },
@@ -249,18 +249,18 @@
 //   state: { type: String, required: true },
 //   pinCode: { type: String, required: true },
 //   country: { type: String, default: "India" },
-  
+
 //   // Location
 //   location: { 
 //     type: mongoose.Schema.Types.ObjectId, 
 //     ref: "Location", 
 //     default: null 
 //   },
-  
+
 //   // Shift & Schedule
 //   shiftType: { type: String, default: "A" },
 //   shiftHours: { type: Number, default: 8 },
-  
+
 //   // Salary
 //   salaryPerMonth: { type: Number, default: 0 },
 //   ctc: { type: Number, default: 0 },
@@ -275,7 +275,7 @@
 //   gmcAmount: { type: Number, default: 0 },
 //   otherDeductions: { type: Number, default: 0 },
 //   weekOffPerMonth: { type: Number, default: 0 },
-  
+
 //   // Week Off
 //   weekOffType: { 
 //     type: String, 
@@ -283,26 +283,26 @@
 //     default: '' 
 //   },
 //   weekOffCount: { type: Number, default: 0 },
-  
+
 //   // Status
 //   status: { 
 //     type: String, 
 //     enum: ['active', 'inactive'], 
 //     default: 'active' 
 //   },
-  
+
 //   // Custom Leave Limits
 //   maxCL: { type: Number, default: 1 },
 //   maxSL: { type: Number, default: 1 },
 //   maxEL: { type: Number, default: 12 },
 //   maxCompOff: { type: Number, default: 0 },
-  
+
 //   // Permissions
 //   permissions: {
 //     type: [String],
 //     default: []
 //   },
-  
+
 //   // Timestamps
 //   createdAt: { type: Date, default: Date.now },
 //   updatedAt: { type: Date, default: Date.now }
@@ -380,7 +380,7 @@ const employeeSchema = new mongoose.Schema({
   latitude: { type: Number, default: null },
   longitude: { type: Number, default: null },
   address: { type: String, default: null },
-  
+
   // ─── Login Location ───
   lastLoginLocation: {
     latitude: { type: Number, default: null },
@@ -388,7 +388,7 @@ const employeeSchema = new mongoose.Schema({
     timestamp: { type: Date, default: null },
     address: { type: String, default: null }
   },
-  
+
   // ─── Check-In Location ───
   lastCheckInLocation: {
     latitude: { type: Number, default: null },
@@ -396,7 +396,7 @@ const employeeSchema = new mongoose.Schema({
     timestamp: { type: Date, default: null },
     address: { type: String, default: null }
   },
-  
+
   // ─── Check-Out Location ───
   lastCheckOutLocation: {
     latitude: { type: Number, default: null },
@@ -404,7 +404,7 @@ const employeeSchema = new mongoose.Schema({
     timestamp: { type: Date, default: null },
     address: { type: String, default: null }
   },
-  
+
   // ─── Location History ───
   locationHistory: [{
     latitude: { type: Number },
@@ -413,17 +413,17 @@ const employeeSchema = new mongoose.Schema({
     source: { type: String, enum: ['login', 'checkin', 'checkout', 'update'] },
     timestamp: { type: Date, default: Date.now }
   }],
-  
+
   lastLocationUpdate: { type: Date, default: null },
   lastKnownIp: { type: String, default: null },
   profileImage: { type: String, default: null },
   lastFaceVerifiedAt: { type: Date, default: null },
-  
+
   // Bank & Statutory Details
   bankName: { type: String, default: "" },
   bankAccountNo: { type: String, default: "" },
   ifscCode: { type: String, default: "" },
-  
+
   // ✅ PAN Card Number
   panNumber: { type: String, default: "" },
   // ✅ PAN Document (PDF / Image upload)
@@ -431,7 +431,7 @@ const employeeSchema = new mongoose.Schema({
   panDocumentFileName: { type: String, default: "" },
   panDocumentFileType: { type: String, default: "" },
   panDocumentFileSize: { type: Number, default: 0 },
-  
+
   // ✅ Aadhaar Card Number
   aadharNumber: { type: String, default: "" },
   // ✅ Aadhaar Document (PDF / Image upload)
@@ -439,7 +439,7 @@ const employeeSchema = new mongoose.Schema({
   aadharDocumentFileName: { type: String, default: "" },
   aadharDocumentFileType: { type: String, default: "" },
   aadharDocumentFileSize: { type: Number, default: 0 },
-  
+
   pfNumber: { type: String, default: "" },
   uanNumber: { type: String, default: "" },
   esicNumber: { type: String, default: "" },
@@ -447,48 +447,54 @@ const employeeSchema = new mongoose.Schema({
 
 
   // models/Employee.js (schema me add karo)
-// models/Employee.js (existing schema me add karo)
-fcmToken: {
-  type: String,
-  default: null,
-},
-fcmUpdatedAt: {
-  type: Date,
-  default: null,
-},
-isFcmTokenStored: {
-  type: Boolean,
-  default: false,
-},
-
-
-// models/Employee.js (schema me add karo)
-lastMissedCheckInNotifiedAt: {
-  type: Date,
-  default: null,
-},
-
-
-// models/Employee.js ke schema mein add karein
-checkinReminders: [
-  {
-    sentAt: { type: Date, default: Date.now },
-    lateMinutes: { type: Number },
-    mobileNumber: { type: String },
-    status: { type: String, enum: ["sent", "failed"], default: "sent" },
-    error: { type: String },
+  // models/Employee.js (existing schema me add karo)
+  fcmToken: {
+    type: String,
+    default: null,
   },
-],
-  
+  fcmUpdatedAt: {
+    type: Date,
+    default: null,
+  },
+  isFcmTokenStored: {
+    type: Boolean,
+    default: false,
+  },
+
+
+  // models/Employee.js (schema me add karo)
+  lastMissedCheckInNotifiedAt: {
+    type: Date,
+    default: null,
+  },
+
+
+  // models/Employee.js ke schema mein add karein
+  checkinReminders: [
+    {
+      sentAt: { type: Date, default: Date.now },
+      lateMinutes: { type: Number },
+      mobileNumber: { type: String },
+      status: { type: String, enum: ["sent", "failed"], default: "sent" },
+      error: { type: String },
+    },
+  ],
+
+
+  resetOtp: { type: String, default: null },
+  resetOtpExpire: { type: Date, default: null },
+  resetOtpVerified: { type: Boolean, default: false },
+  resetOtpVerifiedAt: { type: Date, default: null },
+
   // Employment Info
   employeeId: { type: String, unique: true, required: true },
   joinDate: { type: Date, required: true },
   dob: { type: Date },
   reportingManager: { type: String, default: '' },
-  employmentType: { 
-    type: String, 
-    enum: ['fulltime', 'parttime', 'contract', 'internship', ''], 
-    default: 'fulltime' 
+  employmentType: {
+    type: String,
+    enum: ['fulltime', 'parttime', 'contract', 'internship', ''],
+    default: 'fulltime'
   },
 
   isAllowedImageCapturedAttendance: {
@@ -529,29 +535,29 @@ checkinReminders: [
       month: { type: String },
       year: { type: Number },
       monthNumber: { type: Number },
-      usedBefore: { 
-        type: Date, 
-        default: function() {
+      usedBefore: {
+        type: Date,
+        default: function () {
           const date = new Date(this.date);
           date.setMonth(date.getMonth() - 1);
           return date;
         }
       },
-      status: { 
-        type: String, 
-        enum: ['active', 'expired', 'used'], 
-        default: 'active' 
+      status: {
+        type: String,
+        enum: ['active', 'expired', 'used'],
+        default: 'active'
       }
     }],
     default: []
   },
-  
+
   // Department & Role
   departmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', default: null },
   roleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Role', default: null },
   department: { type: String, required: true },
   role: { type: String, required: true },
-  
+
   // Address
   addressLine1: { type: String, required: true },
   addressLine2: { type: String },
@@ -559,14 +565,14 @@ checkinReminders: [
   state: { type: String, required: true },
   pinCode: { type: String, required: true },
   country: { type: String, default: "India" },
-  
+
   // Location
   location: { type: mongoose.Schema.Types.ObjectId, ref: "Location", default: null },
-  
+
   // Shift & Schedule
   shiftType: { type: String, default: "A" },
   shiftHours: { type: Number, default: 8 },
-  
+
   // Current Salary
   salaryPerMonth: { type: Number, default: 0 },
   ctc: { type: Number, default: 0 },
@@ -582,31 +588,31 @@ checkinReminders: [
   otherDeductions: { type: Number, default: 0 },
   weekOffPerMonth: { type: Number, default: 0 },
   salaryEffectiveDate: { type: Date, default: null },
-  
+
   // Week Off
   weekOffType: { type: String, enum: ['day', 'number', ''], default: '' },
   weekOffCount: { type: Number, default: 0 },
-  
+
   // Status
   status: { type: String, enum: ['active', 'inactive'], default: 'active' },
-  
+
   // Custom Leave Limits
   maxCL: { type: Number, default: 1 },
   maxSL: { type: Number, default: 1 },
   maxEL: { type: Number, default: 12 },
   maxCompOff: { type: Number, default: 0 },
-  
+
   // Permissions
   permissions: { type: [String], default: [] },
-  
+
   // Password Reset
   resetPasswordToken: { type: String, default: null },
   resetPasswordExpires: { type: Date, default: null },
-  
+
   // Salary Increment History
   salaryIncrements: [salaryIncrementSchema],
   futureIncrements: [futureSalaryIncrementSchema],
-  
+
   // Timestamps
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
@@ -614,7 +620,7 @@ checkinReminders: [
 }, { timestamps: true });
 
 // Pre-save middleware to combine firstName and lastName
-employeeSchema.pre('save', function(next) {
+employeeSchema.pre('save', function (next) {
   if (this.firstName || this.lastName) {
     this.name = `${this.firstName || ''} ${this.lastName || ''}`.trim();
   }
@@ -623,12 +629,12 @@ employeeSchema.pre('save', function(next) {
 
 // ==================== SALARY INCREMENT METHODS ====================
 
-employeeSchema.methods.applyIncrement = async function(incrementType, incrementValue, effectiveDate, reason = "", approvedBy = null, newComponents = null) {
+employeeSchema.methods.applyIncrement = async function (incrementType, incrementValue, effectiveDate, reason = "", approvedBy = null, newComponents = null) {
   const effectiveFrom = new Date(effectiveDate);
   effectiveFrom.setHours(0, 0, 0, 0);
   const effectiveMonth = effectiveFrom.getMonth() + 1;
   const effectiveYear = effectiveFrom.getFullYear();
-  
+
   const oldValues = {
     oldSalaryPerMonth: this.salaryPerMonth,
     oldBasicPay: this.basicPay,
@@ -639,7 +645,7 @@ employeeSchema.methods.applyIncrement = async function(incrementType, incrementV
     oldSpecialAllowance: this.specialAllowance,
     oldCtc: this.ctc
   };
-  
+
   const baseSalaryPerMonth = newComponents ? (newComponents.salaryPerMonth || this.salaryPerMonth) : this.salaryPerMonth;
   const baseBasicPay = newComponents ? (newComponents.basicPay || this.basicPay) : this.basicPay;
   const baseHra = newComponents ? (newComponents.hra || this.hra) : this.hra;
@@ -657,7 +663,7 @@ employeeSchema.methods.applyIncrement = async function(incrementType, incrementV
   let newPerformanceAllowance = basePerformanceAllowance;
   let newSpecialAllowance = baseSpecialAllowance;
   let newCtc = baseCtc;
-  
+
   if (incrementType === 'percentage') {
     const percentage = incrementValue / 100;
     newSalaryPerMonth = baseSalaryPerMonth * (1 + percentage);
@@ -683,7 +689,7 @@ employeeSchema.methods.applyIncrement = async function(incrementType, incrementV
       newBasicPay = incrementValue;
     }
   }
-  
+
   const incrementRecord = {
     incrementType,
     incrementValue,
@@ -703,9 +709,9 @@ employeeSchema.methods.applyIncrement = async function(incrementType, incrementV
     approvedBy,
     isActive: true
   };
-  
+
   this.salaryIncrements.push(incrementRecord);
-  
+
   this.salaryPerMonth = newSalaryPerMonth;
   this.basicPay = newBasicPay;
   this.hra = newHra;
@@ -714,15 +720,15 @@ employeeSchema.methods.applyIncrement = async function(incrementType, incrementV
   this.performanceAllowance = newPerformanceAllowance;
   this.specialAllowance = newSpecialAllowance;
   this.ctc = newCtc;
-  
+
   await this.save();
   return incrementRecord;
 };
 
-employeeSchema.methods.getSalaryForDate = async function(date) {
+employeeSchema.methods.getSalaryForDate = async function (date) {
   const targetDate = new Date(date);
   targetDate.setHours(0, 0, 0, 0);
-  
+
   const activeIncrements = this.salaryIncrements.filter(inc => inc.isActive === true);
   const targetMonthStr = targetDate.toISOString().slice(0, 7);
   const applicableIncrements = activeIncrements.filter(inc => {
@@ -730,9 +736,9 @@ employeeSchema.methods.getSalaryForDate = async function(date) {
     const incMonthStr = incDate.toISOString().slice(0, 7);
     return incMonthStr < targetMonthStr;
   });
-  
+
   applicableIncrements.sort((a, b) => new Date(b.effectiveFrom) - new Date(a.effectiveFrom));
-  
+
   if (applicableIncrements.length > 0) {
     const latestIncrement = applicableIncrements[0];
     return {
@@ -747,10 +753,10 @@ employeeSchema.methods.getSalaryForDate = async function(date) {
       effectiveFrom: latestIncrement.effectiveFrom
     };
   }
-  
+
   if (activeIncrements.length > 0) {
     const earliestIncrement = [...activeIncrements].sort((a, b) => new Date(a.effectiveFrom).getTime() - new Date(b.effectiveFrom).getTime())[0];
-    
+
     return {
       salaryPerMonth: earliestIncrement.oldSalaryPerMonth || this.salaryPerMonth,
       basicPay: earliestIncrement.oldBasicPay || this.basicPay,
@@ -763,7 +769,7 @@ employeeSchema.methods.getSalaryForDate = async function(date) {
       effectiveFrom: this.joinDate
     };
   }
-  
+
   return {
     salaryPerMonth: this.salaryPerMonth,
     basicPay: this.basicPay,
@@ -777,21 +783,21 @@ employeeSchema.methods.getSalaryForDate = async function(date) {
   };
 };
 
-employeeSchema.methods.getSalaryForMonth = async function(yearMonth) {
+employeeSchema.methods.getSalaryForMonth = async function (yearMonth) {
   const [year, month] = yearMonth.split('-').map(Number);
   const firstDayOfMonth = new Date(year, month - 1, 1);
   firstDayOfMonth.setHours(0, 0, 0, 0);
   return await this.getSalaryForDate(firstDayOfMonth);
 };
 
-employeeSchema.methods.applyDueIncrements = async function() {
+employeeSchema.methods.applyDueIncrements = async function () {
   const currentDate = new Date();
   currentDate.setHours(0, 0, 0, 0);
-  
-  const dueIncrements = this.futureIncrements.filter(inc => 
+
+  const dueIncrements = this.futureIncrements.filter(inc =>
     !inc.isApplied && new Date(inc.effectiveFrom) <= currentDate
   );
-  
+
   let appliedCount = 0;
   for (const increment of dueIncrements) {
     await this.applyIncrement(
@@ -803,23 +809,23 @@ employeeSchema.methods.applyDueIncrements = async function() {
     increment.isApplied = true;
     appliedCount++;
   }
-  
+
   if (appliedCount > 0) {
     await this.save();
   }
   return appliedCount;
 };
 
-employeeSchema.statics.getSalaryHistory = async function(employeeId, startDate, endDate) {
+employeeSchema.statics.getSalaryHistory = async function (employeeId, startDate, endDate) {
   const employee = await this.findById(employeeId);
   if (!employee) return null;
-  
+
   const history = [];
   let currentDate = new Date(startDate);
   currentDate.setHours(0, 0, 0, 0);
   const end = new Date(endDate);
   end.setHours(0, 0, 0, 0);
-  
+
   while (currentDate <= end) {
     const salary = await employee.getSalaryForDate(currentDate);
     history.push({
@@ -831,7 +837,7 @@ employeeSchema.statics.getSalaryHistory = async function(employeeId, startDate, 
     });
     currentDate.setMonth(currentDate.getMonth() + 1);
   }
-  
+
   return history;
 };
 

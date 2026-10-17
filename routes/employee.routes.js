@@ -340,7 +340,9 @@ const {
   uploadEmployeeDocument,
   deleteEmployeeDocument,
   employeeDashboard,
-  getEmployeeSalarySummary
+  getEmployeeSalarySummary,
+  sendForgotPasswordOtp,
+  verifyForgotPasswordOtp
 } = require("../controller/employee.controller");
 const { sendLetter, saveLetterDraft, getLetterById, getLettersByEmployeeId, getAllResignations, updateResignation, submitResignation } = require("../controller/adminLetter.controller");
 
@@ -358,7 +360,7 @@ router.get("/get-employee", getEmployeeByEmail);
 router.get("/get-employee-by-phone", getEmployeeByPhone);
 router.post("/login", loginEmployee);
 router.post("/forgot-password", forgotPassword);
-router.post("/reset-password/:token", resetPassword);
+//router.post("/reset-password/:token", resetPassword);
 router.get("/attendance-summary", getEmployeeAttendanceSummary);
 router.put("/assign-location/:employeeId", assignLocation);
 router.get("/mylocation/:employeeId", getAssignedLocationByEmployeeId);
@@ -427,5 +429,10 @@ router.post(
 
 router.post("/delete-document", deleteEmployeeDocument);
 router.get("/empdashboard/:employeeId", employeeDashboard);
+
+
+router.post("/forgot-password/send-otp", sendForgotPasswordOtp);
+router.post("/forgot-password/verify-otp", verifyForgotPasswordOtp);
+router.post("/forgot-password/reset", resetPassword);
 
 module.exports = router;

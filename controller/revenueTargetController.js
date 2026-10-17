@@ -86,7 +86,7 @@ exports.getRevenueTarget = async (req, res) => {
 /* ============================================================ */
 exports.saveRevenueTarget = async (req, res) => {
   try {
-    const { month, year, amount, category } = req.body;
+    const { month, year, amount, category, footFall } = req.body; // ✅ footFall add kiya
 
     if (!month || !year || amount === undefined || amount === null) {
       return res.status(400).json({
@@ -98,26 +98,20 @@ exports.saveRevenueTarget = async (req, res) => {
     const monthNum = Number(month);
     const yearNum = Number(year);
     const amountNum = Number(amount);
+    const footFallNum = Number(footFall) || 0; // ✅ footFall parse kiya
 
     if (monthNum < 1 || monthNum > 12) {
-      return res.status(400).json({
-        success: false,
-        message: "month must be between 1 and 12",
-      });
+      return res.status(400).json({ success: false, message: "month must be between 1 and 12" });
     }
-
     if (isNaN(amountNum) || amountNum < 0) {
-      return res.status(400).json({
-        success: false,
-        message: "amount must be a non-negative number",
-      });
+      return res.status(400).json({ success: false, message: "amount must be a non-negative number" });
+    }
+    if (isNaN(footFallNum) || footFallNum < 0) {
+      return res.status(400).json({ success: false, message: "footFall must be a non-negative number" });
     }
 
-    // ✅ Category validation — default "clinic" (backward compat)
     const VALID_CATEGORIES = ["clinic", "lab", "clinicPharmacy", "retailPharmacy"];
-    const categoryKey = category && VALID_CATEGORIES.includes(category)
-      ? category
-      : "clinic";
+    const categoryKey = category && VALID_CATEGORIES.includes(category) ? category : "clinic";
 
     const target = await RevenueTarget.findOneAndUpdate(
       { month: monthNum, year: yearNum, category: categoryKey },
@@ -126,6 +120,7 @@ exports.saveRevenueTarget = async (req, res) => {
         year: yearNum,
         category: categoryKey,
         amount: amountNum,
+        footFall: footFallNum, // ✅ Save footFall
         savedAt: new Date(),
       },
       {
@@ -150,6 +145,9 @@ exports.saveRevenueTarget = async (req, res) => {
     });
   }
 };
+
+
+
 /* ============================================================ */
 /* PUT /api/appointment-slots/update-revenue-target/:id          */
 /* Full update — amount + achieved dono (ya sirf ek bhi)         */
@@ -157,18 +155,16 @@ exports.saveRevenueTarget = async (req, res) => {
 exports.updateRevenueTarget = async (req, res) => {
   try {
     const { id } = req.params;
-    const { amount, achieved, status } = req.body;
+    const { amount, achieved, status, footFall } = req.body; // ✅ footFall add kiya
 
     const existing = await RevenueTarget.findById(id);
     if (!existing) {
-      return res.status(404).json({
-        success: false,
-        message: "Revenue target not found",
-      });
+      return res.status(404).json({ success: false, message: "Revenue target not found" });
     }
 
     const newAmount = amount !== undefined ? Number(amount) : existing.amount;
     const newAchieved = achieved !== undefined ? Number(achieved) : existing.achieved;
+    const newFootFall = footFall !== undefined ? Number(footFall) : existing.footFall; // ✅ Handle footFall
 
     let finalStatus = status;
     let finalDiff = existing.diff;
@@ -185,6 +181,7 @@ exports.updateRevenueTarget = async (req, res) => {
       id,
       {
         amount: newAmount,
+        footFall: newFootFall, // ✅ Update footFall
         achieved: newAchieved,
         status: finalStatus,
         diff: finalDiff,
@@ -207,7 +204,6 @@ exports.updateRevenueTarget = async (req, res) => {
     });
   }
 };
-
 /* ============================================================ */
 /* PATCH /api/appointment-slots/update-target-achieved           */
 /* Future me achieved + status update karne ke liye             */

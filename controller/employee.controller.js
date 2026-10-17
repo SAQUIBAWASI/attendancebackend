@@ -4340,6 +4340,23 @@ const EmployeeExperience = require("../models/EmployeeExperience");
 const path = require("path");
 const fs = require("fs");
 const NodeGeocoder = require("node-geocoder");
+const nodemailer = require('nodemailer');
+
+
+
+
+const transporter = nodemailer.createTransport({
+  host: "smtp.hostinger.com",
+  port: 465,
+  secure: true,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+  tls: {
+    rejectUnauthorized: false,
+  },
+});
 
 const geocoder = NodeGeocoder({ provider: "openstreetmap" });
 
@@ -5134,7 +5151,6 @@ const fixEmployeeCurrentSalary = async (req, res) => {
 
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const nodemailer = require('nodemailer');
 
 const forgotPassword = async (req, res) => {
   try {
@@ -5165,27 +5181,27 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-const resetPassword = async (req, res) => {
-  try {
-    const { token } = req.params;
-    const { password } = req.body;
-    if (!password || password.length < 6) {
-      return res.status(400).json({ message: 'Password must be at least 6 chars' });
-    }
-    const employee = await Employee.findOne({
-      resetPasswordToken: token,
-      resetPasswordExpires: { $gt: Date.now() }
-    });
-    if (!employee) return res.status(400).json({ message: 'Token invalid or expired' });
-    employee.password = password;
-    employee.resetPasswordToken = undefined;
-    employee.resetPasswordExpires = undefined;
-    await employee.save();
-    res.status(200).json({ success: true, message: 'Password reset successfully!' });
-  } catch (error) {
-    res.status(500).json({ message: 'Error resetting password' });
-  }
-};
+// const resetPassword = async (req, res) => {
+//   try {
+//     const { token } = req.params;
+//     const { password } = req.body;
+//     if (!password || password.length < 6) {
+//       return res.status(400).json({ message: 'Password must be at least 6 chars' });
+//     }
+//     const employee = await Employee.findOne({
+//       resetPasswordToken: token,
+//       resetPasswordExpires: { $gt: Date.now() }
+//     });
+//     if (!employee) return res.status(400).json({ message: 'Token invalid or expired' });
+//     employee.password = password;
+//     employee.resetPasswordToken = undefined;
+//     employee.resetPasswordExpires = undefined;
+//     await employee.save();
+//     res.status(200).json({ success: true, message: 'Password reset successfully!' });
+//   } catch (error) {
+//     res.status(500).json({ message: 'Error resetting password' });
+//   }
+// };
 
 const convertEmployeeIdsToTH = async (req, res) => {
   try {
@@ -7237,6 +7253,239 @@ const getEmployeeSalarySummary = async (req, res) => {
 };
 
 
+
+
+const sendForgotPasswordOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const employee = await Employee.findOne({ email });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found with this email",
+      });
+    }
+
+    // 4-digit OTP
+    const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
+    const otpExpire = new Date(Date.now() + 5 * 60 * 1000); // 5 min
+
+    employee.resetOtp = generatedOtp;
+    employee.resetOtpExpire = otpExpire;
+    employee.resetOtpVerified = false;
+    employee.resetOtpVerifiedAt = null;
+    await employee.save();
+
+    console.log("=== FORGOT PASSWORD OTP ===", email, generatedOtp);
+
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Password Reset Verification OTP",
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px;">
+          <h2>Reset Your Password</h2>
+          <p>Hello <strong>${employee.name || "User"}</strong>,</p>
+          <p>Your OTP for password reset is:</p>
+          <h1 style="color:#007bff; letter-spacing:5px;">${generatedOtp}</h1>
+          <p>This OTP is valid for <strong>5 minutes</strong>.</p>
+          <p>If you did not request this, please ignore this email.</p>
+          <p>Do not share this OTP with anyone.</p>
+        </div>
+      `,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent successfully to your email",
+    });
+  } catch (err) {
+    console.error("❌ [SEND FORGOT OTP] ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error",
+    });
+  }
+};
+
+
+
+
+const verifyForgotPasswordOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and OTP are required",
+      });
+    }
+
+    const employee = await Employee.findOne({ email });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found with this email",
+      });
+    }
+
+    if (!employee.resetOtp) {
+      return res.status(400).json({
+        success: false,
+        message: "No OTP request found. Please request a new OTP.",
+      });
+    }
+
+    if (new Date() > new Date(employee.resetOtpExpire)) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP has expired. Please request a new one.",
+      });
+    }
+
+    if (employee.resetOtp !== otp.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    // ✅ Verified
+    employee.resetOtpVerified = true;
+    employee.resetOtpVerifiedAt = new Date();
+    await employee.save();
+
+    console.log(`✅ [FORGOT PASS] OTP verified for ${email}`);
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP verified successfully. You can now set a new password.",
+      verified: true,
+    });
+  } catch (err) {
+    console.error("❌ [VERIFY FORGOT OTP] ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error",
+    });
+  }
+};
+
+
+
+
+const resetPassword = async (req, res) => {
+  try {
+    const { email, newPassword, confirmPassword } = req.body;
+
+    if (!email || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Email, newPassword and confirmPassword are required",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Passwords do not match",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long",
+      });
+    }
+
+    const employee = await Employee.findOne({ email });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found with this email",
+      });
+    }
+
+    if (!employee.resetOtpVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP not verified. Please verify OTP first.",
+      });
+    }
+
+    // 10 min window
+    const verifiedAt = employee.resetOtpVerifiedAt;
+    if (!verifiedAt || Date.now() - new Date(verifiedAt).getTime() > 10 * 60 * 1000) {
+      employee.resetOtp = null;
+      employee.resetOtpExpire = null;
+      employee.resetOtpVerified = false;
+      employee.resetOtpVerifiedAt = null;
+      await employee.save();
+
+      return res.status(400).json({
+        success: false,
+        message: "Verification session expired. Please request a new OTP.",
+      });
+    }
+
+    // ✅ Update password
+    employee.password = newPassword; // bcrypt use kar rahe ho to: await bcrypt.hash(newPassword, 10)
+
+    // reset fields clear
+    employee.resetOtp = null;
+    employee.resetOtpExpire = null;
+    employee.resetOtpVerified = false;
+    employee.resetOtpVerifiedAt = null;
+    await employee.save();
+
+    console.log(`✅ [RESET PASS] Password changed for ${email}`);
+
+    // Confirmation mail (optional)
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: "Password Changed Successfully",
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px;">
+            <h2>Password Changed ✅</h2>
+            <p>Hello <strong>${employee.name || "User"}</strong>,</p>
+            <p>Your password has been changed successfully.</p>
+            <p>If you did not perform this action, please contact support immediately.</p>
+          </div>
+        `,
+      });
+    } catch (mailErr) {
+      console.error("⚠️ [RESET PASS] Confirmation email failed:", mailErr.message);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successfully. Please login with your new password.",
+    });
+  } catch (err) {
+    console.error("❌ [RESET PASS] ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error",
+    });
+  }
+};
+
+
 module.exports = {
   getEmployeeByPhone,
   addEmployee,
@@ -7286,5 +7535,8 @@ module.exports = {
   uploadEmployeeDocument,
   deleteEmployeeDocument,
   employeeDashboard,
-  getEmployeeSalarySummary
+  getEmployeeSalarySummary,
+  sendForgotPasswordOtp,
+  verifyForgotPasswordOtp,
+
 };

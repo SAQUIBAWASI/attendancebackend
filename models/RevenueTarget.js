@@ -28,6 +28,9 @@ const revenueTargetSchema = new mongoose.Schema(
       min: 0,
     },
 
+      footFall: { type: Number, default: 0 }, // ✅ Add this
+
+
     // ── Achieved (baad me update hoga) ──
     achieved: {
       type: Number,

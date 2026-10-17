@@ -247,29 +247,32 @@ offerDeduction: { type: Number, default: 0 },
 
     // Existing schema me sirf ye 2 fields add karo (baaki kuch nahi chhedo)
 
-// Appointment Schema
-labItems: [
-  {
-    serviceId: { type: String, default: "" },
-    name: { type: String, default: "" },
-    price: { type: Number, default: 0 },
-    description: { type: String, default: "" },
-    category: { type: String, default: "lab" },
-    paymentMode: { type: String, default: "Cash" },     // ✅ NEW
-    paymentStatus: { type: String, default: "Due" },    // ✅ NEW
-  },
-],
-medicineItems: [
-  {
-    serviceId: { type: String, default: "" },
-    name: { type: String, default: "" },
-    price: { type: Number, default: 0 },
-    description: { type: String, default: "" },
-    category: { type: String, default: "pharmacy" },
-    paymentMode: { type: String, default: "Cash" },     // ✅ NEW
-    paymentStatus: { type: String, default: "Due" },    // ✅ NEW
-  },
-],
+labItems: [{
+  serviceId: String,
+  name: String,
+  price: { type: Number, default: 0 },
+  discount: { type: Number, default: 0 },
+  paidAmount: { type: Number, default: 0 },
+  dueAmount: { type: Number, default: 0 }, // ✅ Add this
+  transactionId: String,
+  description: String,
+  category: String,
+  paymentMode: String,
+  paymentStatus: String,
+}],
+medicineItems: [{
+  serviceId: String,
+  name: String,
+  price: { type: Number, default: 0 },
+  discount: { type: Number, default: 0 },
+  paidAmount: { type: Number, default: 0 },
+  dueAmount: { type: Number, default: 0 }, // ✅ Add this
+  transactionId: String,
+  description: String,
+  category: String,
+  paymentMode: String,
+  paymentStatus: String,
+}],
 
 
 

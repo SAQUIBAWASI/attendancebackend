@@ -5175,12 +5175,8 @@ router.post("/book-online", onlineUploadFields, async (req, res) => {
     });
   }
 });
-// ============================================================
-// PUT /appointment-slots/updateop/:bookingId — Update Appointment
-// Trusts frontend financials + Force-overrides after save
-// ✅ "Pending" replaced with "Due" everywhere
-// ============================================================
-// ✅ COMPLETE FIXED FILE — router.put updateop + updatecharges + vitals
+
+
 
 router.put("/updateop/:bookingId", async (req, res) => {
   try {
@@ -5196,73 +5192,18 @@ router.put("/updateop/:bookingId", async (req, res) => {
     }
 
     const {
-      slotId,
-      appointmentDate,
-      doctorId,                    // ✅ accept doctorId
-      patientTitle,
-      patientName,
-      patientAge,
-      patientDob,
-      patientGender,
-      patientPhone,
-      patientEmail,
-      patientAddress,
-      patientCity,
-      patientPincode,
-      purpose,
-      symptoms,
-      paymentType,
-      paymentStatus,
-      partialAmount,
-
-      // ===== REFERRAL =====
-      referredByCustomer,
-      referredByDoctor,
-      referralCustomerId,
-      referralDoctorId,
-      referralContactId,
-      referredBy,
-      referralCommission,
-      referralCommissionType,
-
-      // ===== DISCOUNT =====
-      discount,
-      discountType,
-
-      // ===== FRONTEND-COMPUTED =====
-      subtotal: clientSubtotal,
-      commissionAmount: clientCommissionAmount,
-      finalPayable: clientFinalPayable,
-      finalPayableAmount: clientFinalPayableAmount,
-      grandTotal: clientGrandTotal,
-      totalAmount: clientTotalAmount,
-      amountPaid: clientAmountPaid,
-      balanceAmount: clientBalanceAmount,
-
-      // ===== OTHER =====
-      serviceItems,
-      services,
-      status,
-      medicineTotal: reqMedicineTotal,
-      labTotal: reqLabTotal,
-      labItems: reqLabItems,
-      medicineItems: reqMedicineItems,
-      categoryPayment: reqCategoryPayment,
+      slotId, appointmentDate, doctorId,
+      patientTitle, patientName, patientAge, patientDob, patientGender, patientPhone, patientEmail,
+      patientAddress, patientCity, patientPincode, purpose, symptoms, paymentType, paymentStatus, partialAmount,
+      referredByCustomer, referredByDoctor, referralCustomerId, referralDoctorId, referralContactId, referredBy,
+      referralCommission, referralCommissionType, discount, discountType,
+      subtotal: clientSubtotal, commissionAmount: clientCommissionAmount, finalPayable: clientFinalPayable,
+      finalPayableAmount: clientFinalPayableAmount, grandTotal: clientGrandTotal, totalAmount: clientTotalAmount,
+      amountPaid: clientAmountPaid, balanceAmount: clientBalanceAmount,
+      serviceItems, services, status,
+      medicineTotal: reqMedicineTotal, labTotal: reqLabTotal,
+      labItems: reqLabItems, medicineItems: reqMedicineItems,
     } = req.body;
-
-    console.log("📥 Update request received");
-    console.log("🔍 doctorId from request:", doctorId);
-    console.log("🔍 slotId from request:", slotId);
-    console.log("🔍 appointmentDate from request:", appointmentDate);
-    console.log("🔍 Frontend financials:", {
-      clientSubtotal,
-      clientCommissionAmount,
-      discount,
-      clientFinalPayable,
-      clientAmountPaid,
-      clientBalanceAmount,
-      paymentStatus,
-    });
 
     // ===== NORMALIZE REFERRALS =====
     let finalReferralContactId = existing.referralContactId || null;
@@ -5280,298 +5221,169 @@ router.put("/updateop/:bookingId", async (req, res) => {
     if (!finalReferralContactId && referralContactId && mongoose.Types.ObjectId.isValid(referralContactId)) {
       finalReferralContactId = referralContactId;
     }
-
     const finalReferredBy = referredByDoctor || referredByCustomer || referredBy || "";
 
     // ===== NORMALIZE SERVICES =====
-    const finalServices =
-      (Array.isArray(serviceItems) && serviceItems.length > 0 && serviceItems) ||
-      (Array.isArray(services) && services.length > 0 && services) ||
-      [];
-
+    const finalServices = (Array.isArray(serviceItems) && serviceItems.length > 0 && serviceItems) || (Array.isArray(services) && services.length > 0 && services) || [];
     const normalizedServices = finalServices.map((s) => ({
       serviceId: s.serviceId || s._id || "",
       name: s.name || "Service",
       price: Number(s.price) || 0,
+      paidAmount: Number(s.paidAmount) || (s.paymentStatus === "Paid" ? Number(s.price) || 0 : 0),
+      discount: Number(s.discount) || 0,
       description: s.description || "",
       category: s.category || s.serviceCategory || s.type || "",
       paymentMode: s.paymentMode || "",
-      paymentStatus:
-        s.paymentStatus && s.paymentStatus !== "Pending" ? s.paymentStatus : "Due",
+      paymentStatus: s.paymentStatus && s.paymentStatus !== "Pending" ? s.paymentStatus : "Due",
       addedAt: s.addedAt || new Date(),
     }));
 
     // ===== NORMALIZE LAB ITEMS =====
+       // ===== NORMALIZE LAB ITEMS =====
     const normalizedLabItems = Array.isArray(reqLabItems)
-      ? reqLabItems.map((item) => ({
-        serviceId: item.serviceId || item._id || "",
-        name: item.name || "Lab Test",
-        price: Number(item.price) || 0,
-        description: item.description || "",
-        category: "lab",
-        paymentMode: item.paymentMode || "Cash",
-        paymentStatus: item.paymentStatus || "Due",
-      }))
+      ? reqLabItems.map((item) => {
+        const price = Number(item.price) || 0;
+        const discount = Number(item.discount) || 0;
+        const paidAmount = Number(item.paidAmount) || 0;
+        const netAmount = Math.max(0, price - discount);
+        const dueAmount = Math.max(0, netAmount - paidAmount); // ✅ Calculate Due
+
+        return {
+          serviceId: item.serviceId || item._id || "",
+          name: item.name || "Lab Test",
+          price: price,
+          discount: discount,
+          paidAmount: paidAmount,
+          dueAmount: dueAmount, // ✅ Save Due
+          transactionId: item.transactionId || "",
+          description: item.description || "",
+          category: "lab",
+          paymentMode: item.paymentMode || "",
+          paymentStatus: item.paymentStatus || "Due",
+        };
+      })
       : [];
 
     // ===== NORMALIZE MEDICINE ITEMS =====
     const normalizedMedicineItems = Array.isArray(reqMedicineItems)
-      ? reqMedicineItems.map((item) => ({
-        serviceId: item.serviceId || item._id || "",
-        name: item.name || "Medicine",
-        price: Number(item.price) || 0,
-        description: item.description || "",
-        category: "pharmacy",
-        paymentMode: item.paymentMode || "Cash",
-        paymentStatus: item.paymentStatus || "Due",
-      }))
+      ? reqMedicineItems.map((item) => {
+        const price = Number(item.price) || 0;
+        const discount = Number(item.discount) || 0;
+        const paidAmount = Number(item.paidAmount) || 0;
+        const netAmount = Math.max(0, price - discount);
+        const dueAmount = Math.max(0, netAmount - paidAmount); // ✅ Calculate Due
+
+        return {
+          serviceId: item.serviceId || item._id || "",
+          name: item.name || "Medicine",
+          price: price,
+          discount: discount,
+          paidAmount: paidAmount,
+          dueAmount: dueAmount, // ✅ Save Due
+          transactionId: item.transactionId || "",
+          description: item.description || "",
+          category: "pharmacy",
+          paymentMode: item.paymentMode || "",
+          paymentStatus: item.paymentStatus || "Due",
+        };
+      })
       : [];
-
     // ===== COMPUTE FINANCIALS =====
-    const servicesTotal = normalizedServices.reduce((sum, s) => sum + (s.price || 0), 0);
-    const computedLabFromItems = normalizedLabItems.reduce((s, x) => s + (x.price || 0), 0);
-    const computedMedFromItems = normalizedMedicineItems.reduce((s, x) => s + (x.price || 0), 0);
+    // Note: Total = Price - Discount
+    const servicesTotal = normalizedServices.reduce((sum, s) => sum + Math.max(0, (s.price || 0) - (s.discount || 0)), 0);
+    const computedLabFromItems = normalizedLabItems.reduce((sum, x) => sum + Math.max(0, (x.price || 0) - (x.discount || 0)), 0);
+    const computedMedFromItems = normalizedMedicineItems.reduce((sum, x) => sum + Math.max(0, (x.price || 0) - (x.discount || 0)), 0);
 
-    const medicineTotal =
-      normalizedMedicineItems.length > 0
-        ? computedMedFromItems
-        : (reqMedicineTotal !== undefined && reqMedicineTotal !== null
-          ? Number(reqMedicineTotal)
-          : Number(existing.medicineTotal) || 0);
+    const medicineTotal = normalizedMedicineItems.length > 0
+      ? computedMedFromItems
+      : (reqMedicineTotal !== undefined && reqMedicineTotal !== null ? Number(reqMedicineTotal) : Number(existing.medicineTotal) || 0);
 
-    const labTotal =
-      normalizedLabItems.length > 0
-        ? computedLabFromItems
-        : (reqLabTotal !== undefined && reqLabTotal !== null
-          ? Number(reqLabTotal)
-          : Number(existing.labTotal) || 0);
+    const labTotal = normalizedLabItems.length > 0
+      ? computedLabFromItems
+      : (reqLabTotal !== undefined && reqLabTotal !== null ? Number(reqLabTotal) : Number(existing.labTotal) || 0);
 
     const commissionPercent = parseFloat(referralCommission) || 0;
     const serverSubtotal = servicesTotal + medicineTotal + labTotal;
     const serverCommissionAmount = (serverSubtotal * commissionPercent) / 100;
     const serverDiscountAmount = Number(discount) || 0;
-    const serverFinalPayable = serverSubtotal - serverCommissionAmount - serverDiscountAmount;
+    const serverFinalPayable = Math.max(0, serverSubtotal - serverCommissionAmount - serverDiscountAmount);
 
-    const subtotal =
-      Number.isFinite(Number(clientSubtotal)) && Number(clientSubtotal) > 0
-        ? Number(clientSubtotal)
-        : serverSubtotal;
-
-    const commissionAmount =
-      Number.isFinite(Number(clientCommissionAmount))
-        ? Number(clientCommissionAmount)
-        : serverCommissionAmount;
-
+    const subtotal = Number.isFinite(Number(clientSubtotal)) && Number(clientSubtotal) > 0 ? Number(clientSubtotal) : serverSubtotal;
+    const commissionAmount = Number.isFinite(Number(clientCommissionAmount)) ? Number(clientCommissionAmount) : serverCommissionAmount;
     const discountAmount = Number(discount) || 0;
 
-    const finalPayableFromClient =
-      Number(clientFinalPayable) ||
-      Number(clientFinalPayableAmount) ||
-      Number(clientGrandTotal) ||
-      Number(clientTotalAmount) ||
-      0;
+    const finalPayableFromClient = Number(clientFinalPayable) || Number(clientFinalPayableAmount) || Number(clientGrandTotal) || Number(clientTotalAmount) || 0;
+    const finalPayable = finalPayableFromClient > 0 ? finalPayableFromClient : serverFinalPayable;
 
-    const finalPayable =
-      finalPayableFromClient > 0 ? finalPayableFromClient : serverFinalPayable;
+    // ===== COMPUTE PAID AMOUNTS =====
+    const clinicPaidSum = normalizedServices.reduce((sum, s) => sum + (Number(s.paidAmount) || 0), 0);
+    const labPaidSum = normalizedLabItems.reduce((sum, s) => sum + (Number(s.paidAmount) || 0), 0);
+    const pharmacyPaidSum = normalizedMedicineItems.reduce((sum, s) => sum + (Number(s.paidAmount) || 0), 0);
 
-    const parsedPartial = Number(partialAmount) || 0;
-    const clientSentAmountPaid = Number(clientAmountPaid);
-    const clientSentBalance = Number(clientBalanceAmount);
-    const frontendTrusted =
-      Number.isFinite(clientSentAmountPaid) &&
-      Number.isFinite(clientSentBalance) &&
-      (clientSentAmountPaid > 0 || clientSentBalance > 0);
+    const computedCategoryPayment = {
+      clinic: { paidAmount: clinicPaidSum },
+      lab: { paidAmount: labPaidSum },
+      pharmacy: { paidAmount: pharmacyPaidSum },
+    };
 
-    let finalPaymentStatus =
-      !paymentStatus || paymentStatus === "Pending" ? "Due" : paymentStatus;
-    let finalAmountPaid = 0;
-    let finalBalanceAmount = finalPayable;
+    const totalPaidAll = clinicPaidSum + labPaidSum + pharmacyPaidSum;
+    let finalAmountPaid = Math.min(totalPaidAll, finalPayable);
+    let finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
+    let finalPaymentStatus = "Due";
 
-    if (frontendTrusted) {
-      finalAmountPaid = Math.max(0, Math.min(clientSentAmountPaid, finalPayable));
-      finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
-
-      if (finalBalanceAmount <= 0 && finalAmountPaid > 0) {
-        finalPaymentStatus = "Paid";
-        finalAmountPaid = finalPayable;
-        finalBalanceAmount = 0;
-      } else if (finalAmountPaid > 0 && finalBalanceAmount > 0) {
-        finalPaymentStatus = "Partial";
-      } else if (finalAmountPaid <= 0) {
-        finalPaymentStatus = "Due";
-      }
-    } else {
-      if (paymentStatus === "Paid") {
-        finalAmountPaid = finalPayable;
-        finalBalanceAmount = 0;
-        finalPaymentStatus = "Paid";
-      } else if (paymentStatus === "Partial" && parsedPartial > 0) {
-        finalAmountPaid = Math.min(parsedPartial, finalPayable);
-        finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
-        finalPaymentStatus = finalBalanceAmount === 0 ? "Paid" : "Partial";
-        if (finalPaymentStatus === "Paid") {
-          finalAmountPaid = finalPayable;
-          finalBalanceAmount = 0;
-        }
-      } else if (paymentStatus === "Due") {
-        finalAmountPaid = 0;
-        finalBalanceAmount = finalPayable;
-        finalPaymentStatus = "Due";
-      } else {
-        if (parsedPartial > 0) {
-          if (parsedPartial >= finalPayable) {
-            finalPaymentStatus = "Paid";
-            finalAmountPaid = finalPayable;
-            finalBalanceAmount = 0;
-          } else {
-            finalPaymentStatus = "Partial";
-            finalAmountPaid = parsedPartial;
-            finalBalanceAmount = finalPayable - parsedPartial;
-          }
-        } else {
-          finalPaymentStatus = "Due";
-          finalAmountPaid = 0;
-          finalBalanceAmount = finalPayable;
-        }
-      }
+    if (finalAmountPaid > 0 && finalBalanceAmount <= 0.5) {
+      finalPaymentStatus = "Paid";
+      finalAmountPaid = finalPayable;
+      finalBalanceAmount = 0;
+    } else if (finalAmountPaid > 0) {
+      finalPaymentStatus = "Partial";
     }
 
     // ===== UPDATE DATA =====
     const updateData = {
-      patientTitle: patientTitle || "Mr.",
-      patientName: patientName || existing.patientName,
-      patientAge: patientAge ?? existing.patientAge,
-      patientDob: patientDob || "",
-      patientGender: patientGender || existing.patientGender,
-      patientPhone: patientPhone || existing.patientPhone,
-      patientEmail: patientEmail || "",
-      patientAddress: patientAddress || "",
-      patientCity: patientCity || existing.patientCity || "",
-      patientPincode: patientPincode || existing.patientPincode || "",
-      purpose: purpose || "",
-      symptoms: symptoms || "",
-      paymentType: paymentType || "cash",
-      paymentStatus: finalPaymentStatus,
-      partialAmount: finalAmountPaid,
-      amountPaid: finalAmountPaid,
-      balanceAmount: finalBalanceAmount,
-      referredBy: finalReferredBy,
-      referralContactId: finalReferralContactId,
-      referralCustomerId: finalReferralCustomerId,
-      referralDoctorId: finalReferralDoctorId,
-      referredByCustomer: referredByCustomer || "",
-      referredByDoctor: referredByDoctor || "",
-      referralCommission: referralCommission || "",
-      referralCommissionType: referralCommissionType || "",
-      services: normalizedServices,
-      labItems: normalizedLabItems,
-      medicineItems: normalizedMedicineItems,
-      servicesTotal,
-      medicineTotal,
-      labTotal,
-      subtotal,
-      commissionAmount,
-      discount: discountAmount,
-      discountType: discountType || "₹",
-      finalPayable,
-      finalPayableAmount: finalPayable,
-      grandTotal: finalPayable,
-      totalAmount: finalPayable,
-      totalFee: finalPayable,
+      patientTitle: patientTitle || "Mr.", patientName: patientName || existing.patientName,
+      patientAge: patientAge ?? existing.patientAge, patientDob: patientDob || "",
+      patientGender: patientGender || existing.patientGender, patientPhone: patientPhone || existing.patientPhone,
+      patientEmail: patientEmail || "", patientAddress: patientAddress || "",
+      patientCity: patientCity || existing.patientCity || "", patientPincode: patientPincode || existing.patientPincode || "",
+      purpose: purpose || "", symptoms: symptoms || "",
+      paymentType: paymentType || "cash", paymentStatus: finalPaymentStatus,
+      partialAmount: finalAmountPaid, amountPaid: finalAmountPaid, balanceAmount: finalBalanceAmount,
+      referredBy: finalReferredBy, referralContactId: finalReferralContactId,
+      referralCustomerId: finalReferralCustomerId, referralDoctorId: finalReferralDoctorId,
+      referredByCustomer: referredByCustomer || "", referredByDoctor: referredByDoctor || "",
+      referralCommission: referralCommission || "", referralCommissionType: referralCommissionType || "",
+      services: normalizedServices, serviceItems: normalizedServices,
+      labItems: normalizedLabItems, medicineItems: normalizedMedicineItems,
+      servicesTotal, medicineTotal, labTotal, subtotal, commissionAmount,
+      discount: discountAmount, discountType: discountType || "₹",
+      finalPayable, finalPayableAmount: finalPayable, grandTotal: finalPayable,
+      totalAmount: finalPayable, totalFee: finalPayable,
       status: status || existing.status,
+      categoryPayment: computedCategoryPayment,
     };
 
-    // ✅ doctorId update karo
-    if (doctorId && mongoose.Types.ObjectId.isValid(doctorId)) {
-      updateData.doctorId = doctorId;
-      console.log("✅ doctorId will be updated to:", doctorId);
-    } else {
-      console.log("⚠️ doctorId NOT provided or invalid — skipping");
-    }
+    if (doctorId && mongoose.Types.ObjectId.isValid(doctorId)) updateData.doctorId = doctorId;
+    if (slotId && mongoose.Types.ObjectId.isValid(slotId)) updateData.slotId = slotId;
+    if (appointmentDate) updateData.appointmentDate = appointmentDate;
 
-    // ✅ slotId update karo
-    if (slotId && mongoose.Types.ObjectId.isValid(slotId)) {
-      updateData.slotId = slotId;
-      console.log("✅ slotId will be updated to:", slotId);
-    }
-
-    // ✅ appointmentDate update karo
-    if (appointmentDate) {
-      updateData.appointmentDate = appointmentDate;
-      console.log("✅ appointmentDate will be updated to:", appointmentDate);
-    }
-
-    if (reqCategoryPayment !== undefined && reqCategoryPayment !== null) {
-      updateData.categoryPayment = reqCategoryPayment;
-    }
-
-    await Appointment.findByIdAndUpdate(bookingId, updateData, {
-      new: true,
-      runValidators: false,
-    });
+    await Appointment.findByIdAndUpdate(bookingId, updateData, { new: true, runValidators: false });
 
     // ============================================================
-    // ✅ FORCE OVERRIDE after update
+    // FORCE OVERRIDE (Bypass middleware)
     // ============================================================
-    const forceSet = {
-      services: normalizedServices,
-      labItems: normalizedLabItems,
-      medicineItems: normalizedMedicineItems,
-      servicesTotal,
-      medicineTotal,
-      labTotal,
-      subtotal,
-      commissionAmount,
-      discount: discountAmount,
-      discountType: discountType || "₹",
-      finalPayable,
-      finalPayableAmount: finalPayable,
-      grandTotal: finalPayable,
-      totalAmount: finalPayable,
-      totalFee: finalPayable,
-      amountPaid: finalAmountPaid,
-      balanceAmount: finalBalanceAmount,
-      partialAmount: finalAmountPaid,
-      paymentStatus: finalPaymentStatus,
-    };
-
-    if (doctorId && mongoose.Types.ObjectId.isValid(doctorId)) {
-      forceSet.doctorId = doctorId;
-    }
-
-    if (slotId && mongoose.Types.ObjectId.isValid(slotId)) {
-      forceSet.slotId = slotId;
-    }
-
-    if (appointmentDate) {
-      forceSet.appointmentDate = appointmentDate;
-    }
-
-    if (reqCategoryPayment !== undefined && reqCategoryPayment !== null) {
-      forceSet.categoryPayment = reqCategoryPayment;
-    }
+    const forceSet = { ...updateData };
+    delete forceSet.patientTitle; delete forceSet.patientName; delete forceSet.patientAge;
+    delete forceSet.patientDob; delete forceSet.patientGender; delete forceSet.patientPhone;
+    delete forceSet.patientEmail; delete forceSet.patientAddress; delete forceSet.patientCity;
+    delete forceSet.patientPincode; delete forceSet.purpose; delete forceSet.symptoms;
 
     await Appointment.updateOne({ _id: bookingId }, { $set: forceSet });
 
-    console.log("✅ Force override applied to DB");
-
-    // ===== FETCH FRESH DOCUMENT (with safe populate) =====
     const populatedAppointment = await Appointment.findById(bookingId)
-      .populate("referralContactId")
-      .populate("referralCustomerId")
-      .populate("referralDoctorId")
-      .populate("slotId")
-      .setOptions({ strictPopulate: false });  // ✅ prevents crash on unknown populate paths
-
-    console.log("🎯 Final DB values:", {
-      doctorId: populatedAppointment.doctorId,
-      slotId: populatedAppointment.slotId,
-      appointmentDate: populatedAppointment.appointmentDate,
-      finalPayable: populatedAppointment.finalPayable,
-      amountPaid: populatedAppointment.amountPaid,
-      balanceAmount: populatedAppointment.balanceAmount,
-      paymentStatus: populatedAppointment.paymentStatus,
-    });
+      .populate("referralContactId").populate("referralCustomerId")
+      .populate("referralDoctorId").populate("slotId")
+      .setOptions({ strictPopulate: false });
 
     return res.status(200).json({
       success: true,
@@ -5589,144 +5401,116 @@ router.put("/updatecharges/:id", async (req, res) => {
     const { id } = req.params;
     const { medicineTotal, labTotal, labItems, medicineItems } = req.body;
 
-    if (
-      medicineTotal === undefined &&
-      labTotal === undefined &&
-      labItems === undefined &&
-      medicineItems === undefined
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "At least one of medicineTotal, labTotal, labItems, or medicineItems is required",
-      });
-    }
-
-    // Validate totals
-    let newMedicineTotal;
-    if (medicineTotal !== undefined && medicineTotal !== null) {
-      newMedicineTotal = Number(medicineTotal);
-      if (isNaN(newMedicineTotal) || newMedicineTotal < 0) {
-        return res.status(400).json({
-          success: false,
-          message: "medicineTotal must be a valid non-negative number",
-        });
-      }
-    }
-
-    let newLabTotal;
-    if (labTotal !== undefined && labTotal !== null) {
-      newLabTotal = Number(labTotal);
-      if (isNaN(newLabTotal) || newLabTotal < 0) {
-        return res.status(400).json({
-          success: false,
-          message: "labTotal must be a valid non-negative number",
-        });
-      }
+    if (medicineTotal === undefined && labTotal === undefined && labItems === undefined && medicineItems === undefined) {
+      return res.status(400).json({ success: false, message: "At least one of medicineTotal, labTotal, labItems, or medicineItems is required" });
     }
 
     const booking = await Appointment.findById(id);
-    if (!booking) {
-      return res.status(404).json({
-        success: false,
-        message: "Booking not found",
-      });
-    }
+    if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
-    // ============================================================
-    // ✅ NORMALIZE LAB ITEMS (if provided)
-    // ============================================================
+    // NORMALIZE LAB ITEMS
+       // NORMALIZE LAB ITEMS
     let normalizedLabItems = null;
     let computedLabFromItems = 0;
+    let labPaidSum = 0;
     if (Array.isArray(labItems)) {
-      normalizedLabItems = labItems.map((item) => ({
-        serviceId: item.serviceId || item._id || "",
-        name: item.name || "Lab Test",
-        price: Number(item.price) || 0,
-        description: item.description || "",
-        category: "lab",
-        paymentMode: item.paymentMode || "Cash",        // ✅ NEW
-        paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
-      }));
-      computedLabFromItems = normalizedLabItems.reduce(
-        (sum, x) => sum + (Number(x.price) || 0), 0
-      );
+      normalizedLabItems = labItems.map((item) => {
+        const price = Number(item.price) || 0;
+        const discount = Number(item.discount) || 0;
+        const paidAmount = Number(item.paidAmount) || 0;
+        const netAmount = Math.max(0, price - discount);
+        const dueAmount = Math.max(0, netAmount - paidAmount); // ✅ Calculate Due
+
+        return {
+          serviceId: item.serviceId || item._id || "",
+          name: item.name || "Lab Test",
+          price: price,
+          discount: discount,
+          paidAmount: paidAmount,
+          dueAmount: dueAmount, // ✅ Save Due
+          transactionId: item.transactionId || "",
+          description: item.description || "",
+          category: "lab",
+          paymentMode: item.paymentMode || "",
+          paymentStatus: item.paymentStatus || "Due",
+        };
+      });
+      computedLabFromItems = normalizedLabItems.reduce((sum, x) => sum + Math.max(0, (x.price || 0) - (x.discount || 0)), 0);
+      labPaidSum = normalizedLabItems.reduce((sum, x) => sum + (Number(x.paidAmount) || 0), 0);
     }
 
-    // ============================================================
-    // ✅ NORMALIZE MEDICINE ITEMS (if provided)
-    // ============================================================
+    // NORMALIZE MEDICINE ITEMS
     let normalizedMedicineItems = null;
     let computedMedFromItems = 0;
+    let pharmacyPaidSum = 0;
     if (Array.isArray(medicineItems)) {
-      normalizedMedicineItems = medicineItems.map((item) => ({
-        serviceId: item.serviceId || item._id || "",
-        name: item.name || "Medicine",
-        price: Number(item.price) || 0,
-        description: item.description || "",
-        category: "pharmacy",
-        paymentMode: item.paymentMode || "Cash",        // ✅ NEW
-        paymentStatus: item.paymentStatus || "Due",     // ✅ NEW
-      }));
-      computedMedFromItems = normalizedMedicineItems.reduce(
-        (sum, x) => sum + (Number(x.price) || 0), 0
-      );
+      normalizedMedicineItems = medicineItems.map((item) => {
+        const price = Number(item.price) || 0;
+        const discount = Number(item.discount) || 0;
+        const paidAmount = Number(item.paidAmount) || 0;
+        const netAmount = Math.max(0, price - discount);
+        const dueAmount = Math.max(0, netAmount - paidAmount); // ✅ Calculate Due
+
+        return {
+          serviceId: item.serviceId || item._id || "",
+          name: item.name || "Medicine",
+          price: price,
+          discount: discount,
+          paidAmount: paidAmount,
+          dueAmount: dueAmount, // ✅ Save Due
+          transactionId: item.transactionId || "",
+          description: item.description || "",
+          category: "pharmacy",
+          paymentMode: item.paymentMode || "",
+          paymentStatus: item.paymentStatus || "Due",
+        };
+      });
+      computedMedFromItems = normalizedMedicineItems.reduce((sum, x) => sum + Math.max(0, (x.price || 0) - (x.discount || 0)), 0);
+      pharmacyPaidSum = normalizedMedicineItems.reduce((sum, x) => sum + (Number(x.paidAmount) || 0), 0);
     }
+    // FINAL TOTALS
+    const finalMedicineTotal = normalizedMedicineItems !== null ? computedMedFromItems : (medicineTotal !== undefined ? Number(medicineTotal) || 0 : Number(booking.medicineTotal) || 0);
+    const finalLabTotal = normalizedLabItems !== null ? computedLabFromItems : (labTotal !== undefined ? Number(labTotal) || 0 : Number(booking.labTotal) || 0);
 
-    // ============================================================
-    // ✅ Final lab/medicine totals
-    // Priority: items array (if provided) > explicit total > existing
-    // ============================================================
-    const finalMedicineTotal =
-      normalizedMedicineItems !== null
-        ? computedMedFromItems
-        : newMedicineTotal !== undefined
-          ? newMedicineTotal
-          : Number(booking.medicineTotal) || 0;
-
-    const finalLabTotal =
-      normalizedLabItems !== null
-        ? computedLabFromItems
-        : newLabTotal !== undefined
-          ? newLabTotal
-          : Number(booking.labTotal) || 0;
-
-    // ============================================================
-    // ✅ CALCULATE EVERYTHING HERE (bypass middleware)
-    // ============================================================
+    // CALCULATE FINANCIALS
     const servicesTotal = Array.isArray(booking.services)
-      ? booking.services.reduce((sum, s) => sum + (Number(s.price) || 0), 0)
+      ? booking.services.reduce((sum, s) => sum + Math.max(0, (Number(s.price) || 0) - (Number(s.discount) || 0)), 0)
       : 0;
 
     const subtotal = servicesTotal + finalLabTotal + finalMedicineTotal;
-
     const commissionPercent = parseFloat(booking.referralCommission) || 0;
     const commissionAmount = (subtotal * commissionPercent) / 100;
-
     const discountAmount = Number(booking.discount) || 0;
+    const finalPayable = Math.max(0, subtotal - commissionAmount - discountAmount);
 
-    const finalPayable = Math.max(
-      0,
-      subtotal - commissionAmount - discountAmount
-    );
+    // PAID AMOUNTS
+    let clinicPaidSum = 0;
+    if (Array.isArray(booking.services)) {
+      clinicPaidSum = booking.services.reduce((sum, s) => sum + (Number(s.paidAmount) || (s.paymentStatus === "Paid" ? Number(s.price) || 0 : 0)), 0);
+    }
 
-    const currentPaid = Number(booking.amountPaid) || 0;
-    let finalAmountPaid = currentPaid;
-    let finalBalanceAmount = Math.max(0, finalPayable - currentPaid);
+    const finalLabPaid = normalizedLabItems !== null ? labPaidSum : (Number(booking.categoryPayment?.lab?.paidAmount) || 0);
+    const finalPharmacyPaid = normalizedMedicineItems !== null ? pharmacyPaidSum : (Number(booking.categoryPayment?.pharmacy?.paidAmount) || 0);
+
+    const computedCategoryPayment = {
+      clinic: { paidAmount: clinicPaidSum },
+      lab: { paidAmount: finalLabPaid },
+      pharmacy: { paidAmount: finalPharmacyPaid },
+    };
+
+    const totalPaidAll = clinicPaidSum + finalLabPaid + finalPharmacyPaid;
+    let finalAmountPaid = Math.min(totalPaidAll, finalPayable);
+    let finalBalanceAmount = Math.max(0, finalPayable - finalAmountPaid);
     let finalPaymentStatus = "Due";
 
-    if (finalBalanceAmount <= 0 && finalAmountPaid > 0) {
+    if (finalAmountPaid > 0 && finalBalanceAmount <= 0.5) {
       finalPaymentStatus = "Paid";
       finalAmountPaid = finalPayable;
       finalBalanceAmount = 0;
-    } else if (finalAmountPaid > 0 && finalBalanceAmount > 0) {
+    } else if (finalAmountPaid > 0) {
       finalPaymentStatus = "Partial";
-    } else if (finalAmountPaid === 0) {
-      finalPaymentStatus = "Due";
     }
 
-    // ============================================================
-    // ✅ FORCE OVERRIDE — bypass pre-save middleware
-    // ============================================================
     const setData = {
       medicineTotal: finalMedicineTotal,
       labTotal: finalLabTotal,
@@ -5743,65 +5527,24 @@ router.put("/updatecharges/:id", async (req, res) => {
       balanceAmount: finalBalanceAmount,
       partialAmount: finalAmountPaid,
       paymentStatus: finalPaymentStatus,
+      categoryPayment: computedCategoryPayment,
     };
 
-    // ✅ Only overwrite items arrays if explicitly provided
     if (normalizedLabItems !== null) setData.labItems = normalizedLabItems;
     if (normalizedMedicineItems !== null) setData.medicineItems = normalizedMedicineItems;
 
-    await Appointment.updateOne(
-      { _id: id },
-      { $set: setData }
-    );
+    await Appointment.updateOne({ _id: id }, { $set: setData });
 
-    // ============================================================
-    // ✅ FETCH FRESH DOCUMENT
-    // ============================================================
     const updated = await Appointment.findById(id);
-
-    console.log("✅ Charges updated:", {
-      servicesTotal,
-      labTotal: finalLabTotal,
-      medicineTotal: finalMedicineTotal,
-      subtotal,
-      discount: discountAmount,
-      finalPayable,
-      amountPaid: finalAmountPaid,
-      balanceAmount: finalBalanceAmount,
-      paymentStatus: finalPaymentStatus,
-      labItemsCount: updated.labItems?.length || 0,
-      medicineItemsCount: updated.medicineItems?.length || 0,
-    });
 
     return res.status(200).json({
       success: true,
       message: `Charges updated. New total: ₹${updated.grandTotal}`,
-      data: {
-        _id: updated._id,
-        medicineTotal: updated.medicineTotal,
-        labTotal: updated.labTotal,
-        labItems: updated.labItems || [],
-        medicineItems: updated.medicineItems || [],
-        servicesTotal: updated.servicesTotal,
-        subtotal: updated.subtotal,
-        totalAmount: updated.totalAmount,
-        grandTotal: updated.grandTotal,
-        commissionAmount: updated.commissionAmount,
-        discount: updated.discount,
-        finalPayable: updated.finalPayable,
-        finalPayableAmount: updated.finalPayableAmount,
-        amountPaid: updated.amountPaid,
-        balanceAmount: updated.balanceAmount,
-        paymentStatus: updated.paymentStatus,
-        patientName: updated.patientName,
-      },
+      data: updated,
     });
   } catch (error) {
     console.error("❌ Error updating charges:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to update charges",
-    });
+    return res.status(500).json({ success: false, message: error.message || "Failed to update charges" });
   }
 });
 
