@@ -13,6 +13,13 @@ const expenseSchema = new mongoose.Schema({
         // OR if your Employee model is registered as 'employees'
         // ref: 'employees'
     },
+
+    // ✅ NEW FIELD: Payment Status (Pending / Paid)
+    paymentStatus: { 
+        type: String, 
+        enum: ['Pending', 'Paid'], 
+        default: 'Pending' 
+    },
     purpose: { type: String, required: true },
     date: { type: Date, required: true },
     km: { type: Number, required: true },

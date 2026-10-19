@@ -424,3 +424,48 @@ exports.deleteExpense = async (req, res) => {
         });
     }
 };
+
+
+
+
+// ✅ NEW: Update Single Payment Status
+exports.updatePaymentStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { paymentStatus } = req.body;
+
+        if (!['Pending', 'Paid'].includes(paymentStatus)) {
+            return res.status(400).json({ success: false, message: "Invalid payment status" });
+        }
+
+        const updatedExpense = await Expense.findByIdAndUpdate(id, { paymentStatus }, { new: true });
+        if (!updatedExpense) return res.status(404).json({ success: false, message: "Expense not found" });
+
+        res.status(200).json({ success: true, message: `Status updated to ${paymentStatus}`, data: updatedExpense });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// ✅ NEW: Bulk Update Payment Status
+exports.updateBulkPaymentStatus = async (req, res) => {
+    try {
+        const { expenseIds, paymentStatus } = req.body;
+
+        if (!expenseIds || !Array.isArray(expenseIds) || expenseIds.length === 0) {
+            return res.status(400).json({ success: false, message: "expenseIds array is required" });
+        }
+        if (!['Pending', 'Paid'].includes(paymentStatus)) {
+            return res.status(400).json({ success: false, message: "Invalid payment status" });
+        }
+
+        const result = await Expense.updateMany(
+            { _id: { $in: expenseIds } },
+            { $set: { paymentStatus } }
+        );
+
+        res.status(200).json({ success: true, message: `${result.modifiedCount} records updated to ${paymentStatus}`, modifiedCount: result.modifiedCount });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
