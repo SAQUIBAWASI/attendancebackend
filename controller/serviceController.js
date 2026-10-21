@@ -20,18 +20,7 @@ const addService = async (req, res) => {
       });
     }
 
-    // Check if service with same name already exists
-    const existingService = await Service.findOne({ 
-      name: { $regex: new RegExp(`^${name}$`, 'i') } 
-    });
     
-    if (existingService) {
-      return res.status(409).json({
-        success: false,
-        message: `Service with name "${name}" already exists`
-      });
-    }
-
     // Create new service
     const service = new Service({
       name: name.trim(),
