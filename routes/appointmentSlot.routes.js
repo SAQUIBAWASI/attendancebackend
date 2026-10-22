@@ -1871,27 +1871,60 @@ router.get("/revenue-analytics", async (req, res) => {
             date: key, label: key,
             year: y, month: m,
             bucket: makeBucket(), count: 0,
+            dailyMap: new Map() // ✅ NAYA: Har month ke andar daily map banaya
           });
           cursor.setMonth(cursor.getMonth() + 1);
         }
 
+        // ✅ NAYA: Pehle din-wise process karo, fir month me add karo
         bookings.forEach((b) => {
           if (!b.appointmentDate) return;
           const [y, m] = b.appointmentDate.split("-").map(Number);
-          const key = `${y}-${padL(m)}`;
-          if (!monthlyMap.has(key)) return;
-          const row = monthlyMap.get(key);
-          aggregateBooking(b, row.bucket);
-          row.count += 1;
+          const monthKey = `${y}-${padL(m)}`;
+          
+          if (monthlyMap.has(monthKey)) {
+            const monthRow = monthlyMap.get(monthKey);
+            // 1. Month ke total me add karo
+            aggregateBooking(b, monthRow.bucket);
+            monthRow.count += 1;
+
+            // 2. Us specific din ke dailyMap me add karo
+            if (!monthRow.dailyMap.has(b.appointmentDate)) {
+              monthRow.dailyMap.set(b.appointmentDate, {
+                date: b.appointmentDate,
+                label: b.appointmentDate,
+                bucket: makeBucket(),
+                count: 0,
+              });
+            }
+            const dayRow = monthRow.dailyMap.get(b.appointmentDate);
+            aggregateBooking(b, dayRow.bucket);
+            dayRow.count += 1;
+          }
         });
 
         monthlyMap.forEach((row) => {
           roundBucket(row.bucket);
+          
+          // ✅ NAYA: monthData array banao aur sort karo (1st date, 2nd date...)
+          const monthDataArr = Array.from(row.dailyMap.values())
+            .sort((a, b) => a.date.localeCompare(b.date))
+            .map(day => {
+              roundBucket(day.bucket);
+              return {
+                date: day.date,
+                label: day.label,
+                count: day.count,
+                categoryBreakdown: day.bucket,
+              };
+            });
+
           rows.push({
             date: row.date, label: row.label,
             year: row.year, month: row.month,
             count: row.count,
             categoryBreakdown: row.bucket,
+            monthData: monthDataArr // ✅ NAYA: monthData add kiya
           });
         });
       }
@@ -6294,268 +6327,6 @@ router.post("/send-invoice", async (req, res) => {
 });
 
 
-
-
-
-// ✅ NEW: Revenue Analytics API — category-wise footfall, cash, online, due, total
-router.get("/revenue-analytics", async (req, res) => {
-  try {
-    const { from, to } = req.query;
-
-    // ═══════════════════════════════════════════════════════════
-    // 1️⃣ BUILD QUERY
-    // ═══════════════════════════════════════════════════════════
-    const mongoQuery = {
-      isActive: { $ne: false },
-    };
-
-    // Date range filter (on appointmentDate which is a string "YYYY-MM-DD")
-    if (from || to) {
-      const dateFilter = {};
-      if (from) dateFilter.$gte = from;
-      if (to) dateFilter.$lte = to;
-      mongoQuery.appointmentDate = dateFilter;
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // 2️⃣ FETCH
-    // ═══════════════════════════════════════════════════════════
-    const bookings = await Appointment.find(mongoQuery).lean();
-
-    // ═══════════════════════════════════════════════════════════
-    // 3️⃣ HELPERS
-    // ═══════════════════════════════════════════════════════════
-    const classifyService = (svc) => {
-      if (!svc) return "clinic";
-      const cat = (svc.category || svc.serviceCategory || svc.type || "").toString().toLowerCase();
-      const name = (svc.name || "").toString().toLowerCase();
-      if (cat.includes("pharm") || cat.includes("medic") || name.includes("pharm") || name.includes("medic")) return "pharmacy";
-      if (cat.includes("lab") || cat.includes("test") || cat.includes("diagnos") || name.includes("lab") || name.includes("test")) return "lab";
-      return "clinic";
-    };
-
-    const emptyCategory = () => ({
-      total: 0,
-      cash: 0,
-      online: 0,
-      card: 0,
-      insurance: 0,
-      due: 0,
-      footFall: 0,
-    });
-
-    const result = {
-      clinic: emptyCategory(),
-      lab: emptyCategory(),
-      pharmacy: emptyCategory(),
-      grandTotal: emptyCategory(),
-    };
-
-    const addToBucket = (bucket, mode, amount) => {
-      if (!amount || amount <= 0) return;
-      const m = String(mode || "").trim().toLowerCase();
-      if (m === "cash") bucket.cash += amount;
-      else if (m === "online") bucket.online += amount;
-      else if (m === "card") bucket.card += amount;
-      else if (m === "insurance") bucket.insurance += amount;
-      // "due" mode is treated as not-paid, so nothing here
-    };
-
-    // ═══════════════════════════════════════════════════════════
-    // 4️⃣ PROCESS EACH BOOKING
-    // ═══════════════════════════════════════════════════════════
-    bookings.forEach((b) => {
-      const cp = b.categoryPayment || {};
-      const fallbackMode = (b.paymentType || "cash").toString().toLowerCase();
-
-      // ─── Base services ───
-      const baseServices =
-        (Array.isArray(b.services) && b.services.length > 0 && b.services) ||
-        (Array.isArray(b.serviceItems) && b.serviceItems.length > 0 && b.serviceItems) ||
-        [];
-
-      const labItemsArr = Array.isArray(b.labItems) ? b.labItems : [];
-      const medItemsArr = Array.isArray(b.medicineItems) ? b.medicineItems : [];
-      const hasLabItems = labItemsArr.length > 0;
-      const hasMedItems = medItemsArr.length > 0;
-
-      // ─── Compute category totals ───
-      let clinicTotal = 0;
-      let labTotal = 0;
-      let pharmacyTotal = 0;
-
-      baseServices.forEach((s) => {
-        const price = Number(s.price) || 0;
-        if (price <= 0) return;
-        const cat = classifyService(s);
-        if (cat === "lab") labTotal += price;
-        else if (cat === "pharmacy") pharmacyTotal += price;
-        else clinicTotal += price;
-      });
-
-      if (hasLabItems) {
-        labTotal = labItemsArr.reduce((sum, i) => sum + (Number(i.price) || 0), 0);
-      } else {
-        labTotal = Math.max(labTotal, Number(b.labTotal) || 0);
-      }
-
-      if (hasMedItems) {
-        pharmacyTotal = medItemsArr.reduce((sum, i) => sum + (Number(i.price) || 0), 0);
-      } else {
-        pharmacyTotal = Math.max(pharmacyTotal, Number(b.medicineTotal) || 0);
-      }
-
-      // Review services → clinic
-      (Array.isArray(b.reviews) ? b.reviews : []).forEach((r) => {
-        clinicTotal += Number(r.price) || 0;
-      });
-
-      // ─── Compute category PAID amounts ───
-      // CLINIC
-      const clinicItems = baseServices.filter((s) => classifyService(s) === "clinic");
-      const hasClinicPerItem = clinicItems.some(
-        (s) => s.paymentMode && String(s.paymentMode).trim() !== ""
-      );
-      let clinicPaid = 0;
-      if (hasClinicPerItem && clinicItems.length > 0) {
-        clinicPaid = clinicItems.reduce(
-          (sum, item) =>
-            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
-          0
-        );
-      } else {
-        clinicPaid = Number(cp.clinic?.paidAmount) || 0;
-      }
-      clinicPaid = Math.min(clinicPaid, clinicTotal);
-
-      // LAB
-      let labPaid = 0;
-      if (hasLabItems) {
-        labPaid = labItemsArr.reduce(
-          (sum, item) =>
-            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
-          0
-        );
-      } else {
-        labPaid = Number(cp.lab?.paidAmount) || 0;
-      }
-      labPaid = Math.min(labPaid, labTotal);
-
-      // PHARMACY
-      let pharmacyPaid = 0;
-      if (hasMedItems) {
-        pharmacyPaid = medItemsArr.reduce(
-          (sum, item) =>
-            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0),
-          0
-        );
-      } else {
-        pharmacyPaid = Number(cp.pharmacy?.paidAmount) || 0;
-      }
-      pharmacyPaid = Math.min(pharmacyPaid, pharmacyTotal);
-
-      // ─── Footfall (count 1 per category if total > 0) ───
-      if (clinicTotal > 0) result.clinic.footFall += 1;
-      if (labTotal > 0) result.lab.footFall += 1;
-      if (pharmacyTotal > 0) result.pharmacy.footFall += 1;
-
-      // ─── Totals ───
-      result.clinic.total += clinicTotal;
-      result.lab.total += labTotal;
-      result.pharmacy.total += pharmacyTotal;
-
-      // ─── DUE ───
-      result.clinic.due += Math.max(0, clinicTotal - clinicPaid);
-      result.lab.due += Math.max(0, labTotal - labPaid);
-      result.pharmacy.due += Math.max(0, pharmacyTotal - pharmacyPaid);
-
-      // ─── CLINIC: distribute paid by per-item paymentMode ───
-      let clinicDistributed = 0;
-      if (hasClinicPerItem && clinicItems.length > 0) {
-        clinicItems.forEach((item) => {
-          const isPaid = (item.paymentStatus || "").toLowerCase() === "paid";
-          if (!isPaid) return;
-          const price = Number(item.price) || 0;
-          addToBucket(result.clinic, item.paymentMode, price);
-          clinicDistributed += price;
-        });
-      }
-      const clinicRemaining = Math.max(0, clinicPaid - clinicDistributed);
-      if (clinicRemaining > 0) {
-        addToBucket(result.clinic, fallbackMode, clinicRemaining);
-      }
-
-      // ─── LAB: distribute paid by per-item paymentMode ───
-      if (hasLabItems) {
-        labItemsArr.forEach((item) => {
-          if ((item.paymentStatus || "").toLowerCase() !== "paid") return;
-          const price = Number(item.price) || 0;
-          addToBucket(result.lab, item.paymentMode || fallbackMode, price);
-        });
-      } else if (labPaid > 0) {
-        addToBucket(result.lab, fallbackMode, labPaid);
-      }
-
-      // ─── PHARMACY: distribute paid by per-item paymentMode ───
-      if (hasMedItems) {
-        medItemsArr.forEach((item) => {
-          if ((item.paymentStatus || "").toLowerCase() !== "paid") return;
-          const price = Number(item.price) || 0;
-          addToBucket(result.pharmacy, item.paymentMode || fallbackMode, price);
-        });
-      } else if (pharmacyPaid > 0) {
-        addToBucket(result.pharmacy, fallbackMode, pharmacyPaid);
-      }
-    });
-
-    // ═══════════════════════════════════════════════════════════
-    // 5️⃣ GRAND TOTAL
-    // ═══════════════════════════════════════════════════════════
-    ["clinic", "lab", "pharmacy"].forEach((cat) => {
-      result.grandTotal.total += result[cat].total;
-      result.grandTotal.cash += result[cat].cash;
-      result.grandTotal.online += result[cat].online;
-      result.grandTotal.card += result[cat].card;
-      result.grandTotal.insurance += result[cat].insurance;
-      result.grandTotal.due += result[cat].due;
-      result.grandTotal.footFall += result[cat].footFall;
-    });
-
-    // ═══════════════════════════════════════════════════════════
-    // 6️⃣ ROUND ALL VALUES
-    // ═══════════════════════════════════════════════════════════
-    ["clinic", "lab", "pharmacy", "grandTotal"].forEach((cat) => {
-      Object.keys(result[cat]).forEach((k) => {
-        if (k === "footFall") {
-          result[cat][k] = Number(result[cat][k]) || 0;
-        } else {
-          result[cat][k] = Math.round(result[cat][k]);
-        }
-      });
-    });
-
-    // ═══════════════════════════════════════════════════════════
-    // 7️⃣ RESPONSE
-    // ═══════════════════════════════════════════════════════════
-    return res.status(200).json({
-      success: true,
-      message: "Revenue analytics fetched successfully",
-      filter: {
-        from: from || null,
-        to: to || null,
-      },
-      count: bookings.length,
-      data: result,
-    });
-  } catch (error) {
-    console.error("❌ Error fetching revenue analytics:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch revenue analytics",
-      error: error.message,
-    });
-  }
-});
 
 
 module.exports = router;
