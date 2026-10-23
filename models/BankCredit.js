@@ -7,8 +7,11 @@ const mongoose = require("mongoose");
 const bankCreditSchema = new mongoose.Schema(
   {
     // ── Date Range Reference ──
-    fromDate: { type: String },
-    toDate: { type: String },
+    fromDate: { type: String, required: true },
+    toDate: { type: String, required: true },
+    
+    // 🔥 YEH NAYA FIELD ADD KIYA HAI (Frontend se rowKey aa raha hai)
+    rowKey: { type: String, default: null }, 
 
     // ── Bank Credit Details ──
     bankCredit: { type: Number, default: 0 },
@@ -41,7 +44,8 @@ const bankCreditSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ✅ Unique per date range (upsert-friendly)
-bankCreditSchema.index({ fromDate: 1, toDate: 1 }, { unique: true });
+// 🔥 Index Update Kiya Hai — rowKey ke hisaab se unique banaya hai
+// Isse ek rowKey (jaise "2026-10-23") ka sirf ek hi record banega.
+bankCreditSchema.index({ rowKey: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model("BankCredit", bankCreditSchema);

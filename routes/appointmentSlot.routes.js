@@ -1824,6 +1824,7 @@ router.get("/revenue-analytics", async (req, res) => {
     };
 
     const rows = [];
+    let isMonthlyView = false;
 
     if (resolvedFrom && resolvedTo) {
       const fromD = parseYMD(resolvedFrom);
@@ -1859,6 +1860,7 @@ router.get("/revenue-analytics", async (req, res) => {
         });
       } else {
         // ✅ MONTHLY rows
+        isMonthlyView = true;
         const monthlyMap = new Map();
         const cursor = new Date(fromD.getFullYear(), fromD.getMonth(), 1);
         const endMonth = new Date(toD.getFullYear(), toD.getMonth(), 1);
@@ -1871,12 +1873,11 @@ router.get("/revenue-analytics", async (req, res) => {
             date: key, label: key,
             year: y, month: m,
             bucket: makeBucket(), count: 0,
-            dailyMap: new Map() // ✅ NAYA: Har month ke andar daily map banaya
+            dailyMap: new Map()
           });
           cursor.setMonth(cursor.getMonth() + 1);
         }
 
-        // ✅ NAYA: Pehle din-wise process karo, fir month me add karo
         bookings.forEach((b) => {
           if (!b.appointmentDate) return;
           const [y, m] = b.appointmentDate.split("-").map(Number);
@@ -1884,11 +1885,9 @@ router.get("/revenue-analytics", async (req, res) => {
           
           if (monthlyMap.has(monthKey)) {
             const monthRow = monthlyMap.get(monthKey);
-            // 1. Month ke total me add karo
             aggregateBooking(b, monthRow.bucket);
             monthRow.count += 1;
 
-            // 2. Us specific din ke dailyMap me add karo
             if (!monthRow.dailyMap.has(b.appointmentDate)) {
               monthRow.dailyMap.set(b.appointmentDate, {
                 date: b.appointmentDate,
@@ -1905,8 +1904,6 @@ router.get("/revenue-analytics", async (req, res) => {
 
         monthlyMap.forEach((row) => {
           roundBucket(row.bucket);
-          
-          // ✅ NAYA: monthData array banao aur sort karo (1st date, 2nd date...)
           const monthDataArr = Array.from(row.dailyMap.values())
             .sort((a, b) => a.date.localeCompare(b.date))
             .map(day => {
@@ -1924,35 +1921,90 @@ router.get("/revenue-analytics", async (req, res) => {
             year: row.year, month: row.month,
             count: row.count,
             categoryBreakdown: row.bucket,
-            monthData: monthDataArr // ✅ NAYA: monthData add kiya
+            monthData: monthDataArr
           });
         });
       }
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 5.5️⃣ ✅ ATTACH PER-ROW BANK CREDIT
+    // 5.5️⃣ 🔥 FIX: ATTACH BANK CREDIT (Day-wise & Month-wise)
     // ═══════════════════════════════════════════════════════════
     if (rows.length > 0) {
       try {
-        const rowKeys = rows.map((r) => r.date);
-        const perRowCredits = await BankCredit.find({
-          rowKey: { $in: rowKeys },
-        }).lean();
+        if (isMonthlyView) {
+          // ✅ MONTHLY VIEW: Month ke saare din ka bank credit sum karo
+          const monthKeys = rows.map(r => r.date); // e.g., "2026-10"
+          
+          // Fetch all BankCredit records for this year (broader match)
+          const allCredits = await BankCredit.find({}).lean();
+          
+          rows.forEach((r) => {
+            const monthKey = r.date; // e.g., "2026-10"
+            let monthlyRetail = { cash: 0, online: 0, footFall: 0, total: 0 };
+            let monthlyBank = 0, monthlyGrand = 0, monthlyDiff = 0;
 
-        const creditMap = new Map();
-        perRowCredits.forEach((bc) => creditMap.set(bc.rowKey, bc));
+            allCredits.forEach(bc => {
+              if (bc.rowKey && bc.rowKey.startsWith(monthKey)) {
+                // Agar exact date hai (e.g., 2026-10-23)
+                if (bc.retailPharmacy) {
+                  monthlyRetail.cash += Number(bc.retailPharmacy.cash) || 0;
+                  monthlyRetail.online += Number(bc.retailPharmacy.online) || 0;
+                  monthlyRetail.footFall += Number(bc.retailPharmacy.footFall) || 0;
+                  monthlyRetail.total += Number(bc.retailPharmacy.total) || 0;
+                }
+                monthlyBank += Number(bc.bankCredit) || 0;
+                monthlyGrand += Number(bc.grandTotal) || 0;
+                monthlyDiff += Number(bc.creditedDiff) || 0;
+              } else if (bc.rowKey === monthKey) {
+                // Agar direct monthly key hai (e.g., 2026-10)
+                if (bc.retailPharmacy) {
+                  monthlyRetail.cash += Number(bc.retailPharmacy.cash) || 0;
+                  monthlyRetail.online += Number(bc.retailPharmacy.online) || 0;
+                  monthlyRetail.footFall += Number(bc.retailPharmacy.footFall) || 0;
+                  monthlyRetail.total += Number(bc.retailPharmacy.total) || 0;
+                }
+                monthlyBank += Number(bc.bankCredit) || 0;
+                monthlyGrand += Number(bc.grandTotal) || 0;
+                monthlyDiff += Number(bc.creditedDiff) || 0;
+              }
+            });
 
-        rows.forEach((r) => {
-          const bc = creditMap.get(r.date);
-          r.bankCredit = bc ? {
-            bankCredit: Number(bc.bankCredit) || 0,
-            grandTotal: Number(bc.grandTotal) || 0,
-            creditedDiff: Number(bc.creditedDiff) || 0,
-            diffStatus: bc.diffStatus || "—",
-            retailPharmacy: bc.retailPharmacy || {},
-          } : null;
-        });
+            // Agar koi data mila tabhi attach karo
+            if (monthlyRetail.total > 0 || monthlyBank > 0) {
+              r.bankCredit = {
+                bankCredit: monthlyBank,
+                grandTotal: monthlyGrand,
+                creditedDiff: monthlyDiff,
+                diffStatus: "—", // Compute if needed
+                retailPharmacy: monthlyRetail,
+              };
+            } else {
+              r.bankCredit = null;
+            }
+          });
+
+        } else {
+          // ✅ DAILY VIEW: Exact match karo
+          const rowKeys = rows.map((r) => r.date);
+          const perRowCredits = await BankCredit.find({
+            rowKey: { $in: rowKeys },
+          }).lean();
+
+          const creditMap = new Map();
+          perRowCredits.forEach((bc) => creditMap.set(bc.rowKey, bc));
+
+          rows.forEach((r) => {
+            const bc = creditMap.get(r.date);
+            r.bankCredit = bc ? {
+              bankCredit: Number(bc.bankCredit) || 0,
+              grandTotal: Number(bc.grandTotal) || 0,
+              creditedDiff: Number(bc.creditedDiff) || 0,
+              diffStatus: bc.diffStatus || "—",
+              retailPharmacy: bc.retailPharmacy || {},
+            } : null;
+          });
+        }
       } catch (bcErr) {
         console.warn("Per-row bank credit fetch failed:", bcErr.message);
         rows.forEach((r) => { r.bankCredit = null; });
@@ -1995,7 +2047,6 @@ router.get("/revenue-analytics", async (req, res) => {
     });
   }
 });
-
 
 
 
