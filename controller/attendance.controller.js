@@ -4050,20 +4050,30 @@ exports.getMyAttendanceForApp = async (req, res) => {
 
 
 // ============================================================================
-// 🚀 SINGLE API — Attendance List Page (ALL data in one call)
-// GET /api/attendance/page-data?month=2026-10&fromDate=&toDate=
+// 🚀 Attendance List Page — SERVER-SIDE PAGINATION (10 records per page)
+// GET /api/attendance/page-data?month=&fromDate=&toDate=&page=1&limit=10
+//     &search=&department=&designation=
 // ============================================================================
 exports.getAttendanceListPageData = async (req, res) => {
   try {
-    const { month, fromDate, toDate } = req.query;
+    const {
+      month,
+      fromDate,
+      toDate,
+      page = 1,
+      limit = 10,
+      search,
+      department,
+      designation,
+    } = req.query;
 
-    // ── Fetch employees + attendance in parallel ──
-    const [employees, attendanceResult] = await Promise.all([
-      Employee.find({}).lean(),
-      Attendance.find({}).sort({ checkInTime: -1 }).lean(),
-    ]);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 10));
+    const skip = (pageNum - 1) * limitNum;
 
-    // ── Filter out inactive employees ──
+    // ── 1. Fetch employees (needed for emp map + dropdown lists) ──
+    const employees = await Employee.find({}).lean();
+
     const INACTIVE_IDS = ['EMP002', 'EMP003', 'EMP004', 'EMP008', 'EMP010', 'EMP018', 'EMP019'];
     const activeEmployees = employees.filter((emp) => {
       if (emp.status === 'inactive') return false;
@@ -4071,7 +4081,6 @@ exports.getAttendanceListPageData = async (req, res) => {
       return !INACTIVE_IDS.includes(emp.employeeId);
     });
 
-    // ── Build employee map (for O(1) lookup instead of O(n) find) ──
     const empMap = {};
     activeEmployees.forEach((emp) => {
       empMap[emp.employeeId] = {
@@ -4083,93 +4092,117 @@ exports.getAttendanceListPageData = async (req, res) => {
       };
     });
 
-    // ── Filter attendance — only active employees ──
-    const activeEmployeeIds = new Set(activeEmployees.map((e) => e.employeeId));
-    let activeRecords = attendanceResult.filter((rec) =>
-      activeEmployeeIds.has(rec.employeeId)
-    );
+    // ── 2. Build MongoDB filter (server-side) ──
+    // Start with all active employees
+    let allowedIds = activeEmployees.map((e) => e.employeeId);
 
-    // ── Apply date filters (same logic as frontend applyDateFilters) ──
-    if (fromDate && toDate) {
-      const fromDateObj = new Date(fromDate);
-      fromDateObj.setHours(0, 0, 0, 0);
-      const toDateObj = new Date(toDate);
-      toDateObj.setHours(23, 59, 59, 999);
-      activeRecords = activeRecords.filter((rec) => {
-        if (!rec.checkInTime) return false;
-        const recordDate = new Date(rec.checkInTime);
-        return recordDate >= fromDateObj && recordDate <= toDateObj;
-      });
-    } else if (month && !fromDate && !toDate) {
-      activeRecords = activeRecords.filter((rec) => {
-        if (!rec.checkInTime) return false;
-        const recordMonth = new Date(rec.checkInTime).toISOString().slice(0, 7);
-        return recordMonth === month;
-      });
-    } else if (fromDate && !toDate) {
-      const fromDateObj = new Date(fromDate);
-      fromDateObj.setHours(0, 0, 0, 0);
-      const toDateObj = new Date(fromDate);
-      toDateObj.setHours(23, 59, 59, 999);
-      activeRecords = activeRecords.filter((rec) => {
-        if (!rec.checkInTime) return false;
-        const recordDate = new Date(rec.checkInTime);
-        return recordDate >= fromDateObj && recordDate <= toDateObj;
+    // Search filter (name or employeeId) — apply on employee list first
+    if (search && search.trim()) {
+      const term = search.trim().toLowerCase();
+      allowedIds = allowedIds.filter((id) => {
+        const e = empMap[id];
+        return (
+          String(id).toLowerCase().includes(term) ||
+          (e?.name || '').toLowerCase().includes(term)
+        );
       });
     }
 
-    // ── Enrich each record with employee details (server-side) ──
-    // This avoids frontend doing find() per row
-    const enrichedRecords = activeRecords.map((rec) => {
-      const empDetails = empMap[rec.employeeId] || {
+    // Department filter
+    if (department) {
+      allowedIds = allowedIds.filter(
+        (id) => (empMap[id]?.department || '') === department
+      );
+    }
+
+    // Designation filter
+    if (designation) {
+      allowedIds = allowedIds.filter(
+        (id) => (empMap[id]?.designation || '') === designation
+      );
+    }
+
+    const filter = { employeeId: { $in: allowedIds } };
+
+    // Date filter
+    if (fromDate && toDate) {
+      const from = new Date(fromDate); from.setHours(0, 0, 0, 0);
+      const to = new Date(toDate); to.setHours(23, 59, 59, 999);
+      filter.checkInTime = { $gte: from, $lte: to };
+    } else if (fromDate) {
+      const from = new Date(fromDate); from.setHours(0, 0, 0, 0);
+      const to = new Date(fromDate); to.setHours(23, 59, 59, 999);
+      filter.checkInTime = { $gte: from, $lte: to };
+    } else if (month) {
+      const [y, m] = month.split('-').map(Number);
+      filter.checkInTime = {
+        $gte: new Date(y, m - 1, 1),
+        $lte: new Date(y, m, 0, 23, 59, 59, 999),
+      };
+    }
+
+    // ── 3. Count total + fetch ONLY 1 page (parallel) ──
+    const [totalRecords, pageRecords, onsiteCount, activeCount] = await Promise.all([
+      Attendance.countDocuments(filter),
+      Attendance.find(filter)
+        .sort({ checkInTime: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      Attendance.countDocuments({ ...filter, onsite: true }),
+      Attendance.countDocuments({ ...filter, status: 'checked-in' }),
+    ]);
+
+    // ── 4. Enrich ONLY the current page's records ──
+    const enrichedRecords = pageRecords.map((rec) => {
+      const emp = empMap[rec.employeeId] || {
         name: 'Unknown',
         department: 'N/A',
         designation: 'N/A',
         profilePicture: null,
       };
-
-      // Compute total break minutes if not stored
       let totalBreakMinutes = rec.totalBreakMinutes || 0;
-      if (!totalBreakMinutes && Array.isArray(rec.breaks) && rec.breaks.length > 0) {
-        totalBreakMinutes = rec.breaks.reduce((sum, b) => sum + (b.breakMinutes || 0), 0);
+      if (!totalBreakMinutes && Array.isArray(rec.breaks)) {
+        totalBreakMinutes = rec.breaks.reduce(
+          (sum, b) => sum + (b.breakMinutes || 0),
+          0
+        );
       }
-
       return {
         ...rec,
-        // Enriched employee fields
-        employeeName: empDetails.name,
-        employeeDepartment: empDetails.department,
-        employeeDesignation: empDetails.designation,
-        employeeProfilePicture: empDetails.profilePicture,
-        // Computed
+        employeeName: emp.name,
+        employeeDepartment: emp.department,
+        employeeDesignation: emp.designation,
+        employeeProfilePicture: emp.profilePicture,
         totalBreakMinutes,
       };
     });
 
-    // ── Unique departments + designations ──
+    // ── 5. Unique dropdown lists ──
     const depts = new Set();
-    const designations = new Set();
-    activeEmployees.forEach((emp) => {
-      if (emp.department) depts.add(emp.department);
-      if (emp.role || emp.designation) designations.add(emp.role || emp.designation);
+    const designationsSet = new Set();
+    activeEmployees.forEach((e) => {
+      if (e.department) depts.add(e.department);
+      const d = e.designation || e.role;
+      if (d) designationsSet.add(d);
     });
 
-    // ── Stats (for KPI cards) ──
-    const stats = {
-      totalRecords: enrichedRecords.length,
-      onsiteEntries: enrichedRecords.filter((r) => r.onsite).length,
-      activeCheckedIn: enrichedRecords.filter((r) => r.status === 'checked-in').length,
-      totalBreakMinutes: enrichedRecords.reduce((sum, r) => sum + (r.totalBreakMinutes || 0), 0),
-    };
-
-    // ── Response ──
+    // ── 6. Response ──
     res.json({
       success: true,
       meta: {
-        totalRecords: enrichedRecords.length,
+        totalRecords,
+        totalPages: Math.ceil(totalRecords / limitNum) || 1,
+        currentPage: pageNum,
+        limit: limitNum,
         totalEmployees: activeEmployees.length,
         departments: Array.from(depts).sort(),
-        designations: Array.from(designations).sort(),
+        designations: Array.from(designationsSet).sort(),
+      },
+      stats: {
+        totalRecords,
+        onsiteEntries: onsiteCount,
+        activeCheckedIn: activeCount,
       },
       employees: activeEmployees.map((emp) => ({
         employeeId: emp.employeeId,
@@ -4180,9 +4213,7 @@ exports.getAttendanceListPageData = async (req, res) => {
         status: emp.status,
       })),
       records: enrichedRecords,
-      stats,
     });
-
   } catch (error) {
     console.error('❌ getAttendanceListPageData error:', error);
     res.status(500).json({ success: false, message: error.message });

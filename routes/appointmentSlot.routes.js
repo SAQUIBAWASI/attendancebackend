@@ -827,6 +827,8 @@ for (const b of bookings) {
 
       return {
         ...b,
+
+        addedBy: b.addedBy || { name: "N/A", empId: "" }, 
         _originalFinalPayable: originalFinalPayable,
         _reviewServicesTotal: reviewServicesTotal,
         finalPayable: newFinalPayable,
@@ -4064,7 +4066,8 @@ router.post("/book", async (req, res) => {
       services,
 
       // ===== ✅ OFFER APPLIED =====
-      offerApplied
+      offerApplied,
+      addedBy // ✅ NEW FIELD ADD KIYA
     } = req.body;
 
     console.log("📥 Booking request received (NO VALIDATION MODE)");
@@ -4389,6 +4392,7 @@ router.post("/book", async (req, res) => {
       insuranceProvider: insuranceProvider || "",
       insurancePolicyNumber: insurancePolicyNumber || "",
       notes: notes || "",
+      addedBy: addedBy || { name: "N/A", empId: "" }, 
       status: "confirmed",
       bookedAt: new Date(),
       isOP: isOP || false,
@@ -4423,6 +4427,7 @@ router.post("/book", async (req, res) => {
           balanceAmount: finalBalanceAmount,
           partialAmount: finalAmountPaid,
           paymentStatus: finalPaymentStatus,
+          addedBy: addedBy || { name: "N/A", empId: "" }, // ✅ YAHAN BHI ADD KAREIN
         },
       }
     );

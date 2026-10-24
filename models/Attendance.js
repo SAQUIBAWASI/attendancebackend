@@ -405,6 +405,15 @@ const attendanceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// ============================================================
+// ✅ PERFORMANCE INDEXES — Server-side pagination ke liye zaroori
+// Bina inke skip/limit bade data pe bahut slow hoga
+// ============================================================
+attendanceSchema.index({ employeeId: 1, checkInTime: -1 }); // main list query
+attendanceSchema.index({ checkInTime: -1 });                // date filter + sort
+attendanceSchema.index({ status: 1 });                      // active checked-in count
+attendanceSchema.index({ onsite: 1 });                      // onsite count
+
 module.exports = mongoose.model(
   "Attendance",
   attendanceSchema

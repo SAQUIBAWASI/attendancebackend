@@ -274,6 +274,11 @@ medicineItems: [{
   paymentStatus: String,
 }],
 
+addedBy: {
+  name: { type: String, default: "N/A" },
+  empId: { type: String, default: "" }
+},
+
 
 
 // models/Appointment.js (ya jo bhi naam hai)
