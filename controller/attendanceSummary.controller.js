@@ -9769,16 +9769,33 @@ const getEmployeeShift = (employeeId, shiftsData = [], masterShifts = [], emp = 
 
 const calculateShiftDayType = (hours, shiftDuration) => {
   const h = parseFloat(hours) || 0;
-  const shift = (parseFloat(shiftDuration) > 0 && !isNaN(shiftDuration)) ? parseFloat(shiftDuration) : 9;
+  if (h <= 0) return "full_leave";
+  const dur = (parseFloat(shiftDuration) > 0 && !isNaN(shiftDuration)) ? parseFloat(shiftDuration) : 9;
+  const totalMin = Math.round(h * 60);
 
-  const fullDayThreshold = shift * 0.85;
-  const halfDayThreshold = shift * 0.45;
+  const rules = {
+    4:    { fullDayMin: 216, halfDayMin: 120 }, // 3h 36m, 2h 00m
+    5:    { fullDayMin: 270, halfDayMin: 150 }, // 4h 30m, 2h 30m
+    6:    { fullDayMin: 324, halfDayMin: 180 }, // 5h 24m, 3h 00m
+    7:    { fullDayMin: 378, halfDayMin: 210 }, // 6h 18m, 3h 30m
+    8:    { fullDayMin: 432, halfDayMin: 240 }, // 7h 12m, 4h 00m
+    9:    { fullDayMin: 510, halfDayMin: 270 }, // 8h 30m, 4h 30m
+    10:   { fullDayMin: 570, halfDayMin: 300 }, // 9h 30m, 5h 00m
+    11:   { fullDayMin: 594, halfDayMin: 330 }, // 9h 54m, 5h 30m
+    11.5: { fullDayMin: 621, halfDayMin: 345 }, // 10h 21m, 5h 45m
+    12:   { fullDayMin: 648, halfDayMin: 360 }  // 10h 48m, 6h 00m
+  };
 
-  if (h >= fullDayThreshold) return "full";
-  if (h >= halfDayThreshold) return "half";
+  const key = Object.keys(rules).find(k => Math.abs(parseFloat(k) - dur) < 0.1);
+  const rule = key ? rules[key] : {
+    fullDayMin: dur >= 9 ? Math.round((dur - 0.5) * 60) : Math.round(dur * 60 * 0.90),
+    halfDayMin: Math.round(dur * 60 * 0.50)
+  };
+
+  if (totalMin >= rule.fullDayMin) return "full";
+  if (totalMin >= rule.halfDayMin) return "half";
   return "full_leave";
 };
-
 
 
 const calculateShiftOT = (checkOutTime, shiftEndTimeStr, checkInTime, actualHours, shiftDuration) => {
@@ -9842,6 +9859,20 @@ exports.getAllAttendance = async (req, res) => {
   }
 };
 
+
+const parseHoursToDecimal = (val) => {
+  if (val === undefined || val === null || val === "") return 0;
+  if (typeof val === "number") return val;
+  const s = String(val).trim();
+  if (s.includes(":")) {
+    const [hStr, mStr] = s.split(":");
+    const h = parseInt(hStr, 10) || 0;
+    const m = parseInt(mStr, 10) || 0;
+    return parseFloat((h + m / 60).toFixed(2));
+  }
+  return parseFloat(s) || 0;
+};
+
 exports.updateAttendance = async (req, res) => {
   try {
     const { attendanceId, hours, region, reason, employeeId, date, checkInTime, checkOutTime, comment } = req.body;
@@ -9873,7 +9904,9 @@ exports.updateAttendance = async (req, res) => {
 
       // "2026-09-01T11:00 AM:00:00" type bhi handle
       s = s.replace(/\s*(AM|PM)/gi, '');
-
+      if (!s.includes('Z') && !s.includes('+') && !s.match(/-\d{2}:\d{2}$/)) {
+        s = `${s}+05:30`;
+      }
       return s;
     };
 
@@ -9891,8 +9924,8 @@ exports.updateAttendance = async (req, res) => {
     if (attendanceId) {
       const updateData = {};
       if (hours !== undefined && hours !== null && hours !== "") {
-        updateData.totalHours = parseFloat(hours) || 0;
-        updateData.hours = parseFloat(hours) || 0;
+        updateData.totalHours = parseHoursToDecimal(hours);
+        updateData.hours = updateData.totalHours;
       }
       if (region !== undefined) updateData.region = region;
       if (reason !== undefined) updateData.reason = reason;
@@ -9921,7 +9954,7 @@ exports.updateAttendance = async (req, res) => {
         const diffHours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
 
         updateData.status = "checked-out";
-        if (hours === undefined || hours === null || hours === "" || parseFloat(hours) <= 0) {
+        if (hours === undefined || hours === null || hours === "" || parseFloat(hours) <= 0 || (parseFloat(hours) < diffHours && diffHours >= 3.5)) {
           updateData.totalHours = diffHours;
           updateData.hours = diffHours;
         }
@@ -9969,10 +10002,18 @@ exports.updateAttendance = async (req, res) => {
       }
 
       let totalHours = 0;
-      if (newCheckOut) {
-        totalHours = parseFloat(((newCheckOut - newCheckIn) / (1000 * 60 * 60)).toFixed(2));
-      } else if (hours) {
-        totalHours = parseFloat(hours);
+      if (newCheckIn && newCheckOut) {
+        let diffMs = newCheckOut.getTime() - newCheckIn.getTime();
+        if (diffMs < 0) diffMs += 24 * 60 * 60 * 1000;
+        const diffHours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
+        const passedHours = (hours !== undefined && hours !== null && hours !== "") ? parseHoursToDecimal(hours) : 0;
+        if (passedHours <= 0 || (passedHours < diffHours && diffHours >= 3.5)) {
+          totalHours = diffHours;
+        } else {
+          totalHours = passedHours;
+        }
+      } else if (hours !== undefined && hours !== null && hours !== "") {
+        totalHours = parseHoursToDecimal(hours);
       }
 
       // ✅ Check if record already exists for this employee + date
@@ -10082,10 +10123,12 @@ exports.updateAttendance = async (req, res) => {
   }
 };
 
-
-exports.calculateSummary = async (req, res) => {
+exports.calculateSummary = async (req, res, directMonth = null, directFromDate = null, directToDate = null) => {
   try {
-    const { fromDate, toDate, month } = req.body;
+    const body = (req && req.body) ? req.body : {};
+    const fromDate = body.fromDate || directFromDate || (req && req.query && req.query.fromDate);
+    const toDate = body.toDate || directToDate || (req && req.query && req.query.toDate);
+    const month = body.month || directMonth || (req && req.query && req.query.month);
 
     let query = {};
     let processedMonth = month;
@@ -10388,13 +10431,18 @@ exports.calculateSummary = async (req, res) => {
       await AttendanceSummary.insertMany(summariesToSave);
     }
 
-    res.json({ success: true, summary: summaryArray, month: processedMonth });
+    if (res && typeof res.json === 'function') {
+      return res.json({ success: true, summary: summaryArray, month: processedMonth });
+    }
+    return { success: true, summary: summaryArray, month: processedMonth };
   } catch (err) {
     console.error("❌ Error in calculating summary:", err);
-    res.status(500).json({ success: false, message: err.message });
+    if (res && typeof res.status === 'function') {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+    throw err;
   }
 };
-
 exports.saveSummary = async (req, res) => {
   try {
     const { summaries, fromDate, toDate, month } = req.body;
@@ -11460,9 +11508,22 @@ exports.getSummaryPageData = async (req, res) => {
 
     // ── shiftMap (all formats) ──
     const shiftMap = {};
+    // 1) Legacy shifts first (can be overridden by modern assignments)
     allShifts.forEach((s) => {
+      if (s.employeeId && !s.isMasterShift) {
+        shiftMap[s.employeeId] = s;
+      }
+    });
+
+    // 2) Modern assignments with employeeAssignment (highest priority)
+    allShifts.forEach((s) => {
+      if (s.isMasterShift) return;
       if (s.employeeAssignment?.employeeId) {
-        shiftMap[s.employeeAssignment.employeeId] = s;
+        const empId = s.employeeAssignment.employeeId;
+        const existing = shiftMap[empId];
+        if (!existing || s.isActive || !existing.employeeAssignment) {
+          shiftMap[empId] = s;
+        }
       }
       if (Array.isArray(s.employeeAssignment?.selectedEmployees)) {
         s.employeeAssignment.selectedEmployees.forEach((emp) => {
@@ -11475,9 +11536,6 @@ exports.getSummaryPageData = async (req, res) => {
           const empId = typeof emp === 'object' ? emp.employeeId : emp;
           if (empId) shiftMap[empId] = s;
         });
-      }
-      if (s.employeeId) {
-        shiftMap[s.employeeId] = s;
       }
     });
 
@@ -11561,27 +11619,28 @@ exports.getSummaryPageData = async (req, res) => {
       const st = parseHM(start) || { h: 9, m: 0 };
       const en = parseHM(end) || { h: 18, m: 0 };
 
-      return { start, end, startHour: st.h, startMinute: st.m, endHour: en.h, endMinute: en.m, shiftType };
+      const formattedStart = `${String(st.h).padStart(2, '0')}:${String(st.m).padStart(2, '0')}`;
+      const formattedEnd = `${String(en.h).padStart(2, '0')}:${String(en.m).padStart(2, '0')}`;
+
+      return { start: formattedStart, end: formattedEnd, rawStart: start, rawEnd: end, startHour: st.h, startMinute: st.m, endHour: en.h, endMinute: en.m, shiftType };
     };
 
     const getShiftHours = (employeeId) => {
+      const t = getShiftTimings(employeeId);
+      if (t && t.startHour !== undefined && t.endHour !== undefined) {
+        let sm = t.startHour * 60 + t.startMinute;
+        let em = t.endHour * 60 + t.endMinute;
+        if (em <= sm) em += 24 * 60;
+        const h = (em - sm) / 60;
+        if (h > 0 && h < 24) return Number(h.toFixed(2));
+      }
       const emp = empMap[employeeId];
       if (emp?.shiftHours > 0) return emp.shiftHours;
-
-      const t = getShiftTimings(employeeId);
-      let sm = t.startHour * 60 + t.startMinute;
-      let em = t.endHour * 60 + t.endMinute;
-      if (em <= sm) em += 24 * 60;
-      const h = (em - sm) / 60;
-      return (h > 0 && h < 24) ? Number(h.toFixed(2)) : 9;
+      return 9;
     };
 
     const getDayType = (hours, shiftHrs) => {
-      const h = parseFloat(hours) || 0;
-      const sh = (parseFloat(shiftHrs) > 0 && !isNaN(shiftHrs)) ? parseFloat(shiftHrs) : 9;
-      if (h >= sh * 0.85) return 'full';
-      if (h >= sh * 0.45) return 'half';
-      return 'full_leave';
+      return calculateShiftDayType(hours, shiftHrs);
     };
 
     const summaryMap = {};
@@ -11591,7 +11650,7 @@ exports.getSummaryPageData = async (req, res) => {
     attendanceRecords.forEach((rec) => {
       if (!rec.employeeId || !rec.checkInTime) return;
       if (!attendanceByEmp[rec.employeeId]) attendanceByEmp[rec.employeeId] = {};
-      const dateKey = new Date(rec.checkInTime).toISOString().slice(0, 10);
+      const dateKey = new Date(rec.checkInTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
       if (!attendanceByEmp[rec.employeeId][dateKey]) attendanceByEmp[rec.employeeId][dateKey] = [];
       attendanceByEmp[rec.employeeId][dateKey].push(rec);
     });
@@ -11608,34 +11667,41 @@ exports.getSummaryPageData = async (req, res) => {
       let latestRecord = null, latestCheckInDate = null;
 
       Object.entries(dailyRecords).forEach(([dateKey, recs]) => {
-        const lastRec = recs[recs.length - 1];
-        const hours = lastRec.totalHours || lastRec.hours || 0;
-        const dayType = getDayType(hours, shiftHrs);
+        let maxHours = 0;
+        let bestRec = recs[0];
+        recs.forEach(r => {
+          const h = r.totalHours || r.hours || 0;
+          if (h >= maxHours) {
+            maxHours = h;
+            bestRec = r;
+          }
+        });
+        const dayType = getDayType(maxHours, shiftHrs);
 
         if (dayType === 'full') presentDays++;
         else if (dayType === 'half') halfDays++;
 
-        totalHours += hours;
+        totalHours += maxHours;
 
         // Late check (15 min grace)
-        if (lastRec.checkInTime) {
-          const checkIn = new Date(lastRec.checkInTime);
+        if (bestRec && bestRec.checkInTime) {
+          const checkIn = new Date(bestRec.checkInTime);
           const shiftStart = new Date(checkIn);
           shiftStart.setHours(timings.startHour, timings.startMinute, 0, 0);
           const diffMin = (checkIn - shiftStart) / 60000;
           if (diffMin > 15) lateDays++;
         }
 
-        if (lastRec.reason === 'Onsite' || lastRec.onsite) onsiteDays++;
-        if (lastRec.reason === 'Work From Home') remoteDays++;
+        if (bestRec && (bestRec.reason === 'Onsite' || bestRec.onsite)) onsiteDays++;
+        if (bestRec && bestRec.reason === 'Work From Home') remoteDays++;
 
-        const ot = hours - shiftHrs;
+        const ot = maxHours - shiftHrs;
         if (ot > 0.5) totalOT += ot;
 
-        const recDate = new Date(lastRec.checkInTime);
-        if (!latestCheckInDate || recDate > latestCheckInDate) {
+        const recDate = bestRec ? new Date(bestRec.checkInTime) : null;
+        if (recDate && (!latestCheckInDate || recDate > latestCheckInDate)) {
           latestCheckInDate = recDate;
-          latestRecord = lastRec;
+          latestRecord = bestRec;
         }
       });
 
@@ -11702,6 +11768,7 @@ exports.getSummaryPageData = async (req, res) => {
         shiftEnd: timings.end,
         shiftType: timings.shiftType,
         presentDays,
+        fullDays: presentDays,
         halfDays,
         workingDays: Number(workingDays.toFixed(1)),
         lateDays,
@@ -11772,7 +11839,6 @@ exports.getSummaryPageData = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 
 exports.updatePayrollStatus = async (req, res) => {
@@ -11850,6 +11916,9 @@ exports.updatePayrollStatus = async (req, res) => {
 // =========================================================================
 // 🚀 BULK UPDATE ATTENDANCE (1-Click Bulk Save for Attendance Modal)
 // =========================================================================
+// =========================================================================
+// 🚀 BULK UPDATE ATTENDANCE (1-Click Bulk Save for Attendance Modal)
+// =========================================================================
 exports.bulkUpdateAttendance = async (req, res) => {
   try {
     const { employeeId, month, updates } = req.body;
@@ -11889,6 +11958,9 @@ exports.bulkUpdateAttendance = async (req, res) => {
         return `T${String(hh).padStart(2, '0')}:${mn}`;
       });
       s = s.replace(/\s*(AM|PM)/gi, '');
+      if (!s.includes('Z') && !s.includes('+') && !s.match(/-\d{2}:\d{2}$/)) {
+        s = `${s}+05:30`;
+      }
       return s;
     };
 
@@ -11906,15 +11978,16 @@ exports.bulkUpdateAttendance = async (req, res) => {
       let newCheckOut = sanitizedCheckOut ? new Date(sanitizedCheckOut) : null;
       if (newCheckOut && isNaN(newCheckOut.getTime())) newCheckOut = null;
 
-      let totalHours = parseFloat(hours);
-      if (isNaN(totalHours) || totalHours <= 0) {
-        if (newCheckIn && newCheckOut) {
-          let diffMs = newCheckOut.getTime() - newCheckIn.getTime();
-          if (diffMs < 0) diffMs += 24 * 60 * 60 * 1000;
-          totalHours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
-        } else {
-          totalHours = shiftDuration;
+      let totalHours = parseHoursToDecimal(hours);
+      if (newCheckIn && newCheckOut) {
+        let diffMs = newCheckOut.getTime() - newCheckIn.getTime();
+        if (diffMs < 0) diffMs += 24 * 60 * 60 * 1000;
+        const diffHours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
+        if (isNaN(totalHours) || totalHours <= 0 || (totalHours < diffHours && diffHours >= (shiftDuration * 0.85))) {
+          totalHours = diffHours;
         }
+      } else if (isNaN(totalHours) || totalHours <= 0) {
+        totalHours = shiftDuration;
       }
 
       if (!targetMonth && newCheckIn) {
@@ -11941,8 +12014,8 @@ exports.bulkUpdateAttendance = async (req, res) => {
         await Attendance.findByIdAndUpdate(attendanceId, updateData, { new: true, runValidators: false });
         updatedCount++;
       } else if (date) {
-        const effectiveCheckIn = newCheckIn || (shiftInfo.startTime ? new Date(`${date}T${shiftInfo.startTime}:00`) : new Date(`${date}T09:00:00`));
-        const effectiveCheckOut = newCheckOut || (shiftInfo.endTime ? new Date(`${date}T${shiftInfo.endTime}:00`) : new Date(`${date}T18:00:00`));
+        const effectiveCheckIn = newCheckIn || (shiftInfo.startTime ? new Date(`${date}T${shiftInfo.startTime}:00+05:30`) : new Date(`${date}T09:00:00+05:30`));
+        const effectiveCheckOut = newCheckOut || (shiftInfo.endTime ? new Date(`${date}T${shiftInfo.endTime}:00+05:30`) : new Date(`${date}T18:00:00+05:30`));
 
         const startOfDay = new Date(date);
         startOfDay.setHours(0, 0, 0, 0);
