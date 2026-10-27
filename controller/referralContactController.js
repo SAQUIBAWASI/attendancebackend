@@ -43,52 +43,21 @@ const addReferralContact = async (req, res) => {
   try {
     const {
       referralType,
-      // Customer
-      customerName,
-      customerPhone,
-      customerAddress,
-      customerOrganization,
-      // Doctor
-      doctorName,
-      doctorOrganization,
-      doctorPhone,
-      doctorSpecialization,
-      doctorAddress,
-      // Commission
-      serviceCommission,            // ✅ renamed from clinicCommission
-      serviceCommissionType,        // ✅ renamed from clinicCommissionType
-      pharmacyCommission,
-      pharmacyCommissionType,
-      labCommission,
-      labCommissionType,
-      feesCommission,
-      feesCommissionType,
-      // Consultation Fee (₹)
-      consultationFee,
-      // Dates & notes
-      onboardDate,
-      referralDate,
-      referralNotes,
-      status,
-      // Discounts (Special Offers)
-      discountFees,
-      discountFeesType,
-      discountLab,
-      discountLabType,
-      // Services
-      services,
-      // Offers array (legacy)
-      offers
+      customerName, customerPhone, customerAddress, customerOrganization,
+      doctorName, doctorOrganization, doctorPhone, doctorSpecialization, doctorAddress,
+      serviceCommission, serviceCommissionType,
+      pharmacyCommission, pharmacyCommissionType,
+      labCommission, labCommissionType,
+      feesCommission, feesCommissionType,
+      consultationFee, onboardDate, referralDate, referralNotes, status,
+      discountFees, discountFeesType, discountLab, discountLabType, discountPharmacy, discountPharmacyType,
+      services, offers
     } = req.body;
 
-    // Auto-calculate total commission
     const totalCommission =
-      (parseFloat(serviceCommission) || 0) +   // ✅ renamed
-      (parseFloat(pharmacyCommission) || 0) +
-      (parseFloat(labCommission) || 0) +
-      (parseFloat(feesCommission) || 0);
+      (parseFloat(serviceCommission) || 0) + (parseFloat(pharmacyCommission) || 0) +
+      (parseFloat(labCommission) || 0) + (parseFloat(feesCommission) || 0);
 
-    // Normalize offers
     let normalizedOffers = [];
     if (Array.isArray(offers)) {
       normalizedOffers = offers
@@ -96,26 +65,28 @@ const addReferralContact = async (req, res) => {
         .map((o) => ({
           offerName: String(o.offerName).trim(),
           offerAmount: Number(o.offerAmount) || 0,
+          offerUnit: o.offerUnit === '%' ? '%' : '₹',
         }));
     }
 
-    // Normalize services
+    // ✅ Push Discounts into Offers Array
+    const df = parseFloat(discountFees) || 0;
+    if (df > 0) normalizedOffers.push({ offerName: 'Fees Discount', offerAmount: df, offerUnit: discountFeesType === '₹' ? '₹' : '%' });
+    
+    const dl = parseFloat(discountLab) || 0;
+    if (dl > 0) normalizedOffers.push({ offerName: 'Lab Discount', offerAmount: dl, offerUnit: discountLabType === '₹' ? '₹' : '%' });
+    
+    const dp = parseFloat(discountPharmacy) || 0;
+    if (dp > 0) normalizedOffers.push({ offerName: 'Pharmacy Discount', offerAmount: dp, offerUnit: discountPharmacyType === '₹' ? '₹' : '%' });
+
     let normalizedServices = [];
     if (Array.isArray(services)) {
-      normalizedServices = services
-        .filter((s) => s && s.name)
-        .map((s) => ({
-          name: String(s.name).trim(),
-          price: Number(s.price) || 0,
-        }));
+      normalizedServices = services.filter((s) => s && s.name).map((s) => ({
+        name: String(s.name).trim(), price: Number(s.price) || 0,
+      }));
     }
 
-    // Normalize discount types
-    const normalizedFeesType = discountFeesType === '₹' ? '₹' : '%';
-    const normalizedLabType = discountLabType === '₹' ? '₹' : '%';
-
-    // Normalize commission types
-    const normalizedServiceType = serviceCommissionType === '₹' ? '₹' : '%';  // ✅ renamed
+    const normalizedServiceType = serviceCommissionType === '₹' ? '₹' : '%';
     const normalizedPharmacyType = pharmacyCommissionType === '₹' ? '₹' : '%';
     const normalizedLabCommType = labCommissionType === '₹' ? '₹' : '%';
     const normalizedFeesCommType = feesCommissionType === '₹' ? '₹' : '%';
@@ -125,23 +96,10 @@ const addReferralContact = async (req, res) => {
 
     const contact = new ReferralContact({
       referralType,
-
-      // Customer
-      customerName,
-      customerPhone,
-      customerAddress,
-      customerOrganization: customerOrganization || "",
-
-      // Doctor
-      doctorName,
-      doctorOrganization,
-      doctorPhone,
-      doctorSpecialization,
-      doctorAddress: doctorAddress || "",
-
-      // Commission
-      serviceCommission: parseFloat(serviceCommission) || 0,     // ✅ renamed
-      serviceCommissionType: normalizedServiceType,              // ✅ renamed
+      customerName, customerPhone, customerAddress, customerOrganization: customerOrganization || "",
+      doctorName, doctorOrganization, doctorPhone, doctorSpecialization, doctorAddress: doctorAddress || "",
+      serviceCommission: parseFloat(serviceCommission) || 0,
+      serviceCommissionType: normalizedServiceType,
       pharmacyCommission: parseFloat(pharmacyCommission) || 0,
       pharmacyCommissionType: normalizedPharmacyType,
       labCommission: parseFloat(labCommission) || 0,
@@ -149,42 +107,26 @@ const addReferralContact = async (req, res) => {
       feesCommission: parseFloat(feesCommission) || 0,
       feesCommissionType: normalizedFeesCommType,
       totalCommission,
-
-      // Consultation Fee
       consultationFee: normalizedConsultationFee,
-
-      // Services
       services: normalizedServices,
-
-      // Dates
       onboardDate: finalOnboardDate,
       referralDate: referralDate || finalOnboardDate,
       referralNotes,
-
-      // Discounts
-      discountFees: parseFloat(discountFees) || 0,
-      discountFeesType: normalizedFeesType,
-      discountLab: parseFloat(discountLab) || 0,
-      discountLabType: normalizedLabType,
-
-      // Offers
+      
+      // ✅ Set individual discount fields to 0 since they are now in offers
+      discountFees: 0, discountFeesType: '%',
+      discountLab: 0, discountLabType: '%',
+      discountPharmacy: 0, discountPharmacyType: '%',
+      
       offers: normalizedOffers,
-
       status
     });
 
     await contact.save();
-
-    res.status(201).json({
-      success: true,
-      data: contact,
-    });
+    res.status(201).json({ success: true, data: contact });
   } catch (error) {
     console.error("addReferralContact error:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -194,147 +136,91 @@ const updateReferralContact = async (req, res) => {
     const { id } = req.params;
     const updateData = { ...req.body };
 
-    // ═════════════════════════════════════════════════════════
-    // ✅ LEGACY MIGRATION: Agar purana client `clinicCommission` 
-    // bhej de, to use `serviceCommission` mein map karo.
-    // (Schema mein clinicCommission nahi hai, Mongoose silently drop kar deta hai)
-    // ═════════════════════════════════════════════════════════
-    if (
-      updateData.clinicCommission !== undefined &&
-      updateData.serviceCommission === undefined
-    ) {
+    const existing = await ReferralContact.findById(id);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Referral contact not found' });
+    }
+
+    // Legacy Migration
+    if (updateData.clinicCommission !== undefined && updateData.serviceCommission === undefined) {
       updateData.serviceCommission = updateData.clinicCommission;
       delete updateData.clinicCommission;
     }
-    if (
-      updateData.clinicCommissionType !== undefined &&
-      updateData.serviceCommissionType === undefined
-    ) {
+    if (updateData.clinicCommissionType !== undefined && updateData.serviceCommissionType === undefined) {
       updateData.serviceCommissionType = updateData.clinicCommissionType;
       delete updateData.clinicCommissionType;
     }
-
-    // Safety: agar kisi bhi tarah `clinicCommission` reh gaya, remove karo
     delete updateData.clinicCommission;
     delete updateData.clinicCommissionType;
 
-    // 🔹 Auto-calculate total commission
-    if (
-      updateData.serviceCommission !== undefined ||
-      updateData.pharmacyCommission !== undefined ||
-      updateData.labCommission !== undefined ||
-      updateData.feesCommission !== undefined
-    ) {
-      const service  = parseFloat(updateData.serviceCommission) || 0;
-      const pharmacy = parseFloat(updateData.pharmacyCommission) || 0;
-      const lab      = parseFloat(updateData.labCommission) || 0;
-      const fees     = parseFloat(updateData.feesCommission) || 0;
+    if (updateData.serviceCommission !== undefined || updateData.pharmacyCommission !== undefined || updateData.labCommission !== undefined || updateData.feesCommission !== undefined) {
+      const service  = parseFloat(updateData.serviceCommission !== undefined ? updateData.serviceCommission : existing.serviceCommission) || 0;
+      const pharmacy = parseFloat(updateData.pharmacyCommission !== undefined ? updateData.pharmacyCommission : existing.pharmacyCommission) || 0;
+      const lab      = parseFloat(updateData.labCommission !== undefined ? updateData.labCommission : existing.labCommission) || 0;
+      const fees     = parseFloat(updateData.feesCommission !== undefined ? updateData.feesCommission : existing.feesCommission) || 0;
       updateData.totalCommission = service + pharmacy + lab + fees;
     }
 
-    // 🔹 Normalize commission values
-    if (updateData.serviceCommission !== undefined) {
-      updateData.serviceCommission = parseFloat(updateData.serviceCommission) || 0;
-    }
-    if (updateData.pharmacyCommission !== undefined) {
-      updateData.pharmacyCommission = parseFloat(updateData.pharmacyCommission) || 0;
-    }
-    if (updateData.labCommission !== undefined) {
-      updateData.labCommission = parseFloat(updateData.labCommission) || 0;
-    }
-    if (updateData.feesCommission !== undefined) {
-      updateData.feesCommission = parseFloat(updateData.feesCommission) || 0;
-    }
+    if (updateData.serviceCommission !== undefined) updateData.serviceCommission = parseFloat(updateData.serviceCommission) || 0;
+    if (updateData.pharmacyCommission !== undefined) updateData.pharmacyCommission = parseFloat(updateData.pharmacyCommission) || 0;
+    if (updateData.labCommission !== undefined) updateData.labCommission = parseFloat(updateData.labCommission) || 0;
+    if (updateData.feesCommission !== undefined) updateData.feesCommission = parseFloat(updateData.feesCommission) || 0;
 
-    // 🔹 Normalize commission types
-    if (updateData.serviceCommissionType !== undefined) {
-      updateData.serviceCommissionType = updateData.serviceCommissionType === '₹' ? '₹' : '%';
-    }
-    if (updateData.pharmacyCommissionType !== undefined) {
-      updateData.pharmacyCommissionType = updateData.pharmacyCommissionType === '₹' ? '₹' : '%';
-    }
-    if (updateData.labCommissionType !== undefined) {
-      updateData.labCommissionType = updateData.labCommissionType === '₹' ? '₹' : '%';
-    }
-    if (updateData.feesCommissionType !== undefined) {
-      updateData.feesCommissionType = updateData.feesCommissionType === '₹' ? '₹' : '%';
-    }
+    if (updateData.serviceCommissionType !== undefined) updateData.serviceCommissionType = updateData.serviceCommissionType === '₹' ? '₹' : '%';
+    if (updateData.pharmacyCommissionType !== undefined) updateData.pharmacyCommissionType = updateData.pharmacyCommissionType === '₹' ? '₹' : '%';
+    if (updateData.labCommissionType !== undefined) updateData.labCommissionType = updateData.labCommissionType === '₹' ? '₹' : '%';
+    if (updateData.feesCommissionType !== undefined) updateData.feesCommissionType = updateData.feesCommissionType === '₹' ? '₹' : '%';
 
-    // ✅ Normalize consultationFee
-    if (updateData.consultationFee !== undefined) {
-      updateData.consultationFee = parseFloat(updateData.consultationFee) || 0;
-    }
+    if (updateData.consultationFee !== undefined) updateData.consultationFee = parseFloat(updateData.consultationFee) || 0;
 
-    // ✅ Normalize services
     if (updateData.services !== undefined) {
       if (Array.isArray(updateData.services)) {
-        updateData.services = updateData.services
-          .filter((s) => s && s.name)
-          .map((s) => ({
-            name: String(s.name).trim(),
-            price: Number(s.price) || 0,
-          }));
+        updateData.services = updateData.services.filter((s) => s && s.name).map((s) => ({
+            name: String(s.name).trim(), price: Number(s.price) || 0,
+        }));
       } else {
         updateData.services = [];
       }
     }
 
-    // 🔹 Normalize discount types
-    if (updateData.discountFeesType !== undefined) {
-      updateData.discountFeesType = updateData.discountFeesType === '₹' ? '₹' : '%';
-    }
-    if (updateData.discountLabType !== undefined) {
-      updateData.discountLabType = updateData.discountLabType === '₹' ? '₹' : '%';
+    if (updateData.onboardDate !== undefined && updateData.referralDate === undefined) updateData.referralDate = updateData.onboardDate;
+    if (updateData.referralDate !== undefined && updateData.onboardDate === undefined) updateData.onboardDate = updateData.referralDate;
+
+    // ✅ Handle Offers Array & Discounts Merger
+    let customOffers = [];
+    if (updateData.offers && Array.isArray(updateData.offers)) {
+       customOffers = updateData.offers.filter(o => !['Fees Discount', 'Lab Discount', 'Pharmacy Discount'].includes(o.offerName));
+    } else {
+       customOffers = existing.offers ? existing.offers.filter(o => !['Fees Discount', 'Lab Discount', 'Pharmacy Discount'].includes(o.offerName)) : [];
     }
 
-    // 🔹 Normalize discount numbers
-    if (updateData.discountFees !== undefined) {
-      updateData.discountFees = parseFloat(updateData.discountFees) || 0;
-    }
-    if (updateData.discountLab !== undefined) {
-      updateData.discountLab = parseFloat(updateData.discountLab) || 0;
-    }
+    const df = parseFloat(updateData.discountFees !== undefined ? updateData.discountFees : existing.discountFees) || 0;
+    const dft = updateData.discountFeesType !== undefined ? updateData.discountFeesType : existing.discountFeesType;
+    if (df > 0) customOffers.push({ offerName: 'Fees Discount', offerAmount: df, offerUnit: dft === '₹' ? '₹' : '%' });
 
-    // 🔹 onboardDate / referralDate sync
-    if (updateData.onboardDate !== undefined && updateData.referralDate === undefined) {
-      updateData.referralDate = updateData.onboardDate;
-    }
-    if (updateData.referralDate !== undefined && updateData.onboardDate === undefined) {
-      updateData.onboardDate = updateData.referralDate;
-    }
+    const dl = parseFloat(updateData.discountLab !== undefined ? updateData.discountLab : existing.discountLab) || 0;
+    const dlt = updateData.discountLabType !== undefined ? updateData.discountLabType : existing.discountLabType;
+    if (dl > 0) customOffers.push({ offerName: 'Lab Discount', offerAmount: dl, offerUnit: dlt === '₹' ? '₹' : '%' });
 
-    const contact = await ReferralContact.findByIdAndUpdate(
-      id,
-      updateData,
-      { new: true, runValidators: true }
-    );
+    const dp = parseFloat(updateData.discountPharmacy !== undefined ? updateData.discountPharmacy : existing.discountPharmacy) || 0;
+    const dpt = updateData.discountPharmacyType !== undefined ? updateData.discountPharmacyType : existing.discountPharmacyType;
+    if (dp > 0) customOffers.push({ offerName: 'Pharmacy Discount', offerAmount: dp, offerUnit: dpt === '₹' ? '₹' : '%' });
 
-    if (!contact) {
-      return res.status(404).json({
-        success: false,
-        message: 'Referral contact not found'
-      });
-    }
+    updateData.offers = customOffers;
+    
+    // ✅ Clear individual discount fields
+    updateData.discountFees = 0;
+    updateData.discountFeesType = '%';
+    updateData.discountLab = 0;
+    updateData.discountLabType = '%';
+    updateData.discountPharmacy = 0;
+    updateData.discountPharmacyType = '%';
 
-    // 🔴 Debug log — confirm serviceCommission actually save hua
-    console.log(`🔴 UPDATE ${contact.customerName || contact.doctorName}:`, {
-      serviceCommission: contact.serviceCommission,
-      serviceCommissionType: contact.serviceCommissionType,
-      pharmacyCommission: contact.pharmacyCommission,
-      labCommission: contact.labCommission,
-      feesCommission: contact.feesCommission,
-    });
-
-    res.status(200).json({
-      success: true,
-      data: contact
-    });
+    const contact = await ReferralContact.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
+    res.status(200).json({ success: true, data: contact });
   } catch (error) {
     console.error("updateReferralContact error:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 // ==================== DELETE ====================

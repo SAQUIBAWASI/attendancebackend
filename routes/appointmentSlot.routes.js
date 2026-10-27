@@ -3090,6 +3090,14 @@ router.get("/getallreferralbookings", async (req, res) => {
       });
     }
 
+    // ✅ NEW: LATEST BOOKING FIRST SORTING (Explicit JavaScript Sort)
+    // Isse ensure hota hai ki chahe filter ho ya na ho, latest booking hamesha top par rahegi
+    finalBookings.sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.bookedAt || 0).getTime();
+      const dateB = new Date(b.createdAt || b.bookedAt || 0).getTime();
+      return dateB - dateA; // Descending order (Latest First)
+    });
+
     // ═══════════════════════════════════════════════════════════
     // 6️⃣ STATS + CATEGORY BREAKDOWN
     // ═══════════════════════════════════════════════════════════

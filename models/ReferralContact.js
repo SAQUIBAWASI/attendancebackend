@@ -3,11 +3,7 @@ const mongoose = require('mongoose');
 
 const ReferralContactSchema = new mongoose.Schema(
   {
-    referralType: {
-      type: String,
-      enum: ['customer', 'doctor'],
-      default: 'customer'
-    },
+    referralType: { type: String, enum: ['customer', 'doctor'], default: 'customer' },
 
     // ===== Customer fields =====
     customerName: { type: String, trim: true },
@@ -23,30 +19,14 @@ const ReferralContactSchema = new mongoose.Schema(
     doctorAddress: { type: String, trim: true },
 
     // ===== Commission fields =====
-    serviceCommission: { type: Number, default: 0 },        // ✅ renamed from clinicCommission
-    serviceCommissionType: {                                 // ✅ renamed from clinicCommissionType
-      type: String,
-      enum: ['%', '₹'],
-      default: '%'
-    },
+    serviceCommission: { type: Number, default: 0 },
+    serviceCommissionType: { type: String, enum: ['%', '₹'], default: '%' },
     pharmacyCommission: { type: Number, default: 0 },
-    pharmacyCommissionType: {
-      type: String,
-      enum: ['%', '₹'],
-      default: '%'
-    },
+    pharmacyCommissionType: { type: String, enum: ['%', '₹'], default: '%' },
     labCommission: { type: Number, default: 0 },
-    labCommissionType: {
-      type: String,
-      enum: ['%', '₹'],
-      default: '%'
-    },
+    labCommissionType: { type: String, enum: ['%', '₹'], default: '%' },
     feesCommission: { type: Number, default: 0 },
-    feesCommissionType: {
-      type: String,
-      enum: ['%', '₹'],
-      default: '%'
-    },
+    feesCommissionType: { type: String, enum: ['%', '₹'], default: '%' },
     totalCommission: { type: Number, default: 0 },
 
     // ===== Consultation Fee (₹ only) =====
@@ -65,33 +45,24 @@ const ReferralContactSchema = new mongoose.Schema(
     referralDate: { type: String, trim: true },
     referralNotes: { type: String, trim: true },
 
-    // ===== Special Offers (Discount) =====
+    // ===== Special Offers (Discount) - Keeping for legacy, but now stored in offers =====
     discountFees: { type: Number, default: 0 },
-    discountFeesType: {
-      type: String,
-      enum: ['%', '₹'],
-      default: '%'
-    },
+    discountFeesType: { type: String, enum: ['%', '₹'], default: '%' },
     discountLab: { type: Number, default: 0 },
-    discountLabType: {
-      type: String,
-      enum: ['%', '₹'],
-      default: '%'
-    },
+    discountLabType: { type: String, enum: ['%', '₹'], default: '%' },
+    discountPharmacy: { type: Number, default: 0 },
+    discountPharmacyType: { type: String, enum: ['%', '₹'], default: '%' },
 
-    // ===== Offers Array =====
+    // ===== Offers Array (Discounts will be stored here) =====
     offers: [
       {
         offerName: { type: String, default: "" },
-        offerAmount: { type: Number, default: 0 }
+        offerAmount: { type: Number, default: 0 },
+        offerUnit: { type: String, enum: ['%', '₹'], default: '₹' } // ✅ Added offerUnit
       }
     ],
 
-    status: {
-      type: String,
-      enum: ['active', 'inactive'],
-      default: 'active'
-    }
+    status: { type: String, enum: ['active', 'inactive'], default: 'active' }
   },
   { timestamps: true }
 );
