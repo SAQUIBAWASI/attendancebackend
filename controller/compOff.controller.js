@@ -162,39 +162,268 @@ exports.getCompOffsByEmployee = async (req, res) => {
 exports.updateCompOffStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, approvedBy } = req.body;
+    const { status, rejectedReason, approvedBy } = req.body;
 
-    if (!["approved", "rejected"].includes(status)) {
-      return res.status(400).json({ error: "Invalid status" });
-    }
-
-    const compOff = await CompOff.findById(id);
-    if (!compOff) {
-      return res.status(404).json({ error: "Comp-off not found" });
-    }
-
-    compOff.status = status;
-    compOff.approvedBy = approvedBy || "Admin";
-    compOff.approvedDate = new Date();
-
-    await compOff.save();
-
-    // If rejected, update the original leave
-    if (status === "rejected" && compOff.originalLeaveId) {
-      await Leave.findByIdAndUpdate(compOff.originalLeaveId, {
-        isConvertedToCompOff: false,
-        compOffId: null,
-        convertedDate: null
+    if (!status || !['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid status. Must be "approved" or "rejected"'
       });
     }
 
-    res.json(compOff);
+    let extraDayReq = await ExtraDayCompOff.findById(id);
+    let compOffReq = await CompOffRequest.findById(id).populate('originalLeaveId');
+
+    if (!extraDayReq && !compOffReq) {
+      return res.status(404).json({
+        success: false,
+        error: 'Comp-off request not found'
+      });
+    }
+
+    const currentStatus = (extraDayReq ? extraDayReq.status : compOffReq.status);
+    if (currentStatus !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        error: `Request is already ${currentStatus}`
+      });
+    }
+
+    const finalApprovedBy = approvedBy || req.admin?.name || 'Admin';
+    const now = new Date();
+
+    if (status === 'approved') {
+      // 1. Process CompOffRequest if present
+      let compOffRecord = null;
+      if (compOffReq) {
+        compOffReq.status = "approved";
+        compOffReq.approvedBy = finalApprovedBy;
+        compOffReq.approvedDate = now;
+        compOffReq.convertedToCompOff = true;
+
+        // ✅ FIX: Extract Leave Date (22 Oct)
+        const actualLeaveDate = compOffReq.leaveDetails?.startDate || compOffReq.leaveDate || compOffReq.workDate;
+
+        compOffRecord = new CompOff({
+          employeeId: compOffReq.employeeId,
+          employeeName: compOffReq.employeeName,
+          originalLeaveId: compOffReq.originalLeaveId?._id || null,
+          workDate: compOffReq.workDate,
+          leaveDate: actualLeaveDate, // ✅ Save Leave Date
+          reason: compOffReq.reason,
+          status: "approved",
+          convertedFromLeave: !!compOffReq.originalLeaveId,
+          approvedBy: finalApprovedBy,
+          approvedDate: now
+        });
+        await compOffRecord.save();
+        compOffReq.compOffId = compOffRecord._id;
+
+        if (compOffReq.originalLeaveId) {
+          await Leave.findByIdAndUpdate(compOffReq.originalLeaveId._id, {
+            isConvertedToCompOff: true,
+            compOffId: compOffRecord._id,
+            convertedDate: now
+          });
+        }
+        await compOffReq.save();
+      }
+
+      // 2. Process ExtraDayCompOff if present
+      const empId = (extraDayReq && extraDayReq.employeeId) || (compOffReq && compOffReq.employeeId);
+      const leaveDate = (extraDayReq && (extraDayReq.leaveDetails?.startDate || extraDayReq.extraDayDate)) ||
+                        (compOffReq && (compOffReq.leaveDetails?.startDate || compOffReq.workDate || compOffReq.extraDayDate)) ||
+                        now;
+
+      if (extraDayReq) {
+        extraDayReq.status = 'approved';
+        extraDayReq.approvedBy = finalApprovedBy;
+        extraDayReq.approvedAt = now;
+        extraDayReq.convertedToCompOff = true;
+        extraDayReq.workDate = new Date(leaveDate);
+
+        if (!compOffRecord) {
+          compOffRecord = new CompOff({
+            employeeId: extraDayReq.employeeId,
+            employeeName: extraDayReq.employeeName,
+            workDate: extraDayReq.workDate,
+            leaveDate: leaveDate, // ✅ Save Leave Date
+            reason: extraDayReq.reason,
+            status: "approved",
+            convertedFromLeave: !!extraDayReq.leaveDetails,
+            approvedBy: finalApprovedBy,
+            approvedDate: now
+          });
+          await compOffRecord.save();
+        }
+      }
+
+      // 3. Mark/create attendance if applicable (Comp-off day)
+      try {
+        const employee = await Employee.findOne({ employeeId: empId });
+        if (employee) {
+          const leaveDateObj = new Date(leaveDate);
+          leaveDateObj.setHours(0, 0, 0, 0);
+
+          let checkInTime = new Date(leaveDateObj);
+          let checkOutTime = new Date(leaveDateObj);
+          let shiftHours = employee.shiftHours || 8;
+
+          try {
+            const shift = await Shift.findOne({
+              'employeeAssignment.employeeId': empId
+            });
+            if (shift && shift.employeeAssignment?.selectedTimeRange) {
+              const times = shift.employeeAssignment.selectedTimeRange.split(' - ');
+              if (times.length === 2) {
+                const startParts = times[0].trim().match(/(\d+):(\d+)\s*(AM|PM)/i);
+                if (startParts) {
+                  let startHour = parseInt(startParts[1]);
+                  const startMinute = parseInt(startParts[2]);
+                  const startAmPm = startParts[3].toUpperCase();
+                  if (startAmPm === 'PM' && startHour !== 12) startHour += 12;
+                  if (startAmPm === 'AM' && startHour === 12) startHour = 0;
+                  checkInTime.setHours(startHour, startMinute, 0, 0);
+                }
+                const endParts = times[1].trim().match(/(\d+):(\d+)\s*(AM|PM)/i);
+                if (endParts) {
+                  let endHour = parseInt(endParts[1]);
+                  const endMinute = parseInt(endParts[2]);
+                  const endAmPm = endParts[3].toUpperCase();
+                  if (endAmPm === 'PM' && endHour !== 12) endHour += 12;
+                  if (endAmPm === 'AM' && endHour === 12) endHour = 0;
+                  if (endHour < checkInTime.getHours()) {
+                    checkOutTime.setDate(checkOutTime.getDate() + 1);
+                  }
+                  checkOutTime.setHours(endHour, endMinute, 0, 0);
+                }
+                const diffMs = checkOutTime - checkInTime;
+                shiftHours = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
+              }
+            }
+          } catch (shiftErr) {
+            checkInTime.setHours(10, 0, 0, 0);
+            checkOutTime.setHours(19, 0, 0, 0);
+            shiftHours = employee.shiftHours || 8;
+          }
+
+          const existingAttendance = await Attendance.findOne({
+            employeeId: empId,
+            checkInTime: {
+              $gte: new Date(leaveDateObj),
+              $lt: new Date(leaveDateObj.getTime() + 24 * 60 * 60 * 1000)
+            }
+          });
+
+          if (existingAttendance) {
+            existingAttendance.status = 'comp-off';
+            existingAttendance.checkInTime = checkInTime;
+            existingAttendance.checkOutTime = checkOutTime;
+            existingAttendance.totalHours = shiftHours;
+            existingAttendance.workingHours = shiftHours;
+            existingAttendance.assignedShiftHours = shiftHours;
+            existingAttendance.otHours = 0;
+            existingAttendance.reason = `Comp-off (Approved on ${now.toLocaleDateString()})`;
+            existingAttendance.isCompOff = true;
+            existingAttendance.compOffRequestId = id;
+            existingAttendance.updatedAt = now;
+            await existingAttendance.save();
+            if (extraDayReq) extraDayReq.attendanceId = existingAttendance._id;
+          } else {
+            const attendance = new Attendance({
+              employeeId: empId,
+              employeeEmail: employee.email || '',
+              checkInTime,
+              checkOutTime,
+              status: 'comp-off',
+              totalBreakMinutes: 0,
+              totalHours: shiftHours,
+              workingHours: shiftHours,
+              assignedShiftHours: shiftHours,
+              otHours: 0,
+              basicSalary: employee.salaryPerMonth || 0,
+              workingDays: employee.workingDays || 26,
+              otMultiplier: 2,
+              hourlyRate: (employee.salaryPerMonth || 0) / ((employee.workingDays || 26) * (employee.shiftHours || 8)),
+              officeName: 'Comp-off',
+              reason: `Comp-off (Approved on ${now.toLocaleDateString()})`,
+              comment: `Comp-off approved`,
+              breaks: [],
+              isCompOff: true,
+              compOffRequestId: id
+            });
+            await attendance.save();
+            if (extraDayReq) extraDayReq.attendanceId = attendance._id;
+          }
+        }
+      } catch (attErr) {
+        console.warn('⚠️ Attendance update (non-critical):', attErr.message);
+      }
+
+      if (extraDayReq) await extraDayReq.save();
+
+      // 4. Notify employee
+      try {
+        await Notification.create({
+          userId: empId,
+          role: "employee",
+          title: "Comp-off Request Approved",
+          message: `Your comp-off request for ${new Date(leaveDate).toLocaleDateString()} has been approved`,
+          type: "comp_off_approved"
+        });
+      } catch (notifErr) {
+        console.warn('⚠️ Notification error (non-critical):', notifErr.message);
+      }
+
+    } else if (status === 'rejected') {
+      const reason = rejectedReason || req.body.rejectionReason || '';
+      if (compOffReq) {
+        compOffReq.status = 'rejected';
+        compOffReq.approvedBy = finalApprovedBy;
+        compOffReq.approvedDate = now;
+        compOffReq.rejectionReason = reason;
+        await compOffReq.save();
+      }
+      if (extraDayReq) {
+        extraDayReq.status = 'rejected';
+        extraDayReq.rejectedReason = reason;
+        extraDayReq.updatedAt = now;
+        await extraDayReq.save();
+      }
+
+      const empId = (extraDayReq && extraDayReq.employeeId) || (compOffReq && compOffReq.employeeId);
+      const leaveDate = (extraDayReq && (extraDayReq.leaveDetails?.startDate || extraDayReq.extraDayDate)) ||
+                        (compOffReq && (compOffReq.workDate || compOffReq.extraDayDate)) ||
+                        now;
+      try {
+        await Notification.create({
+          userId: empId,
+          role: "employee",
+          title: "Comp-off Request Rejected",
+          message: `Your comp-off request for ${new Date(leaveDate).toLocaleDateString()} was rejected${reason ? `: ${reason}` : ''}`,
+          type: "comp_off_rejected"
+        });
+      } catch (notifErr) {
+        console.warn('⚠️ Notification error (non-critical):', notifErr.message);
+      }
+    }
+
+    const updatedData = extraDayReq || compOffReq;
+
+    res.status(200).json({
+      success: true,
+      message: `Comp-off request ${status} successfully`,
+      data: updatedData
+    });
+
   } catch (error) {
-    console.error("❌ Error updating comp-off:", error);
-    res.status(500).json({ error: error.message });
+    console.error('Error in updateCompOffStatus:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
   }
 };
-
 // ✅ Delete comp-off
 exports.deleteCompOff = async (req, res) => {
   try {
@@ -533,6 +762,7 @@ exports.getEmployeeCompOffRequests = async (req, res) => {
 };
 
 // ✅ Approve comp-off request
+// ✅ Approve comp-off request
 exports.approveCompOffRequest = async (req, res) => {
   try {
     const { id } = req.params;
@@ -547,12 +777,16 @@ exports.approveCompOffRequest = async (req, res) => {
       return res.status(400).json({ error: "Request already processed" });
     }
 
+    // ✅ YAHAN FIX HAI: Leave Date nikaal kar CompOff mein save karo
+    const actualLeaveDate = request.leaveDetails?.startDate || request.leaveDate || request.workDate;
+
     // Create comp-off
     const compOff = new CompOff({
       employeeId: request.employeeId,
       employeeName: request.employeeName,
       originalLeaveId: request.originalLeaveId?._id || null,
       workDate: request.workDate,
+      leaveDate: actualLeaveDate, // ✅ Save Leave Date (22 Oct)
       reason: request.reason,
       status: "approved",
       convertedFromLeave: !!request.originalLeaveId,
@@ -596,7 +830,7 @@ exports.approveCompOffRequest = async (req, res) => {
       userId: request.employeeId,
       role: "employee",
       title: "Comp-off Request Approved",
-      message: `Your comp-off request for ${new Date(request.workDate).toLocaleDateString()} has been approved`,
+      message: `Your comp-off request for ${new Date(actualLeaveDate).toLocaleDateString()} has been approved`,
       type: "comp_off_approved"
     });
 
@@ -711,14 +945,10 @@ exports.updateCompOff = async (req, res) => {
 exports.getExtraWorkedDays = async (req, res) => {
   try {
     const { employeeId } = req.params;
-
-    if (!employeeId) {
-      return res.status(400).json({ success: false, error: "Employee ID required" });
-    }
+    if (!employeeId) return res.status(400).json({ success: false, error: "Employee ID required" });
 
     const cleanEmpId = String(employeeId).trim();
 
-    // 1. Employee lookup (flexible: employeeId or _id)
     const employee = await Employee.findOne({
       $or: [
         { employeeId: cleanEmpId },
@@ -727,15 +957,11 @@ exports.getExtraWorkedDays = async (req, res) => {
       ]
     });
 
-    if (!employee) {
-      return res.status(404).json({ success: false, error: "Employee not found" });
-    }
+    if (!employee) return res.status(404).json({ success: false, error: "Employee not found" });
 
     const empId = employee.employeeId;
-    const fallbackWeekOffDay = employee.weekOffDay || "Sunday";
-    const fallbackWeekOffDayNum = DAY_NAMES.indexOf(fallbackWeekOffDay) !== -1 ? DAY_NAMES.indexOf(fallbackWeekOffDay) : 0;
-
-    // 2. Last 3 months attendance fetch
+    
+    // ❌ Yahan se fallbackWeekOffDay hataya gaya hai taaki bina matlab ke extra din na aayein
     const threeMonthsAgo = new Date();
     threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
     threeMonthsAgo.setHours(0, 0, 0, 0);
@@ -749,7 +975,7 @@ exports.getExtraWorkedDays = async (req, res) => {
       checkInTime: { $gte: threeMonthsAgo }
     }).sort({ checkInTime: -1 }).lean();
 
-    // 3. Fetch active holidays
+    // Fetch active holidays
     const holidays = await Holiday.find({ isActive: { $ne: false } }).lean();
     const holidayMap = new Map();
     holidays.forEach(h => {
@@ -761,7 +987,7 @@ exports.getExtraWorkedDays = async (req, res) => {
       }
     });
 
-    // 4. Fetch assigned week-offs from WeekOff collection
+    // Fetch assigned week-offs from WeekOff collection
     const allWeekOffRecords = await WeekOff.find({}).lean();
     const assignedWeekOffDates = new Set();
 
@@ -773,7 +999,6 @@ exports.getExtraWorkedDays = async (req, res) => {
         rec.specificDates.forEach(d => assignedWeekOffDates.add(d));
       }
 
-      // Check weekly / weekwise patterns across the last 3 months
       const curYear = new Date().getFullYear();
       const curMonth = new Date().getMonth() + 1;
       for (let mOffset = -3; mOffset <= 1; mOffset++) {
@@ -783,9 +1008,7 @@ exports.getExtraWorkedDays = async (req, res) => {
         const mStr = `${yr}-${String(mo).padStart(2, "0")}`;
         const daysInMonth = new Date(yr, mo, 0).getDate();
 
-        if (Array.isArray(rec.selectedMonths) && rec.selectedMonths.length > 0 && !rec.selectedMonths.includes(mStr)) {
-          continue;
-        }
+        if (Array.isArray(rec.selectedMonths) && rec.selectedMonths.length > 0 && !rec.selectedMonths.includes(mStr)) continue;
 
         if ((rec.selectionMode === "weekly" || !rec.selectionMode) && Array.isArray(rec.weekOffDays)) {
           rec.weekOffDays.forEach(dayName => {
@@ -818,48 +1041,45 @@ exports.getExtraWorkedDays = async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Group attendances by date (YYYY-MM-DD)
     const dailyMap = new Map();
     attendanceRecords.forEach(rec => {
       if (!rec.checkInTime) return;
-      const dateKey = new Date(rec.checkInTime).toISOString().split('T')[0];
+      const d = new Date(rec.checkInTime);
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      
       if (!dailyMap.has(dateKey)) dailyMap.set(dateKey, []);
       dailyMap.get(dateKey).push(rec);
     });
 
-    // Fetch existing comp-off requests
     const compOffRequests = await CompOffRequest.find({ employeeId: empId }).lean();
     const requestByWorkDate = new Map();
     compOffRequests.forEach(r => {
       const d = r.workDate || r.extraDayDate;
-      if (d) requestByWorkDate.set(d, r);
+      if (d) {
+        const dateObj = new Date(d);
+        const reqDateKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+        requestByWorkDate.set(reqDateKey, r);
+      }
     });
 
     const extraDays = [];
 
     for (const [dateKey, recs] of dailyMap.entries()) {
       const dateObj = new Date(dateKey + 'T00:00:00');
-      const dayOfWeek = dateObj.getDay();
 
-      const isSunday = (dayOfWeek === 0);
-      const isEmployeeWeekOffDay = (dayOfWeek === fallbackWeekOffDayNum);
+      // ✅ FIX: SIRF WeekOff collection aur Holiday collection check hoga
       const isAssignedWeekOff = assignedWeekOffDates.has(dateKey);
-      const isWeekOff = isSunday || isEmployeeWeekOffDay || isAssignedWeekOff;
       const isHoliday = holidayMap.has(dateKey);
       const holidayName = holidayMap.get(dateKey);
 
-      if (!isWeekOff && !isHoliday) continue;
+      if (!isAssignedWeekOff && !isHoliday) continue;
 
       let totalHours = 0;
       recs.forEach(rec => {
         let h = 0;
-        if (rec.totalHours && rec.totalHours > 0) {
-          h = parseFloat(rec.totalHours);
-        } else if (rec.checkInTime && rec.checkOutTime) {
-          h = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
-        } else if (rec.checkInTime) {
-          h = parseFloat(rec.assignedShiftHours) || 8;
-        }
+        if (rec.totalHours && rec.totalHours > 0) h = parseFloat(rec.totalHours);
+        else if (rec.checkInTime && rec.checkOutTime) h = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
+        else if (rec.checkInTime) h = parseFloat(rec.assignedShiftHours) || 8;
         totalHours += h;
       });
 
@@ -882,11 +1102,8 @@ exports.getExtraWorkedDays = async (req, res) => {
         }
       }
 
-      // Expiry check: 15th of next month at 23:59:59.999
       const parts = dateKey.split('-').map(Number);
-      const workYear = parts[0];
-      const workMonth = parts[1] - 1;
-      const expiryDate = new Date(workYear, workMonth + 1, 15, 23, 59, 59, 999);
+      const expiryDate = new Date(parts[0], parts[1] - 1 + 1, 15, 23, 59, 59, 999);
       const isExpired = today > expiryDate;
 
       if (isExpired && requestStatus === "available") {
@@ -894,22 +1111,16 @@ exports.getExtraWorkedDays = async (req, res) => {
         status = "expired";
       }
 
-      let workType = "Week-off Work";
-      if (isHoliday && isWeekOff) {
-        workType = `Holiday & Week-off Work (${holidayName})`;
-      } else if (isHoliday) {
-        workType = `Holiday Work (${holidayName})`;
-      }
+      let workType = "";
+      if (isHoliday && isAssignedWeekOff) workType = `Holiday & Week-off Work (${holidayName})`;
+      else if (isHoliday) workType = `Holiday Work (${holidayName})`;
+      else if (isAssignedWeekOff) workType = `Week-off Work`;
 
-      const validTillFormatted = expiryDate.toLocaleDateString('en-IN', {
-        day: 'numeric', month: 'short', year: 'numeric'
-      });
+      const validTillFormatted = expiryDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
       extraDays.push({
         date: dateKey,
-        day: dateObj.toLocaleDateString('en-US', {
-          weekday: 'long', day: 'numeric', month: 'short', year: 'numeric'
-        }),
+        day: dateObj.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }),
         workType,
         totalHours: Number(totalHours.toFixed(2)),
         extraHours: Number((totalHours - 8 > 0 ? totalHours - 8 : 0).toFixed(2)),
@@ -920,15 +1131,9 @@ exports.getExtraWorkedDays = async (req, res) => {
       });
     }
 
-    // Sort by date descending
     extraDays.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    res.json({
-      success: true,
-      count: extraDays.length,
-      extraDays
-    });
-
+    res.json({ success: true, count: extraDays.length, extraDays });
   } catch (error) {
     console.error("❌ Error fetching extra worked days:", error);
     res.status(500).json({ success: false, error: error.message });

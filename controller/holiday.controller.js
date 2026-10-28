@@ -1,6 +1,5 @@
 const Holiday = require("../models/Holiday");
 
-// ─── Safe optional imports (won't crash if they fail) ───────────────────────
 let Notification = null;
 let Employee = null;
 let sendPushToUser = null;
@@ -28,7 +27,6 @@ try {
 exports.getHolidays = async (req, res) => {
   try {
     const holidays = await Holiday.find({}).lean();
-    // Sort by fromDate string (YYYY-MM-DD format sorts correctly as string)
     holidays.sort((a, b) => (a.fromDate || "").localeCompare(b.fromDate || ""));
     res.json(holidays);
   } catch (error) {
@@ -40,7 +38,7 @@ exports.getHolidays = async (req, res) => {
 // ─── Add Holiday ─────────────────────────────────────────────────────────────
 exports.addHoliday = async (req, res) => {
   try {
-    const { name, fromDate, toDate, totalDays, type, isActive, state } = req.body;
+    const { name, fromDate, toDate, totalDays, type, isActive, state, department, departments } = req.body;
 
     if (!name || !fromDate || !toDate) {
       return res.status(400).json({ message: "name, fromDate and toDate are required" });
@@ -53,6 +51,8 @@ exports.addHoliday = async (req, res) => {
       totalDays: totalDays || 1,
       type: type || "Public Holiday",
       state: state || "All",
+      department: department || "All",
+      departments: Array.isArray(departments) ? departments : ["All"],
       isActive: isActive !== undefined ? isActive : true,
     });
 
@@ -96,17 +96,15 @@ exports.addHoliday = async (req, res) => {
 exports.updateHoliday = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, fromDate, toDate, totalDays, type, isActive, state } = req.body;
+    const { name, fromDate, toDate, totalDays, type, isActive, state, department, departments } = req.body;
 
     const updateFields = { name, fromDate, toDate, totalDays, type };
     if (state !== undefined) updateFields.state = state;
+    if (department !== undefined) updateFields.department = department;
+    if (departments !== undefined) updateFields.departments = departments;
     if (isActive !== undefined) updateFields.isActive = isActive;
 
-    const holiday = await Holiday.findByIdAndUpdate(
-      id,
-      updateFields,
-      { new: true }
-    );
+    const holiday = await Holiday.findByIdAndUpdate(id, updateFields, { new: true });
 
     if (!holiday) return res.status(404).json({ message: "Holiday not found" });
 

@@ -20,14 +20,18 @@ const compOffSchema = new mongoose.Schema(
       type: String, 
       required: true 
     },
+    // ✅ FIX: Ye leaveDate field add karni hai (22 Oct ke liye)
+    leaveDate: { 
+      type: String, 
+      default: null 
+    },
     reason: { 
       type: String, 
       default: "" 
     },
-    // Add these fields in your schema
-count: { type: Number, default: 1, min: 0.5 },
-updatedBy: { type: String },
-updatedAt: { type: Date },
+    count: { type: Number, default: 1, min: 0.5 },
+    updatedBy: { type: String },
+    updatedAt: { type: Date },
     status: { 
       type: String, 
       enum: ["pending", "approved", "rejected"],
@@ -49,7 +53,6 @@ updatedAt: { type: Date },
 );
 
 module.exports = mongoose.model("CompOff", compOffSchema);
-
 // const mongoose = require("mongoose");
 
 // const compOffRequestSchema = new mongoose.Schema(

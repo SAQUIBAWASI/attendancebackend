@@ -6,9 +6,11 @@ const holidaySchema = new mongoose.Schema(
     fromDate: { type: String, required: true }, // "YYYY-MM-DD" string
     toDate: { type: String, required: true },   // "YYYY-MM-DD" string
     totalDays: { type: Number, default: 1 },
-    type: { type: String, default: "Public Holiday" }, // Festival, National Holiday, etc.
-    state: { type: String, default: "All" }, // State specific holiday or All
-    isActive: { type: Boolean, default: true }, // Whether company actually gives this holiday
+    type: { type: String, default: "Public Holiday" }, 
+    state: { type: String, default: "All" }, 
+    department: { type: String, default: "All" }, // e.g. "All" ya "Sales, HR"
+    departments: [{ type: String }], // Array format for easy filtering
+    isActive: { type: Boolean, default: true }, 
   },
   { timestamps: true }
 );

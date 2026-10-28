@@ -5645,17 +5645,24 @@ router.put("/updatecharges/:id", async (req, res) => {
   }
 });
 
-// ✅ NEW: Vitals update API
+// ✅ NEW: Vitals update API (with Glucose support)
 router.put("/vitals/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { vitalsTemp, vitalsBp, vitalsPr, vitalsWeight } = req.body;
+    const {
+      vitalsTemp,
+      vitalsBp,
+      vitalsPr,
+      vitalsWeight,
+      vitalsGlucose,   // 👈 NEW
+    } = req.body;
 
     if (
       vitalsTemp === undefined &&
       vitalsBp === undefined &&
       vitalsPr === undefined &&
-      vitalsWeight === undefined
+      vitalsWeight === undefined &&
+      vitalsGlucose === undefined   // 👈 NEW
     ) {
       return res.status(400).json({
         success: false,
@@ -5675,6 +5682,7 @@ router.put("/vitals/:id", async (req, res) => {
     if (vitalsBp !== undefined && vitalsBp !== null) booking.vitalsBp = String(vitalsBp).trim();
     if (vitalsPr !== undefined && vitalsPr !== null) booking.vitalsPr = String(vitalsPr).trim();
     if (vitalsWeight !== undefined && vitalsWeight !== null) booking.vitalsWeight = String(vitalsWeight).trim();
+    if (vitalsGlucose !== undefined && vitalsGlucose !== null) booking.vitalsGlucose = String(vitalsGlucose).trim();   // 👈 NEW
 
     await booking.save();
 
@@ -5687,6 +5695,7 @@ router.put("/vitals/:id", async (req, res) => {
         vitalsBp: booking.vitalsBp,
         vitalsPr: booking.vitalsPr,
         vitalsWeight: booking.vitalsWeight,
+        vitalsGlucose: booking.vitalsGlucose,   // 👈 NEW
         patientName: booking.patientName,
       },
     });
@@ -5698,7 +5707,6 @@ router.put("/vitals/:id", async (req, res) => {
     });
   }
 });
-
 
 // ✅ Toggle Active Status
 router.put("/toggle-active/:id", async (req, res) => {

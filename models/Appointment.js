@@ -105,6 +105,7 @@ offerDeduction: { type: Number, default: 0 },
     vitalsBp: { type: String, default: "" },
     vitalsPr: { type: String, default: "" },
     vitalsWeight: { type: String, default: "" },
+    vitalsGlucose: { type: String, default: "" },   // 👈 NEW
 
     // =============================================
     // MEDICAL INFO

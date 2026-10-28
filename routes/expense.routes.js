@@ -7,7 +7,9 @@ const {
     updateKmRate,
     getAllExpenses,
     updateBulkPaymentStatus,
-    updatePaymentStatus
+    updatePaymentStatus,
+    updateExpense,
+    deleteExpense
 } = require("../controller/expense.controller");
 
 // ➕ Add a new expense
@@ -28,5 +30,12 @@ router.put("/rate", updateKmRate);
 // ✅ Status update routes (Bulk pehle, Single baad mein)
 router.put("/status/bulk", updateBulkPaymentStatus); 
 router.put("/status/:id", updatePaymentStatus);
+
+
+// Update Expense
+router.put("/updateexpense/:id", updateExpense);
+
+// Delete Expense
+router.delete("/deleteexpense/:id", deleteExpense);
 
 module.exports = router;
