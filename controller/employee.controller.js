@@ -6681,6 +6681,9 @@ const employeeDashboard = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+
 // ============================================
 // HELPERS (internal)
 // ============================================
@@ -6948,6 +6951,7 @@ const calculateAttendanceAndWeekOffs = (
   };
 };
 
+
 // ============================================
 // MAIN COMPUTE
 // ============================================
@@ -6977,7 +6981,8 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
       calculatedSalary: 0, baseCalculatedSalary: 0, finalPay: 0,
       finalOTAmount: 0, otAmount: 0, hasApprovedOT: false,
       approvedOTAmount: 0, approvedOTHours: 0,
-      holidayCount: 0, compOffEarned: 0, compOffUsed: 0, compOffBalance: 0,
+      holidayCount: 0, holidayDays: 0, holidayPay: 0, holidayDates: [],
+      compOffEarned: 0, compOffUsed: 0, compOffBalance: 0,
       totalLeaves: 0, lopDays: 0,
       leavesBreakdown: { CL:0, SL:0, EL:0, COFF:0, LOP:0, Other:0, leaveDetails: [] },
       expectedWorkingDays: 0, payablePresentDays: 0, carryForwardDays: 0,
@@ -7030,22 +7035,15 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
   const dept = (employee.department || "").toLowerCase().trim();
   const isConsultant = dept.includes("consultant");
 
-  // ✅ FINAL WEEKOFF VALUES
-  // Total Week Off Days (entitlement) — employee.weekOffPerMonth se
   const targetWeekOffCount = employee.weekOffPerMonth || employee.weekOffCount || 4;
-  
-  // Abhi tak ke earned weekOffs (paid)
   const earnedWeekOffs = weekOffData.earnedWeekOffs;
-  
-  // Abhi tak ke total weekOff days (dates count)
   const totalWeekOffDaysTillDate = weekOffData.totalWeekOffDays;
 
-  // ✅ FINAL Present/Working days
-  let presentDays = weekOffData.totalPresentDays;
-  let halfDays = weekOffData.totalHalfDays;
-  let workingDays = presentDays + halfDays * 0.5;
+  // ✅✅ FIX: halfDays already fraction hai (0.5 per half-day) — dobara * 0.5 NAHI karna
+  let presentDays = weekOffData.presentDays || weekOffData.totalPresentDays || 0;
+  let halfDays = weekOffData.halfDays || weekOffData.totalHalfDays || 0;
+  let workingDays = presentDays + halfDays;   // ✅ * 0.5 hata diya
 
-  // Expected working days (full month)
   let expectedWorkingDays = daysInMonth - targetWeekOffCount;
   if (isJoiningMonthFlag) {
     const totalDaysFromJoin = daysInMonth - effectiveStartDay + 1;
@@ -7053,7 +7051,6 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
     expectedWorkingDays = Math.max(0, workingDaysFromJoin);
   }
 
-  // Salary
   let salaryForMonth = employee.salaryPerMonth || 0;
   let originalSalary = employee.salaryPerMonth || salaryForMonth;
   let incrementDetails = null;
@@ -7067,19 +7064,84 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
 
   const dailyRate = salaryForMonth > 0 ? salaryForMonth / daysInMonth : 0;
 
-  const payablePresent = presentDays + halfDays * 0.5;
+  // ✅✅ FIX: payablePresent mein bhi * 0.5 hata diya
+  const payablePresent = presentDays + halfDays;
 
-  // ✅ Salary calculation
+  // ============================================================================
+  // ✅ HOLIDAY CALCULATION
+  // ============================================================================
+  const monthPrefix = `${year}-${String(monthNum).padStart(2, "0")}`;
+
+  const attendanceMap = new Map();
+  attendanceRecords.forEach((rec) => {
+    const dateKey = rec.date
+      ? new Date(rec.date).toLocaleDateString("en-CA")
+      : rec.checkInTime
+      ? new Date(rec.checkInTime).toLocaleDateString("en-CA")
+      : null;
+    if (!dateKey) return;
+    let hours = 0;
+    if (rec.totalHours && parseFloat(rec.totalHours) > 0) hours = parseFloat(rec.totalHours);
+    else if (rec.workingHours && parseFloat(rec.workingHours) > 0) hours = parseFloat(rec.workingHours);
+    else if (rec.checkInTime && rec.checkOutTime) {
+      hours = (new Date(rec.checkOutTime) - new Date(rec.checkInTime)) / (1000 * 60 * 60);
+    }
+    if (hours > 0) attendanceMap.set(dateKey, hours);
+  });
+
+  const weekOffDatesSet = new Set(weekOffData.weekOffDates || []);
+
+  const leaveDatesSet = new Set();
+  (leavesObj.leaveDetails || []).forEach((leave) => {
+    const s = new Date(leave.startDate);
+    const e = new Date(leave.endDate);
+    for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+      leaveDatesSet.add(d.toLocaleDateString("en-CA"));
+    }
+  });
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let holidayDays = 0;
+  const holidayDates = [];
+
+  (allHolidays || []).forEach((h) => {
+    if (h.isActive === false) return;
+    if (!h.fromDate || !h.toDate) return;
+
+    const hStart = new Date(h.fromDate + "T00:00:00");
+    const hEnd = new Date(h.toDate + "T00:00:00");
+
+    for (let d = new Date(hStart); d <= hEnd; d.setDate(d.getDate() + 1)) {
+      const dateKey = d.toLocaleDateString("en-CA");
+      if (!dateKey.startsWith(monthPrefix)) continue;
+
+      const checkDate = new Date(dateKey + "T00:00:00");
+      if (checkDate > today) continue;
+
+      if (attendanceMap.has(dateKey) && attendanceMap.get(dateKey) > 0) continue;
+      if (weekOffDatesSet.has(dateKey)) continue;
+      if (leaveDatesSet.has(dateKey)) continue;
+
+      holidayDays++;
+      holidayDates.push(dateKey);
+    }
+  });
+
+  const holidayPay = Math.round(holidayDays * dailyRate);
+
+  // ✅ Salary calculation — holiday bhi include
   let calculatedSalary = 0;
   if (salaryForMonth > 0 && daysInMonth > 0) {
-    const effectivePaid = payablePresent + earnedWeekOffs + compOffBalance;
-    calculatedSalary = effectivePaid * dailyRate;
+    const effectivePaid = payablePresent + earnedWeekOffs + compOffBalance + holidayDays;
+    const capped = Math.min(effectivePaid, daysInMonth);
+    calculatedSalary = capped * dailyRate;
   }
 
   const baseCalc = Math.round(calculatedSalary);
   const finalPay = baseCalc;
 
-  // ✅ LOP = 0 (kyunki absent salary me deduct nahi kar rahe)
   const lopDays = 0;
 
   return {
@@ -7090,19 +7152,19 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
     presentDays,
     halfDays,
     halfDayWorking: halfDays,
-    totalWorkingDays: workingDays,
-    workingDays: workingDays,
+    totalWorkingDays: workingDays,    // ✅ ab 8 + 1 = 9
+    workingDays: workingDays,         // ✅
+
     fullDayNotWorking: 0,
     overTimeHours: 0,
     overTimeHoursFormatted: "0h 0m",
 
-    // ✅ WeekOff fields
-    weekOffs: earnedWeekOffs,                    // Used Week Offs (Paid)
+    weekOffs: earnedWeekOffs,
     earnedWeekOffs: earnedWeekOffs,
-    defaultWeekOffs: targetWeekOffCount,         // Entitlement (4)
-    targetWeekOffCount: targetWeekOffCount,      // Total Week Off Days (4)
-    totalWeekOffDays: totalWeekOffDaysTillDate,  // Dates count till date (2)
-    weekOffDates: weekOffData.weekOffDates,      // ["2026-10-04", "2026-10-11"]
+    defaultWeekOffs: targetWeekOffCount,
+    targetWeekOffCount: targetWeekOffCount,
+    totalWeekOffDays: totalWeekOffDaysTillDate,
+    weekOffDates: weekOffData.weekOffDates,
     weekOffDay,
     weeklyBreakdown: weekOffData.weeklyBreakdown,
 
@@ -7119,7 +7181,12 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
     approvedOTAmount: 0,
     approvedOTHours: 0,
 
-    holidayCount: 0,
+    // ✅ HOLIDAY FIELDS
+    holidayCount: holidayDays,
+    holidayDays: holidayDays,
+    holidayPay: holidayPay,
+    holidayDates: holidayDates,
+
     compOffEarned,
     compOffUsed,
     compOffBalance,
@@ -7128,7 +7195,7 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
     leavesBreakdown: leavesObj,
 
     expectedWorkingDays,
-    payablePresentDays: payablePresent,
+    payablePresentDays: payablePresent,   // ✅ ab 8 + 1 = 9
     carryForwardDays: 0,
 
     includeWeekOffInSalary: includeWO,
@@ -7163,7 +7230,6 @@ const computeSalaryForMonth = async (employee, month, allLeaves, allHolidays, al
     otherDeductions: employee.otherDeductions,
   };
 };
-
 // ============================================
 // ✅ SINGLE EXPORTED API
 // ============================================
@@ -7191,6 +7257,34 @@ const getEmployeeSalarySummary = async (req, res) => {
       CompOff.find({ employeeId: String(employee.employeeId), status: "approved" }).lean(),
     ]);
 
+    // ✅✅ DEPARTMENT-WISE HOLIDAY FILTER (Holiday model ke hisaab se)
+    // "All" / "All Departments" → sabko milegi
+    // Specific department → sirf us dept walon ko
+    const empDept = (employee.department || "").trim().toLowerCase();
+
+    const myHolidays = allHolidays.filter((h) => {
+      // Pehle departments array check karo
+      let depts = [];
+      if (Array.isArray(h.departments) && h.departments.length > 0) {
+        depts = h.departments;
+      } else if (h.department && typeof h.department === "string") {
+        const depStr = h.department.trim();
+        if (depStr.toLowerCase() !== "all" && depStr.toLowerCase() !== "all departments") {
+          depts = depStr.split(",").map((d) => d.trim()).filter(Boolean);
+        }
+      }
+
+      // Koi department nahi / "All" → sabko
+      if (depts.length === 0) return true;
+      if (depts.some((d) => ["all", "all departments"].includes(d.toLowerCase()))) return true;
+
+      // Employee ka department nahi pata → safe side include
+      if (!empDept) return true;
+
+      // Strict match
+      return depts.some((d) => d.toLowerCase().trim() === empDept);
+    });
+
     let months = [];
     if (requestedMonth) {
       months = [requestedMonth];
@@ -7215,7 +7309,11 @@ const getEmployeeSalarySummary = async (req, res) => {
     const records = [];
     for (const m of months) {
       const rec = await computeSalaryForMonth(
-        employee, m, allLeaves, allHolidays, allCompOffs
+        employee,
+        m,
+        allLeaves,
+        myHolidays,       // ✅ department-filtered holidays
+        allCompOffs
       );
       records.push(rec);
     }
@@ -7224,6 +7322,7 @@ const getEmployeeSalarySummary = async (req, res) => {
     const totalNetPay = records.reduce((s, r) => s + (r.finalPay || 0), 0);
     const payslipsAvailable = records.filter((r) => r.canDownload).length;
     const avgSalary = records.length ? Math.round(totalNetPay / records.length) : 0;
+    const totalHolidayPay = records.reduce((s, r) => s + (r.holidayPay || 0), 0);
 
     return res.status(200).json({
       success: true,
@@ -7239,6 +7338,7 @@ const getEmployeeSalarySummary = async (req, res) => {
         totalNetPay,
         payslipsAvailable,
         avgSalary,
+        totalHolidayPay,
       },
       data: records,
     });

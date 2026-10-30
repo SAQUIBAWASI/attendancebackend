@@ -26,7 +26,34 @@ try {
 // ─── Get All Holidays ────────────────────────────────────────────────────────
 exports.getHolidays = async (req, res) => {
   try {
-    const holidays = await Holiday.find({}).lean();
+    const { department } = req.query;
+
+    let query = {};
+
+    // ✅ Department filter — sirf tab jab query mein department aaya ho
+    if (
+      department &&
+      department.trim() !== "" &&
+      department.toLowerCase() !== "all" &&
+      department.toLowerCase() !== "all departments"
+    ) {
+      const dept = department.trim();
+
+      query.$or = [
+        // Array format check
+        { departments: { $in: ["All", "All Departments"] } },
+        { departments: dept },
+
+        // String format check
+        { department: "All" },
+        { department: "All Departments" },
+        { department: dept },
+        // Comma-separated string: "Sales, HR" mein "Sales" ho
+        { department: new RegExp(`(^|,\\s*)${dept.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s*,|$)`, "i") },
+      ];
+    }
+
+    const holidays = await Holiday.find(query).lean();
     holidays.sort((a, b) => (a.fromDate || "").localeCompare(b.fromDate || ""));
     res.json(holidays);
   } catch (error) {

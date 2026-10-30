@@ -39,25 +39,25 @@ const appointmentSchema = new mongoose.Schema(
 
 
     reviews: [
-  {
-    serviceId: { type: String, default: "" },
-    name: { type: String, },
-    price: { type: Number, default: 0, min: 0 },
-    category: { type: String, default: "" },
-    description: { type: String, default: "" },
-    addedAt: { type: Date, default: Date.now },
-  },
-],
-reviewServicesTotal: { type: Number, default: 0, min: 0 },
+      {
+        serviceId: { type: String, default: "" },
+        name: { type: String, },
+        price: { type: Number, default: 0, min: 0 },
+        category: { type: String, default: "" },
+        description: { type: String, default: "" },
+        addedAt: { type: Date, default: Date.now },
+      },
+    ],
+    reviewServicesTotal: { type: Number, default: 0, min: 0 },
 
 
-offerApplied: {
-  referralContactId: { type: String, default: "" },
-  offerId: { type: String, default: "" },
-  offerName: { type: String, default: "" },
-  offerAmount: { type: Number, default: 0 },
-},
-offerDeduction: { type: Number, default: 0 },
+    offerApplied: {
+      referralContactId: { type: String, default: "" },
+      offerId: { type: String, default: "" },
+      offerName: { type: String, default: "" },
+      offerAmount: { type: Number, default: 0 },
+    },
+    offerDeduction: { type: Number, default: 0 },
 
 
 
@@ -248,55 +248,59 @@ offerDeduction: { type: Number, default: 0 },
 
     // Existing schema me sirf ye 2 fields add karo (baaki kuch nahi chhedo)
 
-labItems: [{
-  serviceId: String,
-  name: String,
-  price: { type: Number, default: 0 },
-  discount: { type: Number, default: 0 },
-  paidAmount: { type: Number, default: 0 },
-  dueAmount: { type: Number, default: 0 }, // ✅ Add this
-  transactionId: String,
-  description: String,
-  category: String,
-  paymentMode: String,
-  paymentStatus: String,
-}],
-medicineItems: [{
-  serviceId: String,
-  name: String,
-  price: { type: Number, default: 0 },
-  discount: { type: Number, default: 0 },
-  paidAmount: { type: Number, default: 0 },
-  dueAmount: { type: Number, default: 0 }, // ✅ Add this
-  transactionId: String,
-  description: String,
-  category: String,
-  paymentMode: String,
-  paymentStatus: String,
-}],
-
-addedBy: {
-  name: { type: String, default: "N/A" },
-  empId: { type: String, default: "" }
-},
+    labItems: [{
+      serviceId: String,
+      name: String,
+      price: { type: Number, default: 0 },
+      discount: { type: Number, default: 0 },
+      paidAmount: { type: Number, default: 0 },
+      dueAmount: { type: Number, default: 0 },
+      transactionId: String,
+      description: String,
+      category: String,
+      paymentMode: String,
+      paymentStatus: String,
+      clearedDueAt: { type: Date, default: null },   // ✅ NAYA
+    }],
 
 
+    medicineItems: [{
+      serviceId: String,
+      name: String,
+      price: { type: Number, default: 0 },
+      discount: { type: Number, default: 0 },
+      paidAmount: { type: Number, default: 0 },
+      dueAmount: { type: Number, default: 0 },
+      transactionId: String,
+      description: String,
+      category: String,
+      paymentMode: String,
+      paymentStatus: String,
+      clearedDueAt: { type: Date, default: null },   // ✅ NAYA
+    }],
 
-// models/Appointment.js (ya jo bhi naam hai)
-customerPaymentStatus: { type: String, enum: ["Due", "Paid", "Partial", "Pending"], default: "Due" },
-customerPaymentUpdatedAt: { type: Date, default: null },
-customerReferralPaidAmount: { type: Number, default: 0 },
+    addedBy: {
+      name: { type: String, default: "N/A" },
+      empId: { type: String, default: "" }
+    },
 
-doctorPaymentStatus: { type: String, enum: ["Due", "Paid", "Partial", "Pending"], default: "Due" },
-doctorPaymentUpdatedAt: { type: Date, default: null },
-doctorReferralPaidAmount: { type: Number, default: 0 },
 
-// Existing schema me add karo (baaki kuch nahi chhedo)
-categoryPayment: {
-  clinic: { paidAmount: { type: Number, default: 0 } },
-  lab: { paidAmount: { type: Number, default: 0 } },
-  pharmacy: { paidAmount: { type: Number, default: 0 } },
-},
+
+    // models/Appointment.js (ya jo bhi naam hai)
+    customerPaymentStatus: { type: String, enum: ["Due", "Paid", "Partial", "Pending"], default: "Due" },
+    customerPaymentUpdatedAt: { type: Date, default: null },
+    customerReferralPaidAmount: { type: Number, default: 0 },
+
+    doctorPaymentStatus: { type: String, enum: ["Due", "Paid", "Partial", "Pending"], default: "Due" },
+    doctorPaymentUpdatedAt: { type: Date, default: null },
+    doctorReferralPaidAmount: { type: Number, default: 0 },
+
+    // Existing schema me add karo (baaki kuch nahi chhedo)
+    categoryPayment: {
+      clinic: { paidAmount: { type: Number, default: 0 } },
+      lab: { paidAmount: { type: Number, default: 0 } },
+      pharmacy: { paidAmount: { type: Number, default: 0 } },
+    },
 
     // =============================================
     // PAYMENT FIELDS
@@ -319,14 +323,15 @@ categoryPayment: {
         name: { type: String },
         price: { type: Number, default: 0 },
         description: { type: String, default: "" },
-        category: { type: String, default: "" },           // ✅ NEW
-        paymentMode: { type: String, default: "" },         // ✅ NEW (MAIN FIX)
+        category: { type: String, default: "" },
+        paymentMode: { type: String, default: "" },
         paymentStatus: {
           type: String,
           enum: ["Pending", "Paid", "Partial", "Due"],
           default: "Pending"
         },
-        addedAt: { type: Date, default: Date.now }
+        addedAt: { type: Date, default: Date.now },
+        clearedDueAt: { type: Date, default: null },   // ✅ NAYA
       }],
       default: []
     },
@@ -346,8 +351,8 @@ categoryPayment: {
 
     isOP: { type: Boolean, default: false },
 
-     customPID:   { type: String, default: "", index: true },  // ✅ "TH261003"
-  bookingType: { type: String, default: "", index: true },  // ✅ "" | "N-Walkin" | "R-Walkin"
+    customPID: { type: String, default: "", index: true },  // ✅ "TH261003"
+    bookingType: { type: String, default: "", index: true },  // ✅ "" | "N-Walkin" | "R-Walkin"
 
     // =============================================
     // STATUS TRACKING
