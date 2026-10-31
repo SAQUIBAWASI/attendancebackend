@@ -1695,14 +1695,12 @@ router.get("/revenue-analytics", async (req, res) => {
       else if (m === "insurance") bucket.insurance += amount;
     };
 
-    // ✅ NAYA — reusable bucket factory
     const makeBucket = () => ({
       clinic: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
       lab: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
       pharmacy: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
     });
 
-    // ✅ NAYA — reusable aggregate function (ek booking → bucket)
     const aggregateBooking = (b, categoryBreakdown) => {
       const labItemsArr = Array.isArray(b.labItems) ? b.labItems : [];
       const medItemsArr = Array.isArray(b.medicineItems) ? b.medicineItems : [];
@@ -1757,7 +1755,6 @@ router.get("/revenue-analytics", async (req, res) => {
 
       const fallbackMode = (b.paymentType || "cash").toString().toLowerCase();
 
-      // CLINIC
       categoryBreakdown.clinic.total += clinic;
       categoryBreakdown.clinic.due += clinicDue;
       const clinicServicesForMode = baseServices.filter((s) => classifyService(s) === "clinic");
@@ -1773,7 +1770,6 @@ router.get("/revenue-analytics", async (req, res) => {
       const clinicRemaining = Math.max(0, clinicPaid - clinicPaidDistributed);
       if (clinicRemaining > 0) addToBucket(categoryBreakdown.clinic, fallbackMode, clinicRemaining);
 
-      // LAB
       categoryBreakdown.lab.total += lab;
       categoryBreakdown.lab.due += labDue;
       if (hasLabItems) {
@@ -1785,7 +1781,6 @@ router.get("/revenue-analytics", async (req, res) => {
         addToBucket(categoryBreakdown.lab, fallbackMode, labPaid);
       }
 
-      // PHARMACY
       categoryBreakdown.pharmacy.total += pharmacy;
       categoryBreakdown.pharmacy.due += pharmacyDue;
       if (hasMedItems) {
@@ -1798,7 +1793,6 @@ router.get("/revenue-analytics", async (req, res) => {
       }
     };
 
-    // ✅ Round helper
     const roundBucket = (bucket) => {
       Object.keys(bucket).forEach((cat) => {
         Object.keys(bucket[cat]).forEach((k) => {
@@ -1834,7 +1828,6 @@ router.get("/revenue-analytics", async (req, res) => {
       const diffDays = Math.round((toD - fromD) / (1000 * 60 * 60 * 24)) + 1;
 
       if (diffDays <= 31) {
-        // ✅ DAILY rows
         const dailyMap = new Map();
         for (let i = 0; i < diffDays; i++) {
           const d = new Date(fromD);
@@ -1861,7 +1854,6 @@ router.get("/revenue-analytics", async (req, res) => {
           });
         });
       } else {
-        // ✅ MONTHLY rows
         isMonthlyView = true;
         const monthlyMap = new Map();
         const cursor = new Date(fromD.getFullYear(), fromD.getMonth(), 1);
@@ -1884,7 +1876,7 @@ router.get("/revenue-analytics", async (req, res) => {
           if (!b.appointmentDate) return;
           const [y, m] = b.appointmentDate.split("-").map(Number);
           const monthKey = `${y}-${padL(m)}`;
-          
+
           if (monthlyMap.has(monthKey)) {
             const monthRow = monthlyMap.get(monthKey);
             aggregateBooking(b, monthRow.bucket);
@@ -1930,55 +1922,89 @@ router.get("/revenue-analytics", async (req, res) => {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 5.5️⃣ 🔥 FIX: ATTACH BANK CREDIT (Day-wise & Month-wise)
+    // 5.5️⃣ 🔥 ATTACH BANK CREDIT + CASH RECEIVED (Day-wise & Month-wise)
     // ═══════════════════════════════════════════════════════════
+
+    // ✅ Helper: BankCredit doc ko normalized shape me convert karo
+    //    (row-level + __total__ dono ke liye same shape)
+    const mapCreditDoc = (bc) => ({
+      bankCredit: Number(bc.bankCredit) || 0,
+      cashReceived: Number(bc.cashReceived) || 0,
+      grandTotal: Number(bc.grandTotal) || 0,
+      creditedDiff: Number(bc.creditedDiff) || 0,
+      diffStatus: bc.diffStatus || "—",
+      cashDiff: Number(bc.cashDiff) || 0,
+      cashStatus: bc.cashStatus || "—",
+      retailPharmacy: bc.retailPharmacy || {},
+      savedBy: bc.savedBy || "Admin",
+      savedAt: bc.savedAt || null,
+    });
+
     if (rows.length > 0) {
       try {
         if (isMonthlyView) {
-          // ✅ MONTHLY VIEW: Month ke saare din ka bank credit sum karo
-          const monthKeys = rows.map(r => r.date); // e.g., "2026-10"
-          
-          // Fetch all BankCredit records for this year (broader match)
+          // ✅ MONTHLY VIEW: har month ke andar ke saare din ka sum
           const allCredits = await BankCredit.find({}).lean();
-          
+
           rows.forEach((r) => {
             const monthKey = r.date; // e.g., "2026-10"
-            let monthlyRetail = { cash: 0, online: 0, footFall: 0, total: 0 };
-            let monthlyBank = 0, monthlyGrand = 0, monthlyDiff = 0;
+            let monthlyRetail = { cash: 0, online: 0, footFall: 0, total: 0, due: 0, card: 0, insurance: 0 };
+            let monthlyBank = 0, monthlyCash = 0, monthlyGrand = 0;
+            let monthlyCreditDiff = 0, monthlyCashDiff = 0;
 
-            allCredits.forEach(bc => {
-              if (bc.rowKey && bc.rowKey.startsWith(monthKey)) {
-                // Agar exact date hai (e.g., 2026-10-23)
-                if (bc.retailPharmacy) {
-                  monthlyRetail.cash += Number(bc.retailPharmacy.cash) || 0;
-                  monthlyRetail.online += Number(bc.retailPharmacy.online) || 0;
-                  monthlyRetail.footFall += Number(bc.retailPharmacy.footFall) || 0;
-                  monthlyRetail.total += Number(bc.retailPharmacy.total) || 0;
-                }
-                monthlyBank += Number(bc.bankCredit) || 0;
-                monthlyGrand += Number(bc.grandTotal) || 0;
-                monthlyDiff += Number(bc.creditedDiff) || 0;
-              } else if (bc.rowKey === monthKey) {
-                // Agar direct monthly key hai (e.g., 2026-10)
-                if (bc.retailPharmacy) {
-                  monthlyRetail.cash += Number(bc.retailPharmacy.cash) || 0;
-                  monthlyRetail.online += Number(bc.retailPharmacy.online) || 0;
-                  monthlyRetail.footFall += Number(bc.retailPharmacy.footFall) || 0;
-                  monthlyRetail.total += Number(bc.retailPharmacy.total) || 0;
-                }
-                monthlyBank += Number(bc.bankCredit) || 0;
-                monthlyGrand += Number(bc.grandTotal) || 0;
-                monthlyDiff += Number(bc.creditedDiff) || 0;
+            allCredits.forEach((bc) => {
+              const rk = bc.rowKey;
+              if (!rk) return;
+
+              const isMatch =
+                rk === monthKey ||                       // direct monthly key
+                rk.startsWith(monthKey + "-");           // daily key under this month
+
+              if (!isMatch) return;
+
+              if (bc.retailPharmacy) {
+                monthlyRetail.cash += Number(bc.retailPharmacy.cash) || 0;
+                monthlyRetail.online += Number(bc.retailPharmacy.online) || 0;
+                monthlyRetail.footFall += Number(bc.retailPharmacy.footFall) || 0;
+                monthlyRetail.total += Number(bc.retailPharmacy.total) || 0;
+                monthlyRetail.due += Number(bc.retailPharmacy.due) || 0;
+                monthlyRetail.card += Number(bc.retailPharmacy.card) || 0;
+                monthlyRetail.insurance += Number(bc.retailPharmacy.insurance) || 0;
               }
+              monthlyBank += Number(bc.bankCredit) || 0;
+              monthlyCash += Number(bc.cashReceived) || 0;
+              monthlyGrand += Number(bc.grandTotal) || 0;
+              monthlyCreditDiff += Number(bc.creditedDiff) || 0;
+              monthlyCashDiff += Number(bc.cashDiff) || 0;
             });
 
-            // Agar koi data mila tabhi attach karo
-            if (monthlyRetail.total > 0 || monthlyBank > 0) {
+            const hasData =
+              monthlyRetail.total > 0 ||
+              monthlyBank > 0 ||
+              monthlyCash > 0;
+
+            if (hasData) {
+              // diffStatus derive karo
+              let diffStatus = "—";
+              if (monthlyBank || monthlyGrand) {
+                const abs = Math.abs(monthlyCreditDiff);
+                diffStatus = abs < 0.5 ? "MATCHED" : monthlyCreditDiff > 0 ? "CREDIT MORE" : "CREDIT LESS";
+              }
+
+              let cashStatus = "—";
+              if (monthlyCash) {
+                const abs = Math.abs(monthlyCashDiff);
+                cashStatus = abs < 0.5 ? "MATCHED" : monthlyCashDiff > 0 ? "RCVD MORE" : "RCVD LESS";
+              }
+
               r.bankCredit = {
                 bankCredit: monthlyBank,
+                cashReceived: monthlyCash,          // ✅ NEW
                 grandTotal: monthlyGrand,
-                creditedDiff: monthlyDiff,
-                diffStatus: "—", // Compute if needed
+                creditedDiff: monthlyCreditDiff,
+                diffStatus,
+                cashDiff: monthlyCashDiff,          // ✅ NEW
+                cashStatus,                         // ✅ NEW
                 retailPharmacy: monthlyRetail,
               };
             } else {
@@ -1987,7 +2013,7 @@ router.get("/revenue-analytics", async (req, res) => {
           });
 
         } else {
-          // ✅ DAILY VIEW: Exact match karo
+          // ✅ DAILY VIEW: exact rowKey match
           const rowKeys = rows.map((r) => r.date);
           const perRowCredits = await BankCredit.find({
             rowKey: { $in: rowKeys },
@@ -1998,18 +2024,18 @@ router.get("/revenue-analytics", async (req, res) => {
 
           rows.forEach((r) => {
             const bc = creditMap.get(r.date);
-            r.bankCredit = bc ? {
-              bankCredit: Number(bc.bankCredit) || 0,
-              grandTotal: Number(bc.grandTotal) || 0,
-              creditedDiff: Number(bc.creditedDiff) || 0,
-              diffStatus: bc.diffStatus || "—",
-              retailPharmacy: bc.retailPharmacy || {},
-            } : null;
+            r.bankCredit = bc ? mapCreditDoc(bc) : null;
+
+            // ✅ Frontend `r.cashReceived` bhi padhta hai (fallback ke liye)
+            r.cashReceived = bc ? (Number(bc.cashReceived) || 0) : null;
           });
         }
       } catch (bcErr) {
         console.warn("Per-row bank credit fetch failed:", bcErr.message);
-        rows.forEach((r) => { r.bankCredit = null; });
+        rows.forEach((r) => {
+          r.bankCredit = null;
+          r.cashReceived = null;
+        });
       }
     }
 
@@ -2019,9 +2045,11 @@ router.get("/revenue-analytics", async (req, res) => {
     let bankCreditData = null;
     if (resolvedFrom && resolvedTo) {
       try {
-        bankCreditData = await BankCredit.findOne({
+        const totalDoc = await BankCredit.findOne({
           rowKey: "__total__",
         }).lean();
+
+        bankCreditData = totalDoc ? mapCreditDoc(totalDoc) : null;
       } catch (bcErr) {
         console.warn("Bank credit fetch failed (non-blocking):", bcErr.message);
       }
@@ -2037,6 +2065,8 @@ router.get("/revenue-analytics", async (req, res) => {
       categoryBreakdown,
       rows,
       bankCredit: bankCreditData || null,
+      // ✅ Top-level cashReceived (frontend fallback ke liye)
+      cashReceived: bankCreditData?.cashReceived ?? null,
       dateRange: { from: resolvedFrom, to: resolvedTo },
     });
 
@@ -2060,11 +2090,14 @@ router.post("/save-bank-credit", async (req, res) => {
     const {
       fromDate,
       toDate,
-      rowKey,           // ✅ NAYA — "YYYY-MM-DD" | "YYYY-MM" | "__total__"
+      rowKey,           // "YYYY-MM-DD" | "YYYY-MM" | "__total__"
       bankCredit,
+      cashReceived,     // ✅ NEW
       grandTotal,
       creditedDiff,
       diffStatus,
+      cashDiff,         // ✅ NEW
+      cashStatus,       // ✅ NEW
       savedBy,
       notes,
       retailPharmacy,
@@ -2073,13 +2106,16 @@ router.post("/save-bank-credit", async (req, res) => {
     if (!fromDate || !toDate) {
       return res.status(400).json({ success: false, message: "fromDate and toDate are required" });
     }
-    if (bankCredit === undefined || bankCredit === null) {
-      return res.status(400).json({ success: false, message: "bankCredit amount is required" });
-    }
 
-    const bc = Number(bankCredit) || 0;
+    // Bank Credit optional (cash-only update bhi ho sakta hai)
+    const bc = bankCredit === undefined || bankCredit === null ? 0 : Number(bankCredit) || 0;
     if (bc < 0) {
       return res.status(400).json({ success: false, message: "bankCredit cannot be negative" });
+    }
+
+    const cr = cashReceived === undefined || cashReceived === null ? 0 : Number(cashReceived) || 0;
+    if (cr < 0) {
+      return res.status(400).json({ success: false, message: "cashReceived cannot be negative" });
     }
 
     const safeNum = (v) => {
@@ -2099,18 +2135,32 @@ router.post("/save-bank-credit", async (req, res) => {
     };
 
     // ═══════════════════════════════════════════════════════════
-    // 2️⃣ AUTO-COMPUTE DIFF + STATUS
+    // 2️⃣ AUTO-COMPUTE DIFF + STATUS (Bank Credit — against ONLINE)
     // ═══════════════════════════════════════════════════════════
     const gt = Number(grandTotal) || 0;
-    const diff = creditedDiff !== undefined ? Number(creditedDiff) : (bc - gt);
-    const absDiff = Math.abs(diff);
 
-    let status = diffStatus;
-    if (!status) {
-      if (!bc && !gt) status = "—";
-      else if (absDiff < 0.5) status = "MATCHED";
-      else if (diff > 0) status = "CREDIT MORE";
-      else status = "CREDIT LESS";
+    // Bank Credit diff (frontend usually sends creditedDiff / diffStatus)
+    const bDiff = creditedDiff !== undefined ? Number(creditedDiff) : (bc - gt);
+    const bAbsDiff = Math.abs(bDiff);
+
+    let bStatus = diffStatus;
+    if (!bStatus) {
+      if (!bc && !gt) bStatus = "—";
+      else if (bAbsDiff < 0.5) bStatus = "MATCHED";
+      else if (bDiff > 0) bStatus = "CREDIT MORE";
+      else bStatus = "CREDIT LESS";
+    }
+
+    // Cash Received diff (frontend sends cashDiff / cashStatus)
+    const cDiff = cashDiff !== undefined ? Number(cashDiff) : 0;
+    const cAbsDiff = Math.abs(cDiff);
+
+    let cStatus = cashStatus;
+    if (!cStatus) {
+      if (!cr) cStatus = "—";
+      else if (cAbsDiff < 0.5) cStatus = "MATCHED";
+      else if (cDiff > 0) cStatus = "RCVD MORE";
+      else cStatus = "RCVD LESS";
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -2124,23 +2174,28 @@ router.post("/save-bank-credit", async (req, res) => {
       ? { rowKey: normalizedRowKey }
       : { fromDate, toDate, rowKey: null };
 
+    const updateDoc = {
+      $set: {
+        fromDate,
+        toDate,
+        rowKey: normalizedRowKey,
+        bankCredit: bc,
+        cashReceived: cr,             // ✅ NEW
+        grandTotal: gt,
+        creditedDiff: bDiff,
+        diffStatus: bStatus,
+        cashDiff: cDiff,              // ✅ NEW
+        cashStatus: cStatus,          // ✅ NEW
+        savedBy: savedBy || "Admin",
+        savedAt: new Date(),
+        notes: notes || "",
+        retailPharmacy: retailPharmacyData,
+      },
+    };
+
     const savedRecord = await BankCredit.findOneAndUpdate(
       filter,
-      {
-        $set: {
-          fromDate,
-          toDate,
-          rowKey: normalizedRowKey,   // ✅ NAYA
-          bankCredit: bc,
-          grandTotal: gt,
-          creditedDiff: diff,
-          diffStatus: status,
-          savedBy: savedBy || "Admin",
-          savedAt: new Date(),
-          notes: notes || "",
-          retailPharmacy: retailPharmacyData,
-        },
-      },
+      updateDoc,
       {
         new: true,
         upsert: true,
@@ -2151,7 +2206,7 @@ router.post("/save-bank-credit", async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Bank credit saved successfully",
+      message: "Bank credit & cash received saved successfully",
       data: savedRecord,
     });
 
@@ -2164,7 +2219,6 @@ router.post("/save-bank-credit", async (req, res) => {
     });
   }
 });
-
 
 
 // ✅ GET ALL INACTIVE BOOKINGS
