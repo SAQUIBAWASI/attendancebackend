@@ -1605,6 +1605,482 @@ router.get("/op-dashboard-stats", async (req, res) => {
 
 
 
+// // ═══════════════════════════════════════════════════════════════════════
+// // NEW: Optimized Revenue Analytics API
+// // File: routes/appointmentSlots.js (or wherever your routes are)
+// // Add this new route ALONGSIDE your existing /getallbookings route
+// // ═══════════════════════════════════════════════════════════════════════
+
+// router.get("/revenue-analytics", async (req, res) => {
+//   try {
+//     // ═══════════════════════════════════════════════════════════
+//     // 1️⃣ BUILD MONGO QUERY (unchanged)
+//     // ═══════════════════════════════════════════════════════════
+//     const mongoQuery = { isActive: { $ne: false } };
+//     const { from, to, timeFilter } = req.query;
+
+//     let resolvedFrom = from || null;
+//     let resolvedTo = to || null;
+
+//     if (from || to) {
+//       const dateFilter = {};
+//       if (from) dateFilter.$gte = from;
+//       if (to) dateFilter.$lte = to;
+//       mongoQuery.appointmentDate = dateFilter;
+//     } else if (timeFilter && timeFilter !== "All") {
+//       const today = new Date();
+//       today.setHours(0, 0, 0, 0);
+//       const padFn = (n) => String(n).padStart(2, "0");
+//       const fmtD = (d) => `${d.getFullYear()}-${padFn(d.getMonth() + 1)}-${padFn(d.getDate())}`;
+
+//       let fromDate = null, toDate = null;
+
+//       if (timeFilter === "today") { fromDate = fmtD(today); toDate = fromDate; }
+//       else if (timeFilter === "yesterday") { const y = new Date(today); y.setDate(y.getDate() - 1); fromDate = fmtD(y); toDate = fromDate; }
+//       else if (timeFilter === "thisWeek") {
+//         const dow = today.getDay(); const diff = dow === 0 ? 6 : dow - 1;
+//         const mon = new Date(today); mon.setDate(mon.getDate() - diff);
+//         fromDate = fmtD(mon); toDate = fmtD(today);
+//       } else if (timeFilter === "thisMonth") {
+//         const first = new Date(today.getFullYear(), today.getMonth(), 1);
+//         const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+//         fromDate = fmtD(first); toDate = fmtD(last);
+//       } else if (timeFilter === "lastMonth") {
+//         const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+//         const last = new Date(today.getFullYear(), today.getMonth(), 0);
+//         fromDate = fmtD(first); toDate = fmtD(last);
+//       } else if (timeFilter === "thisYear") {
+//         const first = new Date(today.getFullYear(), 0, 1);
+//         const last = new Date(today.getFullYear(), 11, 31);
+//         fromDate = fmtD(first); toDate = fmtD(last);
+//       }
+
+//       if (fromDate && toDate) {
+//         mongoQuery.appointmentDate = { $gte: fromDate, $lte: toDate };
+//         resolvedFrom = fromDate;
+//         resolvedTo = toDate;
+//       }
+//     }
+
+//     // ═══════════════════════════════════════════════════════════
+//     // 2️⃣ FETCH (unchanged)
+//     // ═══════════════════════════════════════════════════════════
+//     const bookings = await Appointment.find(mongoQuery)
+//       .select({
+//         appointmentDate: 1, paymentType: 1, paymentStatus: 1, amountPaid: 1,
+//         finalPayable: 1, finalPayableAmount: 1, grandTotal: 1, totalAmount: 1,
+//         labTotal: 1, medicineTotal: 1, services: 1, serviceItems: 1,
+//         labItems: 1, medicineItems: 1, categoryPayment: 1, reviews: 1, isActive: 1,
+//       })
+//       .lean();
+
+//     // ═══════════════════════════════════════════════════════════
+//     // 3️⃣ HELPERS (unchanged)
+//     // ═══════════════════════════════════════════════════════════
+//     const classifyService = (svc) => {
+//       if (!svc) return "clinic";
+//       const cat = (svc.category || svc.serviceCategory || svc.type || "").toString().toLowerCase();
+//       const name = (svc.name || "").toString().toLowerCase();
+//       if (cat.includes("pharm") || cat.includes("medic") || name.includes("pharm") || name.includes("medic")) return "pharmacy";
+//       if (cat.includes("lab") || cat.includes("test") || cat.includes("diagnos") || name.includes("lab") || name.includes("test")) return "lab";
+//       return "clinic";
+//     };
+
+//     const addToBucket = (bucket, mode, amount) => {
+//       if (!amount || amount <= 0) return;
+//       const m = String(mode || "").trim().toLowerCase();
+//       if (m === "cash") bucket.cash += amount;
+//       else if (m === "online") bucket.online += amount;
+//       else if (m === "card") bucket.card += amount;
+//       else if (m === "insurance") bucket.insurance += amount;
+//     };
+
+//     const makeBucket = () => ({
+//       clinic: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
+//       lab: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
+//       pharmacy: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
+//     });
+
+//     const aggregateBooking = (b, categoryBreakdown) => {
+//       const labItemsArr = Array.isArray(b.labItems) ? b.labItems : [];
+//       const medItemsArr = Array.isArray(b.medicineItems) ? b.medicineItems : [];
+//       const hasLabItems = labItemsArr.length > 0;
+//       const hasMedItems = medItemsArr.length > 0;
+
+//       const baseServices =
+//         (Array.isArray(b.services) && b.services.length > 0 && b.services) ||
+//         (Array.isArray(b.serviceItems) && b.serviceItems.length > 0 && b.serviceItems) ||
+//         [];
+
+//       let clinic = 0, lab = 0, pharmacy = 0;
+//       baseServices.forEach((s) => {
+//         const price = Number(s.price) || 0;
+//         if (price <= 0) return;
+//         const cat = classifyService(s);
+//         if (cat === "lab") lab += price;
+//         else if (cat === "pharmacy") pharmacy += price;
+//         else clinic += price;
+//       });
+
+//       if (hasLabItems) lab = labItemsArr.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+//       else lab = Math.max(lab, Number(b.labTotal) || 0);
+
+//       if (hasMedItems) pharmacy = medItemsArr.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+//       else pharmacy = Math.max(pharmacy, Number(b.medicineTotal) || 0);
+
+//       (Array.isArray(b.reviews) ? b.reviews : []).forEach((r) => {
+//         clinic += Number(r.price) || 0;
+//       });
+
+//       const cp = b.categoryPayment || {};
+//       const clinicPaid = Number(cp.clinic?.paidAmount) || 0;
+
+//       const labPaid = hasLabItems
+//         ? labItemsArr.reduce((sum, item) =>
+//             sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0), 0)
+//         : (Number(cp.lab?.paidAmount) || 0);
+
+//       const pharmacyPaid = hasMedItems
+//         ? medItemsArr.reduce((sum, item) =>
+//             sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0), 0)
+//         : (Number(cp.pharmacy?.paidAmount) || 0);
+
+//       const clinicDue = Math.max(0, clinic - clinicPaid);
+//       const labDue = Math.max(0, lab - labPaid);
+//       const pharmacyDue = Math.max(0, pharmacy - pharmacyPaid);
+
+//       if (clinic > 0) categoryBreakdown.clinic.footFall += 1;
+//       if (lab > 0) categoryBreakdown.lab.footFall += 1;
+//       if (pharmacy > 0) categoryBreakdown.pharmacy.footFall += 1;
+
+//       const fallbackMode = (b.paymentType || "cash").toString().toLowerCase();
+
+//       categoryBreakdown.clinic.total += clinic;
+//       categoryBreakdown.clinic.due += clinicDue;
+//       const clinicServicesForMode = baseServices.filter((s) => classifyService(s) === "clinic");
+//       let clinicPaidDistributed = 0;
+//       if (clinicServicesForMode.length > 0 && clinicServicesForMode.some((s) => s.paymentMode && String(s.paymentMode).trim() !== "")) {
+//         clinicServicesForMode.forEach((svc) => {
+//           if ((svc.paymentStatus || "").toLowerCase() !== "paid") return;
+//           const price = Number(svc.price) || 0;
+//           addToBucket(categoryBreakdown.clinic, svc.paymentMode, price);
+//           clinicPaidDistributed += price;
+//         });
+//       }
+//       const clinicRemaining = Math.max(0, clinicPaid - clinicPaidDistributed);
+//       if (clinicRemaining > 0) addToBucket(categoryBreakdown.clinic, fallbackMode, clinicRemaining);
+
+//       categoryBreakdown.lab.total += lab;
+//       categoryBreakdown.lab.due += labDue;
+//       if (hasLabItems) {
+//         labItemsArr.forEach((item) => {
+//           if ((item.paymentStatus || "").toLowerCase() !== "paid") return;
+//           addToBucket(categoryBreakdown.lab, item.paymentMode || fallbackMode, Number(item.price) || 0);
+//         });
+//       } else if (labPaid > 0) {
+//         addToBucket(categoryBreakdown.lab, fallbackMode, labPaid);
+//       }
+
+//       categoryBreakdown.pharmacy.total += pharmacy;
+//       categoryBreakdown.pharmacy.due += pharmacyDue;
+//       if (hasMedItems) {
+//         medItemsArr.forEach((item) => {
+//           if ((item.paymentStatus || "").toLowerCase() !== "paid") return;
+//           addToBucket(categoryBreakdown.pharmacy, item.paymentMode || fallbackMode, Number(item.price) || 0);
+//         });
+//       } else if (pharmacyPaid > 0) {
+//         addToBucket(categoryBreakdown.pharmacy, fallbackMode, pharmacyPaid);
+//       }
+//     };
+
+//     const roundBucket = (bucket) => {
+//       Object.keys(bucket).forEach((cat) => {
+//         Object.keys(bucket[cat]).forEach((k) => {
+//           if (k === "footFall") bucket[cat][k] = Number(bucket[cat][k]) || 0;
+//           else bucket[cat][k] = Math.round(bucket[cat][k]);
+//         });
+//       });
+//     };
+
+//     // ═══════════════════════════════════════════════════════════
+//     // 4️⃣ OVERALL AGGREGATE
+//     // ═══════════════════════════════════════════════════════════
+//     const categoryBreakdown = makeBucket();
+//     bookings.forEach((b) => aggregateBooking(b, categoryBreakdown));
+//     roundBucket(categoryBreakdown);
+
+//     // ═══════════════════════════════════════════════════════════
+//     // 5️⃣ BUILD ROWS — daily (≤31 days) or monthly (>31 days)
+//     // ═══════════════════════════════════════════════════════════
+//     const padL = (n) => String(n).padStart(2, "0");
+//     const fmtDateL = (d) => `${d.getFullYear()}-${padL(d.getMonth() + 1)}-${padL(d.getDate())}`;
+//     const parseYMD = (s) => {
+//       const [y, m, d] = s.split("-").map(Number);
+//       return new Date(y, m - 1, d);
+//     };
+
+//     const rows = [];
+//     let isMonthlyView = false;
+
+//     if (resolvedFrom && resolvedTo) {
+//       const fromD = parseYMD(resolvedFrom);
+//       const toD = parseYMD(resolvedTo);
+//       const diffDays = Math.round((toD - fromD) / (1000 * 60 * 60 * 24)) + 1;
+
+//       if (diffDays <= 31) {
+//         const dailyMap = new Map();
+//         for (let i = 0; i < diffDays; i++) {
+//           const d = new Date(fromD);
+//           d.setDate(d.getDate() + i);
+//           const key = fmtDateL(d);
+//           dailyMap.set(key, { date: key, label: key, bucket: makeBucket(), count: 0 });
+//         }
+
+//         bookings.forEach((b) => {
+//           const key = b.appointmentDate;
+//           if (!dailyMap.has(key)) return;
+//           const row = dailyMap.get(key);
+//           aggregateBooking(b, row.bucket);
+//           row.count += 1;
+//         });
+
+//         dailyMap.forEach((row) => {
+//           roundBucket(row.bucket);
+//           rows.push({
+//             date: row.date,
+//             label: row.label,
+//             count: row.count,
+//             categoryBreakdown: row.bucket,
+//           });
+//         });
+//       } else {
+//         isMonthlyView = true;
+//         const monthlyMap = new Map();
+//         const cursor = new Date(fromD.getFullYear(), fromD.getMonth(), 1);
+//         const endMonth = new Date(toD.getFullYear(), toD.getMonth(), 1);
+
+//         while (cursor <= endMonth) {
+//           const y = cursor.getFullYear();
+//           const m = cursor.getMonth() + 1;
+//           const key = `${y}-${padL(m)}`;
+//           monthlyMap.set(key, {
+//             date: key, label: key,
+//             year: y, month: m,
+//             bucket: makeBucket(), count: 0,
+//             dailyMap: new Map()
+//           });
+//           cursor.setMonth(cursor.getMonth() + 1);
+//         }
+
+//         bookings.forEach((b) => {
+//           if (!b.appointmentDate) return;
+//           const [y, m] = b.appointmentDate.split("-").map(Number);
+//           const monthKey = `${y}-${padL(m)}`;
+
+//           if (monthlyMap.has(monthKey)) {
+//             const monthRow = monthlyMap.get(monthKey);
+//             aggregateBooking(b, monthRow.bucket);
+//             monthRow.count += 1;
+
+//             if (!monthRow.dailyMap.has(b.appointmentDate)) {
+//               monthRow.dailyMap.set(b.appointmentDate, {
+//                 date: b.appointmentDate,
+//                 label: b.appointmentDate,
+//                 bucket: makeBucket(),
+//                 count: 0,
+//               });
+//             }
+//             const dayRow = monthRow.dailyMap.get(b.appointmentDate);
+//             aggregateBooking(b, dayRow.bucket);
+//             dayRow.count += 1;
+//           }
+//         });
+
+//         monthlyMap.forEach((row) => {
+//           roundBucket(row.bucket);
+//           const monthDataArr = Array.from(row.dailyMap.values())
+//             .sort((a, b) => a.date.localeCompare(b.date))
+//             .map(day => {
+//               roundBucket(day.bucket);
+//               return {
+//                 date: day.date,
+//                 label: day.label,
+//                 count: day.count,
+//                 categoryBreakdown: day.bucket,
+//               };
+//             });
+
+//           rows.push({
+//             date: row.date, label: row.label,
+//             year: row.year, month: row.month,
+//             count: row.count,
+//             categoryBreakdown: row.bucket,
+//             monthData: monthDataArr
+//           });
+//         });
+//       }
+//     }
+
+//     // ═══════════════════════════════════════════════════════════
+//     // 5.5️⃣ 🔥 ATTACH BANK CREDIT + CASH RECEIVED (Day-wise & Month-wise)
+//     // ═══════════════════════════════════════════════════════════
+
+//     // ✅ Helper: BankCredit doc ko normalized shape me convert karo
+//     //    (row-level + __total__ dono ke liye same shape)
+//     const mapCreditDoc = (bc) => ({
+//       bankCredit: Number(bc.bankCredit) || 0,
+//       cashReceived: Number(bc.cashReceived) || 0,
+//       grandTotal: Number(bc.grandTotal) || 0,
+//       creditedDiff: Number(bc.creditedDiff) || 0,
+//       diffStatus: bc.diffStatus || "—",
+//       cashDiff: Number(bc.cashDiff) || 0,
+//       cashStatus: bc.cashStatus || "—",
+//       retailPharmacy: bc.retailPharmacy || {},
+//       savedBy: bc.savedBy || "Admin",
+//       savedAt: bc.savedAt || null,
+//     });
+
+//     if (rows.length > 0) {
+//       try {
+//         if (isMonthlyView) {
+//           // ✅ MONTHLY VIEW: har month ke andar ke saare din ka sum
+//           const allCredits = await BankCredit.find({}).lean();
+
+//           rows.forEach((r) => {
+//             const monthKey = r.date; // e.g., "2026-10"
+//             let monthlyRetail = { cash: 0, online: 0, footFall: 0, total: 0, due: 0, card: 0, insurance: 0 };
+//             let monthlyBank = 0, monthlyCash = 0, monthlyGrand = 0;
+//             let monthlyCreditDiff = 0, monthlyCashDiff = 0;
+
+//             allCredits.forEach((bc) => {
+//               const rk = bc.rowKey;
+//               if (!rk) return;
+
+//               const isMatch =
+//                 rk === monthKey ||                       // direct monthly key
+//                 rk.startsWith(monthKey + "-");           // daily key under this month
+
+//               if (!isMatch) return;
+
+//               if (bc.retailPharmacy) {
+//                 monthlyRetail.cash += Number(bc.retailPharmacy.cash) || 0;
+//                 monthlyRetail.online += Number(bc.retailPharmacy.online) || 0;
+//                 monthlyRetail.footFall += Number(bc.retailPharmacy.footFall) || 0;
+//                 monthlyRetail.total += Number(bc.retailPharmacy.total) || 0;
+//                 monthlyRetail.due += Number(bc.retailPharmacy.due) || 0;
+//                 monthlyRetail.card += Number(bc.retailPharmacy.card) || 0;
+//                 monthlyRetail.insurance += Number(bc.retailPharmacy.insurance) || 0;
+//               }
+//               monthlyBank += Number(bc.bankCredit) || 0;
+//               monthlyCash += Number(bc.cashReceived) || 0;
+//               monthlyGrand += Number(bc.grandTotal) || 0;
+//               monthlyCreditDiff += Number(bc.creditedDiff) || 0;
+//               monthlyCashDiff += Number(bc.cashDiff) || 0;
+//             });
+
+//             const hasData =
+//               monthlyRetail.total > 0 ||
+//               monthlyBank > 0 ||
+//               monthlyCash > 0;
+
+//             if (hasData) {
+//               // diffStatus derive karo
+//               let diffStatus = "—";
+//               if (monthlyBank || monthlyGrand) {
+//                 const abs = Math.abs(monthlyCreditDiff);
+//                 diffStatus = abs < 0.5 ? "MATCHED" : monthlyCreditDiff > 0 ? "CREDIT MORE" : "CREDIT LESS";
+//               }
+
+//               let cashStatus = "—";
+//               if (monthlyCash) {
+//                 const abs = Math.abs(monthlyCashDiff);
+//                 cashStatus = abs < 0.5 ? "MATCHED" : monthlyCashDiff > 0 ? "RCVD MORE" : "RCVD LESS";
+//               }
+
+//               r.bankCredit = {
+//                 bankCredit: monthlyBank,
+//                 cashReceived: monthlyCash,          // ✅ NEW
+//                 grandTotal: monthlyGrand,
+//                 creditedDiff: monthlyCreditDiff,
+//                 diffStatus,
+//                 cashDiff: monthlyCashDiff,          // ✅ NEW
+//                 cashStatus,                         // ✅ NEW
+//                 retailPharmacy: monthlyRetail,
+//               };
+//             } else {
+//               r.bankCredit = null;
+//             }
+//           });
+
+//         } else {
+//           // ✅ DAILY VIEW: exact rowKey match
+//           const rowKeys = rows.map((r) => r.date);
+//           const perRowCredits = await BankCredit.find({
+//             rowKey: { $in: rowKeys },
+//           }).lean();
+
+//           const creditMap = new Map();
+//           perRowCredits.forEach((bc) => creditMap.set(bc.rowKey, bc));
+
+//           rows.forEach((r) => {
+//             const bc = creditMap.get(r.date);
+//             r.bankCredit = bc ? mapCreditDoc(bc) : null;
+
+//             // ✅ Frontend `r.cashReceived` bhi padhta hai (fallback ke liye)
+//             r.cashReceived = bc ? (Number(bc.cashReceived) || 0) : null;
+//           });
+//         }
+//       } catch (bcErr) {
+//         console.warn("Per-row bank credit fetch failed:", bcErr.message);
+//         rows.forEach((r) => {
+//           r.bankCredit = null;
+//           r.cashReceived = null;
+//         });
+//       }
+//     }
+
+//     // ═══════════════════════════════════════════════════════════
+//     // 6️⃣ FETCH OVERALL BANK CREDIT (only __total__ rowKey)
+//     // ═══════════════════════════════════════════════════════════
+//     let bankCreditData = null;
+//     if (resolvedFrom && resolvedTo) {
+//       try {
+//         const totalDoc = await BankCredit.findOne({
+//           rowKey: "__total__",
+//         }).lean();
+
+//         bankCreditData = totalDoc ? mapCreditDoc(totalDoc) : null;
+//       } catch (bcErr) {
+//         console.warn("Bank credit fetch failed (non-blocking):", bcErr.message);
+//       }
+//     }
+
+//     // ═══════════════════════════════════════════════════════════
+//     // 7️⃣ RESPONSE
+//     // ═══════════════════════════════════════════════════════════
+//     return res.status(200).json({
+//       success: true,
+//       message: "Revenue analytics fetched successfully",
+//       count: bookings.length,
+//       categoryBreakdown,
+//       rows,
+//       bankCredit: bankCreditData || null,
+//       // ✅ Top-level cashReceived (frontend fallback ke liye)
+//       cashReceived: bankCreditData?.cashReceived ?? null,
+//       dateRange: { from: resolvedFrom, to: resolvedTo },
+//     });
+
+//   } catch (error) {
+//     console.error("Error in revenue-analytics:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch revenue analytics",
+//       error: error.message,
+//     });
+//   }
+// });
+
+
 // ═══════════════════════════════════════════════════════════════════════
 // NEW: Optimized Revenue Analytics API
 // File: routes/appointmentSlots.js (or wherever your routes are)
@@ -1614,7 +2090,7 @@ router.get("/op-dashboard-stats", async (req, res) => {
 router.get("/revenue-analytics", async (req, res) => {
   try {
     // ═══════════════════════════════════════════════════════════
-    // 1️⃣ BUILD MONGO QUERY (unchanged)
+    // 1️⃣ BUILD MONGO QUERY
     // ═══════════════════════════════════════════════════════════
     const mongoQuery = { isActive: { $ne: false } };
     const { from, to, timeFilter } = req.query;
@@ -1663,7 +2139,7 @@ router.get("/revenue-analytics", async (req, res) => {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 2️⃣ FETCH (unchanged)
+    // 2️⃣ FETCH
     // ═══════════════════════════════════════════════════════════
     const bookings = await Appointment.find(mongoQuery)
       .select({
@@ -1675,7 +2151,7 @@ router.get("/revenue-analytics", async (req, res) => {
       .lean();
 
     // ═══════════════════════════════════════════════════════════
-    // 3️⃣ HELPERS (unchanged)
+    // 3️⃣ HELPERS
     // ═══════════════════════════════════════════════════════════
     const classifyService = (svc) => {
       if (!svc) return "clinic";
@@ -1688,7 +2164,10 @@ router.get("/revenue-analytics", async (req, res) => {
 
     const addToBucket = (bucket, mode, amount) => {
       if (!amount || amount <= 0) return;
-      const m = String(mode || "").trim().toLowerCase();
+      let m = String(mode || "").trim().toLowerCase();
+      // ✅ Wallet ko online consider karo
+      if (m === "wallet") m = "online";
+
       if (m === "cash") bucket.cash += amount;
       else if (m === "online") bucket.online += amount;
       else if (m === "card") bucket.card += amount;
@@ -1733,17 +2212,25 @@ router.get("/revenue-analytics", async (req, res) => {
       });
 
       const cp = b.categoryPayment || {};
-      const clinicPaid = Number(cp.clinic?.paidAmount) || 0;
 
-      const labPaid = hasLabItems
-        ? labItemsArr.reduce((sum, item) =>
-            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0), 0)
-        : (Number(cp.lab?.paidAmount) || 0);
+      // ✅ FIX: paidAmount ko total se cap karo — phantom amount (jaise 2000) na aaye
+      const clinicPaid = Math.min(Number(cp.clinic?.paidAmount) || 0, clinic);
 
-      const pharmacyPaid = hasMedItems
-        ? medItemsArr.reduce((sum, item) =>
-            sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0), 0)
-        : (Number(cp.pharmacy?.paidAmount) || 0);
+      const labPaid = Math.min(
+        hasLabItems
+          ? labItemsArr.reduce((sum, item) =>
+              sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0), 0)
+          : (Number(cp.lab?.paidAmount) || 0),
+        lab
+      );
+
+      const pharmacyPaid = Math.min(
+        hasMedItems
+          ? medItemsArr.reduce((sum, item) =>
+              sum + ((item.paymentStatus || "").toLowerCase() === "paid" ? (Number(item.price) || 0) : 0), 0)
+          : (Number(cp.pharmacy?.paidAmount) || 0),
+        pharmacy
+      );
 
       const clinicDue = Math.max(0, clinic - clinicPaid);
       const labDue = Math.max(0, lab - labPaid);
@@ -1925,8 +2412,6 @@ router.get("/revenue-analytics", async (req, res) => {
     // 5.5️⃣ 🔥 ATTACH BANK CREDIT + CASH RECEIVED (Day-wise & Month-wise)
     // ═══════════════════════════════════════════════════════════
 
-    // ✅ Helper: BankCredit doc ko normalized shape me convert karo
-    //    (row-level + __total__ dono ke liye same shape)
     const mapCreditDoc = (bc) => ({
       bankCredit: Number(bc.bankCredit) || 0,
       cashReceived: Number(bc.cashReceived) || 0,
@@ -1943,11 +2428,10 @@ router.get("/revenue-analytics", async (req, res) => {
     if (rows.length > 0) {
       try {
         if (isMonthlyView) {
-          // ✅ MONTHLY VIEW: har month ke andar ke saare din ka sum
           const allCredits = await BankCredit.find({}).lean();
 
           rows.forEach((r) => {
-            const monthKey = r.date; // e.g., "2026-10"
+            const monthKey = r.date;
             let monthlyRetail = { cash: 0, online: 0, footFall: 0, total: 0, due: 0, card: 0, insurance: 0 };
             let monthlyBank = 0, monthlyCash = 0, monthlyGrand = 0;
             let monthlyCreditDiff = 0, monthlyCashDiff = 0;
@@ -1957,8 +2441,8 @@ router.get("/revenue-analytics", async (req, res) => {
               if (!rk) return;
 
               const isMatch =
-                rk === monthKey ||                       // direct monthly key
-                rk.startsWith(monthKey + "-");           // daily key under this month
+                rk === monthKey ||
+                rk.startsWith(monthKey + "-");
 
               if (!isMatch) return;
 
@@ -1983,8 +2467,23 @@ router.get("/revenue-analytics", async (req, res) => {
               monthlyBank > 0 ||
               monthlyCash > 0;
 
+            if (!Array.isArray(r.monthData)) r.monthData = [];
+            const existingDays = new Set(r.monthData.map((d) => d.date));
+            allCredits.forEach((bc) => {
+              const rk = bc.rowKey;
+              if (rk && rk.length === 10 && rk.startsWith(monthKey + "-") && !existingDays.has(rk)) {
+                existingDays.add(rk);
+                r.monthData.push({ date: rk, label: rk, count: 0, categoryBreakdown: makeBucket() });
+              }
+            });
+            r.monthData.sort((x, y) => x.date.localeCompare(y.date));
+            r.monthData.forEach((d) => {
+              const dayCredit = allCredits.find((bc) => bc.rowKey === d.date);
+              d.bankCredit = dayCredit ? mapCreditDoc(dayCredit) : null;
+              d.cashReceived = dayCredit ? (Number(dayCredit.cashReceived) || 0) : null;
+            });
+
             if (hasData) {
-              // diffStatus derive karo
               let diffStatus = "—";
               if (monthlyBank || monthlyGrand) {
                 const abs = Math.abs(monthlyCreditDiff);
@@ -1999,12 +2498,12 @@ router.get("/revenue-analytics", async (req, res) => {
 
               r.bankCredit = {
                 bankCredit: monthlyBank,
-                cashReceived: monthlyCash,          // ✅ NEW
+                cashReceived: monthlyCash,
                 grandTotal: monthlyGrand,
                 creditedDiff: monthlyCreditDiff,
                 diffStatus,
-                cashDiff: monthlyCashDiff,          // ✅ NEW
-                cashStatus,                         // ✅ NEW
+                cashDiff: monthlyCashDiff,
+                cashStatus,
                 retailPharmacy: monthlyRetail,
               };
             } else {
@@ -2013,7 +2512,6 @@ router.get("/revenue-analytics", async (req, res) => {
           });
 
         } else {
-          // ✅ DAILY VIEW: exact rowKey match
           const rowKeys = rows.map((r) => r.date);
           const perRowCredits = await BankCredit.find({
             rowKey: { $in: rowKeys },
@@ -2025,8 +2523,6 @@ router.get("/revenue-analytics", async (req, res) => {
           rows.forEach((r) => {
             const bc = creditMap.get(r.date);
             r.bankCredit = bc ? mapCreditDoc(bc) : null;
-
-            // ✅ Frontend `r.cashReceived` bhi padhta hai (fallback ke liye)
             r.cashReceived = bc ? (Number(bc.cashReceived) || 0) : null;
           });
         }
@@ -2065,7 +2561,6 @@ router.get("/revenue-analytics", async (req, res) => {
       categoryBreakdown,
       rows,
       bankCredit: bankCreditData || null,
-      // ✅ Top-level cashReceived (frontend fallback ke liye)
       cashReceived: bankCreditData?.cashReceived ?? null,
       dateRange: { from: resolvedFrom, to: resolvedTo },
     });
