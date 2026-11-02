@@ -4905,7 +4905,7 @@ router.post("/book", async (req, res) => {
       purpose: purpose || "",
       symptoms: symptoms || "",
 
-      paymentType: paymentType || "cash",
+      paymentType: paymentType || "",
       paymentStatus: finalPaymentStatus,
       partialAmount: finalAmountPaid,
       amountPaid: finalAmountPaid,
@@ -5884,23 +5884,27 @@ router.put("/updateop/:bookingId", async (req, res) => {
       addedAt: s.addedAt || new Date(),
     }));
 
-    // ===== NORMALIZE LAB ITEMS =====
-       // ===== NORMALIZE LAB ITEMS =====
+        // ===== NORMALIZE LAB ITEMS =====
     const normalizedLabItems = Array.isArray(reqLabItems)
       ? reqLabItems.map((item) => {
         const price = Number(item.price) || 0;
         const discount = Number(item.discount) || 0;
+        const discountType = item.discountType === "%" ? "%" : "₹"; // 👈 NAYA
         const paidAmount = Number(item.paidAmount) || 0;
-        const netAmount = Math.max(0, price - discount);
-        const dueAmount = Math.max(0, netAmount - paidAmount); // ✅ Calculate Due
+        
+        // 👈 NAYA: % discount ko amount me convert karo
+        const discountAmt = discountType === "%" ? (price * discount) / 100 : discount;
+        const netAmount = Math.max(0, price - discountAmt);
+        const dueAmount = Math.max(0, netAmount - paidAmount);
 
         return {
           serviceId: item.serviceId || item._id || "",
           name: item.name || "Lab Test",
           price: price,
           discount: discount,
+          discountType: discountType, // 👈 NAYA FIELD
           paidAmount: paidAmount,
-          dueAmount: dueAmount, // ✅ Save Due
+          dueAmount: dueAmount,
           transactionId: item.transactionId || "",
           description: item.description || "",
           category: "lab",
@@ -5909,7 +5913,6 @@ router.put("/updateop/:bookingId", async (req, res) => {
         };
       })
       : [];
-
     // ===== NORMALIZE MEDICINE ITEMS =====
     const normalizedMedicineItems = Array.isArray(reqMedicineItems)
       ? reqMedicineItems.map((item) => {
@@ -5937,7 +5940,14 @@ router.put("/updateop/:bookingId", async (req, res) => {
     // ===== COMPUTE FINANCIALS =====
     // Note: Total = Price - Discount
     const servicesTotal = normalizedServices.reduce((sum, s) => sum + Math.max(0, (s.price || 0) - (s.discount || 0)), 0);
-    const computedLabFromItems = normalizedLabItems.reduce((sum, x) => sum + Math.max(0, (x.price || 0) - (x.discount || 0)), 0);
+    // 👈 NAYA: discountType ke hisaab se total calculate karo
+    const computedLabFromItems = normalizedLabItems.reduce((sum, x) => {
+      const price = Number(x.price) || 0;
+      const discountVal = Number(x.discount) || 0;
+      const dType = x.discountType || "₹";
+      const discountAmt = dType === "%" ? (price * discountVal) / 100 : discountVal;
+      return sum + Math.max(0, price - discountAmt);
+    }, 0);
     const computedMedFromItems = normalizedMedicineItems.reduce((sum, x) => sum + Math.max(0, (x.price || 0) - (x.discount || 0)), 0);
 
     const medicineTotal = normalizedMedicineItems.length > 0

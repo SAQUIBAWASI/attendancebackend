@@ -194,7 +194,6 @@ const appointmentSchema = new mongoose.Schema(
     paymentType: {
       type: String,
       enum: ["cash", "online", "insurance", "card", ""],
-      default: "cash"
     },
     paymentStatus: {
       type: String,
@@ -248,21 +247,20 @@ const appointmentSchema = new mongoose.Schema(
 
     // Existing schema me sirf ye 2 fields add karo (baaki kuch nahi chhedo)
 
-    labItems: [{
-      serviceId: String,
-      name: String,
-      price: { type: Number, default: 0 },
-      discount: { type: Number, default: 0 },
-      paidAmount: { type: Number, default: 0 },
-      dueAmount: { type: Number, default: 0 },
-      transactionId: String,
-      description: String,
-      category: String,
-      paymentMode: String,
-      paymentStatus: String,
-      clearedDueAt: { type: Date, default: null },   // ✅ NAYA
-    }],
-
+labItems: [{
+  serviceId: { type: String },
+  name: { type: String },
+  price: { type: Number },
+  discount: { type: Number },
+  discountType: { type: String, default: "₹" },  // 👈 YE LINE ADD KARO
+  paidAmount: { type: Number },
+  dueAmount: { type: Number },
+  transactionId: { type: String },
+  description: { type: String },
+  category: { type: String },
+  paymentMode: { type: String },
+  paymentStatus: { type: String },
+}],
 
     medicineItems: [{
       serviceId: String,
