@@ -363,6 +363,80 @@ router.get("/", async (req, res) => {
 });
 
 
+
+// =============================================
+// GET SLOTS BY DOCTOR ID
+// =============================================
+router.get("/doctorslots/:doctorId", async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+    const { date, dayOfWeek, status, shift, fromDate, toDate } = req.query;
+
+    // Validate doctorId
+    if (!doctorId || !doctorId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid doctorId",
+      });
+    }
+
+    // Build filter
+    const filter = { doctorId };
+
+    // Optional: filter by specific date
+    if (date) {
+      filter.date = date; // "YYYY-MM-DD"
+    }
+
+    // Optional: filter by dayOfWeek (e.g. Monday)
+    if (dayOfWeek && dayOfWeek !== "All") {
+      filter.dayOfWeek = new RegExp(`^${dayOfWeek}$`, "i");
+    }
+
+    // Optional: filter by status
+    if (status && status !== "All") {
+      filter.status = status;
+    }
+
+    // Optional: filter by shift
+    if (shift && shift !== "All") {
+      filter.shift = new RegExp(`^${shift}$`, "i");
+    }
+
+    // Optional: date range
+    if (fromDate || toDate) {
+      filter.date = filter.date || {};
+      if (fromDate) filter.date.$gte = fromDate;
+      if (toDate) filter.date.$lte = toDate;
+    }
+
+    // Only active slots (optional — remove if you want all)
+    // filter.isActive = true;
+
+    const slots = await AppointmentSlot.find(filter)
+      .sort({ date: 1, startTime24: 1 })
+      .populate(
+        "doctorId",
+        "name email phone specialization qualification experience address consultationFee status"
+      );
+
+    return res.status(200).json({
+      success: true,
+      message: "Doctor slots fetched successfully",
+      count: slots.length,
+      doctorId,
+      slots,
+    });
+  } catch (error) {
+    console.error("Error fetching slots by doctorId:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch doctor slots",
+      error: error.message,
+    });
+  }
+});
+
 router.put("/updatecharges/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -1173,12 +1247,13 @@ router.get("/op-dashboard-stats", async (req, res) => {
       apptFrom, apptTo, regFrom, regTo, month,
       doctor, paymentType, paymentStatus, bookingType,
       search, timeFilter, revenueCategory,
-      trendMonth, // optional: for daily trend chart (YYYY-MM)
+      trendYear, // 🔥 Added for Financial Year
     } = req.query;
 
     // ─── BUILD MONGO QUERY ───
     const mongoQuery = { isActive: { $ne: false } };
 
+    // ... (Existing date filters code remains same) ...
     if (timeFilter && timeFilter !== "All" && !apptFrom && !apptTo && !month) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -1243,8 +1318,6 @@ router.get("/op-dashboard-stats", async (req, res) => {
       ];
     }
 
-    // ⚡ LEAN PROJECTION — sirf jo dashboard ko chahiye
-    // (bada payload skip: patientAddress, patientEmail, symptoms, notes, clinicalNotes, etc.)
     const projection = {
       patientName: 1, patientPhone: 1, patientGender: 1, patientAge: 1,
       patientTitle: 1, customPID: 1,
@@ -1266,23 +1339,16 @@ router.get("/op-dashboard-stats", async (req, res) => {
       referredByCustomer: 1, referredByDoctor: 1,
     };
 
-    // ⚡ LEAN — no populate (joins slow banate hain), projection ke saath
     const bookings = await Appointment.find(mongoQuery, projection)
       .sort({ createdAt: -1 })
-      .lean(); // ⚡ lean = plain JS objects (much faster than Mongoose docs)
+      .lean(); 
 
     // ═══════════════════════════════════════════════════════
     // AGGREGATE STATS
     // ═══════════════════════════════════════════════════════
     const stats = {
-      totalPatients: 0,
-      active: 0,
-      inactive: 0,
-      paid: 0,
-      partial: 0,
-      due: 0,
-      pending: 0,
-      totalRevenue: 0,
+      totalPatients: 0, active: 0, inactive: 0,
+      paid: 0, partial: 0, due: 0, pending: 0, totalRevenue: 0,
     };
 
     const categoryBreakdown = {
@@ -1291,43 +1357,38 @@ router.get("/op-dashboard-stats", async (req, res) => {
       pharmacy: emptyCat(),
     };
 
-    // Unique patients tracker
     const uniquePatients = new Set();
 
-    // Trend data — day-wise (for selected trend month)
-    const trendDayMap = {};
-    if (trendMonth && /^\d{4}-\d{2}$/.test(trendMonth)) {
-      const [y, m] = trendMonth.split("-");
-      const year = parseInt(y, 10);
-      const monthIdx = parseInt(m, 10) - 1;
-      const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
-      const dateObj = new Date(year, monthIdx, 1);
-      const monthShort = dateObj.toLocaleDateString("en-IN", { month: "short" });
-      for (let d = 1; d <= daysInMonth; d++) {
-        const fd = String(d).padStart(2, "0");
-        trendDayMap[d] = {
-          day: fd,
-          dateLabel: `${fd} ${monthShort}`,
-          patients: 0, paidPatients: 0, pendingPatients: 0, revenue: 0, bookings: 0,
-        };
-      }
-    }
+    // 🔥 FY Trend Data Setup (Apr-Mar)
+    const fyMonths = [
+      { key: 3, label: "Apr" }, { key: 4, label: "May" }, { key: 5, label: "Jun" },
+      { key: 6, label: "Jul" }, { key: 7, label: "Aug" }, { key: 8, label: "Sep" },
+      { key: 9, label: "Oct" }, { key: 10, label: "Nov" }, { key: 11, label: "Dec" },
+      { key: 0, label: "Jan" }, { key: 1, label: "Feb" }, { key: 2, label: "Mar" }
+    ];
 
-    // Payment method counts (for Paid bookings)
+    const trendMonthMap = {};
+    fyMonths.forEach(m => {
+      trendMonthMap[m.key] = { 
+        month: m.label, 
+        clinicRevenue: 0, 
+        labRevenue: 0, 
+        pharmacyRevenue: 0, 
+        totalRevenue: 0 
+      };
+    });
+
     const methodCounts = { cash: 0, online: 0, card: 0, insurance: 0 };
-
-    // Gender demographics
     const genderCounts = { Male: 0, Female: 0, Other: 0 };
     const seenGender = new Set();
 
-    // Review stats
     let reviewedCount = 0;
     let totalReviewServices = 0;
     let offersCount = 0;
     let totalOfferDeduction = 0;
 
     // ═══════════════════════════════════════════════════════
-    // LOOP BOOKINGS (single pass)
+    // LOOP BOOKINGS
     // ═══════════════════════════════════════════════════════
     for (const b of bookings) {
       const patientKey = (b.patientPhone || b.patientName || "").toString().trim();
@@ -1336,13 +1397,8 @@ router.get("/op-dashboard-stats", async (req, res) => {
       if (b.isActive === false) stats.inactive++;
       else stats.active++;
 
-      // ─── Services ───
-      const baseServices =
-        (Array.isArray(b.services) && b.services.length > 0 && b.services) ||
-        (Array.isArray(b.serviceItems) && b.serviceItems.length > 0 && b.serviceItems) ||
-        [];
+      const baseServices = (Array.isArray(b.services) && b.services) || (Array.isArray(b.serviceItems) && b.serviceItems) || [];
 
-      // ─── Category TOTALS ───
       let clinic = 0, lab = 0, pharmacy = 0;
       baseServices.forEach((s) => {
         const price = Number(s.price) || 0;
@@ -1370,29 +1426,21 @@ router.get("/op-dashboard-stats", async (req, res) => {
         pharmacy = Math.max(pharmacy, Number(b.medicineTotal) || 0);
       }
 
-      // Reviews (clinic)
       const reviewsArr = Array.isArray(b.reviews) ? b.reviews : [];
       reviewsArr.forEach((r) => { clinic += Number(r.price) || 0; });
 
       if (b.isReviewed === true) reviewedCount++;
       totalReviewServices += reviewsArr.length;
 
-      // ─── Per-category PAID ───
       const cp = b.categoryPayment || {};
       const clinicPaid = Number(cp.clinic?.paidAmount) || 0;
 
       const labPaid = hasLabItems
-        ? labItemsArr.reduce(
-            (sum, it) => sum + ((it.paymentStatus || "").toLowerCase() === "paid" ? (Number(it.price) || 0) : 0),
-            0
-          )
+        ? labItemsArr.reduce((sum, it) => sum + ((it.paymentStatus || "").toLowerCase() === "paid" ? (Number(it.price) || 0) : 0), 0)
         : (Number(cp.lab?.paidAmount) || 0);
 
       const pharmacyPaid = hasMedItems
-        ? medItemsArr.reduce(
-            (sum, it) => sum + ((it.paymentStatus || "").toLowerCase() === "paid" ? (Number(it.price) || 0) : 0),
-            0
-          )
+        ? medItemsArr.reduce((sum, it) => sum + ((it.paymentStatus || "").toLowerCase() === "paid" ? (Number(it.price) || 0) : 0), 0)
         : (Number(cp.pharmacy?.paidAmount) || 0);
 
       const clinicDue = Math.max(0, clinic - clinicPaid);
@@ -1403,7 +1451,6 @@ router.get("/op-dashboard-stats", async (req, res) => {
       const due = clinicDue + labDue + pharmacyDue;
       const totalPayable = clinic + lab + pharmacy;
 
-      // ─── Effective status ───
       let effectiveStatus = "pending";
       if (totalPayable > 0 && paid >= totalPayable - 0.5) effectiveStatus = "paid";
       else if (paid > 0 && paid < totalPayable) effectiveStatus = "partial";
@@ -1414,12 +1461,10 @@ router.get("/op-dashboard-stats", async (req, res) => {
       else if (effectiveStatus === "due") stats.due++;
       else stats.pending++;
 
-      // ─── Footfall ───
       if (clinic > 0) categoryBreakdown.clinic.footFall++;
       if (lab > 0) categoryBreakdown.lab.footFall++;
       if (pharmacy > 0) categoryBreakdown.pharmacy.footFall++;
 
-      // ─── CLINIC buckets (per-item mode) ───
       categoryBreakdown.clinic.total += clinic;
       categoryBreakdown.clinic.due += clinicDue;
 
@@ -1441,35 +1486,30 @@ router.get("/op-dashboard-stats", async (req, res) => {
       const clinicRemaining = Math.max(0, clinicPaid - clinicPaidDistributed);
       if (clinicRemaining > 0) addToBucket(categoryBreakdown.clinic, fallbackMode, clinicRemaining);
 
-      // ─── LAB buckets ───
       categoryBreakdown.lab.total += lab;
       categoryBreakdown.lab.due += labDue;
 
       if (hasLabItems) {
         labItemsArr.forEach((it) => {
           if ((it.paymentStatus || "").toLowerCase() !== "paid") return;
-          const price = Number(it.price) || 0;
-          addToBucket(categoryBreakdown.lab, it.paymentMode || fallbackMode, price);
+          addToBucket(categoryBreakdown.lab, it.paymentMode || fallbackMode, Number(it.price) || 0);
         });
       } else if (labPaid > 0) {
         addToBucket(categoryBreakdown.lab, fallbackMode, labPaid);
       }
 
-      // ─── PHARMACY buckets ───
       categoryBreakdown.pharmacy.total += pharmacy;
       categoryBreakdown.pharmacy.due += pharmacyDue;
 
       if (hasMedItems) {
         medItemsArr.forEach((it) => {
           if ((it.paymentStatus || "").toLowerCase() !== "paid") return;
-          const price = Number(it.price) || 0;
-          addToBucket(categoryBreakdown.pharmacy, it.paymentMode || fallbackMode, price);
+          addToBucket(categoryBreakdown.pharmacy, it.paymentMode || fallbackMode, Number(it.price) || 0);
         });
       } else if (pharmacyPaid > 0) {
         addToBucket(categoryBreakdown.pharmacy, fallbackMode, pharmacyPaid);
       }
 
-      // ─── Payment method counts (for Paid) ───
       if (effectiveStatus === "paid") {
         const m = (b.paymentType || "cash").toLowerCase();
         if (m === "cash" || m === "") methodCounts.cash++;
@@ -1478,7 +1518,6 @@ router.get("/op-dashboard-stats", async (req, res) => {
         else if (m === "insurance") methodCounts.insurance++;
       }
 
-      // ─── Gender (unique) ───
       if (patientKey && !seenGender.has(patientKey)) {
         seenGender.add(patientKey);
         const g = b.patientGender || "Other";
@@ -1486,45 +1525,40 @@ router.get("/op-dashboard-stats", async (req, res) => {
         else genderCounts.Other++;
       }
 
-      // ─── Offers ───
       if (b.offerApplied && Number(b.offerApplied.offerAmount) > 0) {
         offersCount++;
         totalOfferDeduction += Number(b.offerApplied.offerAmount) || 0;
       }
 
-      // ─── Trend (day-wise for selected trendMonth) ───
-      if (trendMonth && b.createdAt) {
+      // 🔥 TREND DATA POPULATION (FY Logic)
+      if (trendYear && b.createdAt) {
         const d = new Date(b.createdAt);
-        const [y, m] = trendMonth.split("-");
-        if (d.getFullYear() === parseInt(y, 10) && d.getMonth() === parseInt(m, 10) - 1) {
-          const day = d.getDate();
-          if (trendDayMap[day]) {
-            trendDayMap[day].patients++;
-            trendDayMap[day].bookings++;
-            trendDayMap[day].revenue += paid;
-            if (effectiveStatus === "paid") trendDayMap[day].paidPatients++;
-            else trendDayMap[day].pendingPatients++;
+        // Check if booking belongs to selected FY year
+        const isMatch = d.getFullYear() === parseInt(trendYear, 10);
+        
+        if (isMatch) {
+          const mIndex = d.getMonth();
+          if (trendMonthMap[mIndex]) {
+            trendMonthMap[mIndex].clinicRevenue += clinicPaid;
+            trendMonthMap[mIndex].labRevenue += labPaid;
+            trendMonthMap[mIndex].pharmacyRevenue += pharmacyPaid;
+            trendMonthMap[mIndex].totalRevenue += paid;
           }
         }
       }
     }
 
-    // ─── Revenue totals ───
-    const totalCollected =
-      categoryBreakdown.clinic.cash + categoryBreakdown.clinic.online +
-      categoryBreakdown.clinic.card + categoryBreakdown.clinic.insurance +
-      categoryBreakdown.lab.cash + categoryBreakdown.lab.online +
-      categoryBreakdown.lab.card + categoryBreakdown.lab.insurance +
-      categoryBreakdown.pharmacy.cash + categoryBreakdown.pharmacy.online +
-      categoryBreakdown.pharmacy.card + categoryBreakdown.pharmacy.insurance;
+    // Revenue totals
+    const totalCollected = 
+      categoryBreakdown.clinic.cash + categoryBreakdown.clinic.online + categoryBreakdown.clinic.card + categoryBreakdown.clinic.insurance +
+      categoryBreakdown.lab.cash + categoryBreakdown.lab.online + categoryBreakdown.lab.card + categoryBreakdown.lab.insurance +
+      categoryBreakdown.pharmacy.cash + categoryBreakdown.pharmacy.online + categoryBreakdown.pharmacy.card + categoryBreakdown.pharmacy.insurance;
 
-    const totalDue =
-      categoryBreakdown.clinic.due + categoryBreakdown.lab.due + categoryBreakdown.pharmacy.due;
+    const totalDue = categoryBreakdown.clinic.due + categoryBreakdown.lab.due + categoryBreakdown.pharmacy.due;
 
     stats.totalPatients = uniquePatients.size;
     stats.totalRevenue = Math.round(totalCollected);
 
-    // Round categoryBreakdown
     Object.keys(categoryBreakdown).forEach((cat) => {
       Object.keys(categoryBreakdown[cat]).forEach((k) => {
         if (k === "footFall") categoryBreakdown[cat][k] = Number(categoryBreakdown[cat][k]) || 0;
@@ -1532,30 +1566,9 @@ router.get("/op-dashboard-stats", async (req, res) => {
       });
     });
 
-    // Trend data array
-    const trendData = trendMonth ? Object.values(trendDayMap) : [];
-    const totalTrendBookings = trendData.reduce((s, d) => s + d.patients, 0);
-    const totalTrendRevenue = trendData.reduce((s, d) => s + d.revenue, 0);
-    let peakDay = "-";
-    let maxV = -1;
-    trendData.forEach((d) => {
-      if (d.patients > maxV && d.patients > 0) {
-        maxV = d.patients;
-        peakDay = `${d.dateLabel} (${d.patients} bookings)`;
-      }
-    });
+    // 🔥 Convert FY Trend Data to Array
+    const trendData = fyMonths.map(m => trendMonthMap[m.key]);
 
-    const trendMonthLabel = (() => {
-      if (!trendMonth) return "";
-      const [y, m] = trendMonth.split("-");
-      return new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1).toLocaleDateString("en-IN", {
-        month: "long", year: "numeric",
-      });
-    })();
-
-    // ═══════════════════════════════════════════════════════
-    // RESPONSE — compact, no bookings array
-    // ═══════════════════════════════════════════════════════
     return res.status(200).json({
       success: true,
       stats: {
@@ -1582,11 +1595,11 @@ router.get("/op-dashboard-stats", async (req, res) => {
         { name: "Card", value: methodCounts.card, color: "#06b6d4" },
       ],
       trend: {
-        monthLabel: trendMonthLabel,
-        daysData: trendData,
-        totalMonthPatients: totalTrendBookings,
-        totalMonthRevenue: Math.round(totalTrendRevenue),
-        peakDay,
+        monthLabel: `FY ${trendYear}`,
+        daysData: trendData, // Ab isme FY ka data hoga
+        totalMonthPatients: bookings.length,
+        totalMonthRevenue: Math.round(totalCollected),
+        peakDay: "-",
       },
       extras: {
         reviewedCount,
@@ -2162,17 +2175,29 @@ router.get("/revenue-analytics", async (req, res) => {
       return "clinic";
     };
 
-    const addToBucket = (bucket, mode, amount) => {
-      if (!amount || amount <= 0) return;
-      let m = String(mode || "").trim().toLowerCase();
-      // ✅ Wallet ko online consider karo
-      if (m === "wallet") m = "online";
+   const addToBucket = (bucket, mode, amount) => {
+  if (!amount || amount <= 0) return;
+  let m = String(mode || "").trim().toLowerCase();
 
-      if (m === "cash") bucket.cash += amount;
-      else if (m === "online") bucket.online += amount;
-      else if (m === "card") bucket.card += amount;
-      else if (m === "insurance") bucket.insurance += amount;
-    };
+  // ✅ Wallet → online
+  if (m === "wallet") m = "online";
+
+  // ✅ Card ke saare variants → online
+  if (
+    m === "card" ||
+    m === "credit card" ||      // 👈 YEH ADD KARO (aapka exact case)
+    m === "debit card" ||
+    m === "creditcard" ||
+    m === "debitcard" ||
+    m.includes("card")
+  ) {
+    m = "online";
+  }
+
+  if (m === "cash") bucket.cash += amount;
+  else if (m === "online") bucket.online += amount;
+  else if (m === "insurance") bucket.insurance += amount;
+};
 
     const makeBucket = () => ({
       clinic: { total: 0, cash: 0, online: 0, card: 0, insurance: 0, due: 0, footFall: 0 },
