@@ -1617,7 +1617,6 @@ router.get("/op-dashboard-stats", async (req, res) => {
 
 
 
-
 // // ═══════════════════════════════════════════════════════════════════════
 // // NEW: Optimized Revenue Analytics API
 // // File: routes/appointmentSlots.js (or wherever your routes are)
