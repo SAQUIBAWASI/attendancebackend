@@ -2435,20 +2435,33 @@ router.get("/revenue-analytics", async (req, res) => {
     // ═══════════════════════════════════════════════════════════
     // 5.5️⃣ 🔥 ATTACH BANK CREDIT + CASH RECEIVED (Day-wise & Month-wise)
     // ═══════════════════════════════════════════════════════════
-
-    const mapCreditDoc = (bc) => ({
-      bankCredit: Number(bc.bankCredit) || 0,
-      cashReceived: Number(bc.cashReceived) || 0,
-      grandTotal: Number(bc.grandTotal) || 0,
-      creditedDiff: Number(bc.creditedDiff) || 0,
-      diffStatus: bc.diffStatus || "—",
-      cashDiff: Number(bc.cashDiff) || 0,
-      cashStatus: bc.cashStatus || "—",
-      retailPharmacy: bc.retailPharmacy || {},
-      savedBy: bc.savedBy || "Admin",
-      savedAt: bc.savedAt || null,
-    });
-
+const mapCreditDoc = (bc) => ({
+  bankCredit: Number(bc.bankCredit) || 0,
+  cashReceived: Number(bc.cashReceived) || 0,
+  grandTotal: Number(bc.grandTotal) || 0,
+  creditedDiff: Number(bc.creditedDiff) || 0,
+  diffStatus: bc.diffStatus || "—",
+  cashDiff: Number(bc.cashDiff) || 0,
+  cashStatus: bc.cashStatus || "—",
+  cashDenominations: Array.isArray(bc.cashDenominations)
+    ? bc.cashDenominations.map((d) => ({
+        denomination: Number(d.denomination) || 0,
+        qty: Number(d.qty) || 0,
+        amount: Number(d.amount) || 0,
+      }))
+    : [],
+  // ✅ NEW: Admin-entered denominations
+  rcvdCashDenominations: Array.isArray(bc.rcvdCashDenominations)
+    ? bc.rcvdCashDenominations.map((d) => ({
+        denomination: Number(d.denomination) || 0,
+        qty: Number(d.qty) || 0,
+        amount: Number(d.amount) || 0,
+      }))
+    : [],
+  retailPharmacy: bc.retailPharmacy || {},
+  savedBy: bc.savedBy || "Admin",
+  savedAt: bc.savedAt || null,
+});
     if (rows.length > 0) {
       try {
         if (isMonthlyView) {
@@ -2603,20 +2616,19 @@ router.get("/revenue-analytics", async (req, res) => {
 
 router.post("/save-bank-credit", async (req, res) => {
   try {
-    // ═══════════════════════════════════════════════════════════
-    // 1️⃣ EXTRACT + VALIDATE PAYLOAD
-    // ═══════════════════════════════════════════════════════════
     const {
       fromDate,
       toDate,
-      rowKey,           // "YYYY-MM-DD" | "YYYY-MM" | "__total__"
+      rowKey,
       bankCredit,
-      cashReceived,     // ✅ NEW
+      cashReceived,
       grandTotal,
       creditedDiff,
       diffStatus,
-      cashDiff,         // ✅ NEW
-      cashStatus,       // ✅ NEW
+      cashDiff,
+      cashStatus,
+      cashDenominations,        // employee-side
+      rcvdCashDenominations,    // ✅ NEW admin-side
       savedBy,
       notes,
       retailPharmacy,
@@ -2626,42 +2638,44 @@ router.post("/save-bank-credit", async (req, res) => {
       return res.status(400).json({ success: false, message: "fromDate and toDate are required" });
     }
 
-    // Bank Credit optional (cash-only update bhi ho sakta hai)
     const bc = bankCredit === undefined || bankCredit === null ? 0 : Number(bankCredit) || 0;
-    if (bc < 0) {
-      return res.status(400).json({ success: false, message: "bankCredit cannot be negative" });
-    }
+    if (bc < 0) return res.status(400).json({ success: false, message: "bankCredit cannot be negative" });
 
     const cr = cashReceived === undefined || cashReceived === null ? 0 : Number(cashReceived) || 0;
-    if (cr < 0) {
-      return res.status(400).json({ success: false, message: "cashReceived cannot be negative" });
-    }
+    if (cr < 0) return res.status(400).json({ success: false, message: "cashReceived cannot be negative" });
 
-    const safeNum = (v) => {
-      const n = Number(v);
-      return isNaN(n) ? 0 : n;
-    };
+    const safeNum = (v) => { const n = Number(v); return isNaN(n) ? 0 : n; };
 
     const rp = retailPharmacy || {};
     const retailPharmacyData = {
       cash: safeNum(rp.cash),
       online: safeNum(rp.online),
       due: safeNum(rp.due),
-      total: safeNum(rp.total) || (safeNum(rp.cash) + safeNum(rp.online)),
+      total: safeNum(rp.total) || safeNum(rp.cash) + safeNum(rp.online),
       card: safeNum(rp.card),
       insurance: safeNum(rp.insurance),
       footFall: safeNum(rp.footFall),
     };
 
-    // ═══════════════════════════════════════════════════════════
-    // 2️⃣ AUTO-COMPUTE DIFF + STATUS (Bank Credit — against ONLINE)
-    // ═══════════════════════════════════════════════════════════
+    const VALID_DENOMS = [500, 200, 100, 50, 20, 10, 5, 2, 1];
+    const sanitizeDenoms = (arr) =>
+      Array.isArray(arr)
+        ? arr
+            .map((d) => {
+              const denomination = Number(d?.denomination);
+              const qty = Number(d?.qty) || 0;
+              if (!VALID_DENOMS.includes(denomination)) return null;
+              if (qty <= 0) return null;
+              return { denomination, qty, amount: denomination * qty };
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.denomination - a.denomination)
+        : [];
+
     const gt = Number(grandTotal) || 0;
 
-    // Bank Credit diff (frontend usually sends creditedDiff / diffStatus)
-    const bDiff = creditedDiff !== undefined ? Number(creditedDiff) : (bc - gt);
+    const bDiff = creditedDiff !== undefined ? Number(creditedDiff) : bc - gt;
     const bAbsDiff = Math.abs(bDiff);
-
     let bStatus = diffStatus;
     if (!bStatus) {
       if (!bc && !gt) bStatus = "—";
@@ -2670,10 +2684,8 @@ router.post("/save-bank-credit", async (req, res) => {
       else bStatus = "CREDIT LESS";
     }
 
-    // Cash Received diff (frontend sends cashDiff / cashStatus)
     const cDiff = cashDiff !== undefined ? Number(cashDiff) : 0;
     const cAbsDiff = Math.abs(cDiff);
-
     let cStatus = cashStatus;
     if (!cStatus) {
       if (!cr) cStatus = "—";
@@ -2682,45 +2694,40 @@ router.post("/save-bank-credit", async (req, res) => {
       else cStatus = "RCVD LESS";
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // 3️⃣ UPSERT — rowKey based
-    //    • rowKey present → upsert by rowKey
-    //    • rowKey null    → upsert by fromDate+toDate (legacy)
-    // ═══════════════════════════════════════════════════════════
     const normalizedRowKey = rowKey ? String(rowKey).trim() : null;
-
     const filter = normalizedRowKey
       ? { rowKey: normalizedRowKey }
       : { fromDate, toDate, rowKey: null };
 
-    const updateDoc = {
-      $set: {
-        fromDate,
-        toDate,
-        rowKey: normalizedRowKey,
-        bankCredit: bc,
-        cashReceived: cr,             // ✅ NEW
-        grandTotal: gt,
-        creditedDiff: bDiff,
-        diffStatus: bStatus,
-        cashDiff: cDiff,              // ✅ NEW
-        cashStatus: cStatus,          // ✅ NEW
-        savedBy: savedBy || "Admin",
-        savedAt: new Date(),
-        notes: notes || "",
-        retailPharmacy: retailPharmacyData,
-      },
+    // ✅ Build $set dynamically — sirf wahi fields set honge jo request me bheji gayi hain
+    const setFields = {
+      fromDate,
+      toDate,
+      rowKey: normalizedRowKey,
+      bankCredit: bc,
+      cashReceived: cr,
+      grandTotal: gt,
+      creditedDiff: bDiff,
+      diffStatus: bStatus,
+      cashDiff: cDiff,
+      cashStatus: cStatus,
+      savedBy: savedBy || "Admin",
+      savedAt: new Date(),
+      notes: notes || "",
+      retailPharmacy: retailPharmacyData,
     };
+
+    if (Array.isArray(cashDenominations)) {
+      setFields.cashDenominations = sanitizeDenoms(cashDenominations);
+    }
+    if (Array.isArray(rcvdCashDenominations)) {
+      setFields.rcvdCashDenominations = sanitizeDenoms(rcvdCashDenominations);
+    }
 
     const savedRecord = await BankCredit.findOneAndUpdate(
       filter,
-      updateDoc,
-      {
-        new: true,
-        upsert: true,
-        setDefaultsOnInsert: true,
-        runValidators: true,
-      }
+      { $set: setFields },
+      { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true }
     );
 
     return res.status(200).json({
@@ -2728,7 +2735,6 @@ router.post("/save-bank-credit", async (req, res) => {
       message: "Bank credit & cash received saved successfully",
       data: savedRecord,
     });
-
   } catch (error) {
     console.error("Error saving bank credit:", error);
     return res.status(500).json({
@@ -4605,6 +4611,7 @@ router.post("/book", async (req, res) => {
       purpose,
       symptoms,
       paymentType,
+      paymentMode, // ✅ frontend ab paymentMode bhejta hai
       paymentStatus,
       partialAmount,
       appointmentType,
@@ -4893,6 +4900,15 @@ router.post("/book", async (req, res) => {
       finalPaymentStatus,
     });
 
+    // ===== ✅ PAYMENT MODE (frontend: paymentMode; purana paymentType bhi chalega) =====
+    const finalPaymentMode = paymentMode || paymentType || "";
+    const toModeDisplay = (m) => {
+      const v = String(m || "").trim().toLowerCase();
+      if (!v || v === "n/a") return "";
+      if (v === "card") return "Credit Card";
+      return v.charAt(0).toUpperCase() + v.slice(1);
+    };
+
     // ===== CREATE APPOINTMENT =====
     const appointmentData = {
       customPID: customPID,           // ✅ clean PID
@@ -4929,7 +4945,7 @@ router.post("/book", async (req, res) => {
       purpose: purpose || "",
       symptoms: symptoms || "",
 
-      paymentType: paymentType || "",
+      paymentType: finalPaymentMode, // booking-level (frontend isi ko padhta hai)
       paymentStatus: finalPaymentStatus,
       partialAmount: finalAmountPaid,
       amountPaid: finalAmountPaid,
@@ -4951,8 +4967,16 @@ router.post("/book", async (req, res) => {
         name: s.name || "Service",
         price: Number(s.price) || 0,
         description: s.description || "",
+        category: s.category || "", // ✅ pehle drop ho raha tha
         paymentStatus:
           s.paymentStatus && s.paymentStatus !== "Pending" ? s.paymentStatus : "Due",
+        // ✅ pehle drop ho raha tha — item paid/partial hai to uska mode, warna khali
+        paymentMode:
+          s.paymentMode && s.paymentMode !== "N/A"
+            ? s.paymentMode
+            : s.paymentStatus === "Paid" || s.paymentStatus === "Partial"
+              ? toModeDisplay(finalPaymentMode)
+              : "",
       })),
 
       servicesTotal,
@@ -5131,7 +5155,6 @@ router.post("/book", async (req, res) => {
     });
   }
 });
-
 
 // ============================================================
 // POST /appointment-slots/book-online — Online Booking + Razorpay + WhatsApp

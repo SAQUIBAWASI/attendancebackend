@@ -53,22 +53,23 @@ exports.getRevenueTarget = async (req, res) => {
       });
     }
 
-    const target = await RevenueTarget.findOne({
+    const targets = await RevenueTarget.find({
       month: monthNum,
       year: yearNum,
     });
 
-    if (!target) {
+    if (!targets || targets.length === 0) {
       return res.status(200).json({
         success: true,
-        target: null,
+        targets: [],
         message: "No target set for this month",
       });
     }
 
     return res.status(200).json({
       success: true,
-      target,
+      targets,
+      count: targets.length,
     });
   } catch (error) {
     console.error("❌ getRevenueTarget error:", error);
@@ -86,19 +87,16 @@ exports.getRevenueTarget = async (req, res) => {
 /* ============================================================ */
 exports.saveRevenueTarget = async (req, res) => {
   try {
-    const { month, year, amount, category, footFall } = req.body; // ✅ footFall add kiya
+    const { month, year, amount, category, footFall } = req.body;
 
     if (!month || !year || amount === undefined || amount === null) {
-      return res.status(400).json({
-        success: false,
-        message: "month, year, and amount are required",
-      });
+      return res.status(400).json({ success: false, message: "month, year, and amount are required" });
     }
 
     const monthNum = Number(month);
     const yearNum = Number(year);
     const amountNum = Number(amount);
-    const footFallNum = Number(footFall) || 0; // ✅ footFall parse kiya
+    const footFallNum = Number(footFall) || 0;
 
     if (monthNum < 1 || monthNum > 12) {
       return res.status(400).json({ success: false, message: "month must be between 1 and 12" });
@@ -110,7 +108,8 @@ exports.saveRevenueTarget = async (req, res) => {
       return res.status(400).json({ success: false, message: "footFall must be a non-negative number" });
     }
 
-    const VALID_CATEGORIES = ["clinic", "lab", "clinicPharmacy", "retailPharmacy"];
+    // ✅ wPharmacy add kiya yahan
+    const VALID_CATEGORIES = ["clinic", "lab", "clinicPharmacy", "wPharmacy", "retailPharmacy"];
     const categoryKey = category && VALID_CATEGORIES.includes(category) ? category : "clinic";
 
     const target = await RevenueTarget.findOneAndUpdate(
@@ -120,33 +119,18 @@ exports.saveRevenueTarget = async (req, res) => {
         year: yearNum,
         category: categoryKey,
         amount: amountNum,
-        footFall: footFallNum, // ✅ Save footFall
+        footFall: footFallNum,
         savedAt: new Date(),
       },
-      {
-        new: true,
-        upsert: true,
-        runValidators: true,
-        setDefaultsOnInsert: true,
-      }
+      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
     );
 
-    return res.status(200).json({
-      success: true,
-      message: "Revenue target saved successfully",
-      target,
-    });
+    return res.status(200).json({ success: true, message: "Revenue target saved successfully", target });
   } catch (error) {
     console.error("❌ saveRevenueTarget error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to save revenue target",
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: "Failed to save revenue target", error: error.message });
   }
 };
-
-
 
 /* ============================================================ */
 /* PUT /api/appointment-slots/update-revenue-target/:id          */

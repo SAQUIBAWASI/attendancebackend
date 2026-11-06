@@ -31,6 +31,26 @@ const bankCreditSchema = new mongoose.Schema(
       default: "—",
     },
 
+    // ── ✅ NEW: Cash Denomination Breakdown ──
+    cashDenominations: [
+      {
+        _id: false,
+        denomination: { type: Number, }, // 500, 200, 100, 50, 20, 10, 5, 2, 1
+        qty: { type: Number, default: 0 },
+        amount: { type: Number, default: 0 }, // denomination * qty
+      },
+    ],
+
+
+        rcvdCashDenominations: [
+      {
+        _id: false,
+        denomination: { type: Number, required: true },
+        qty: { type: Number, default: 0 },
+        amount: { type: Number, default: 0 },
+      },
+    ],
+
     // ── Grand Total (used for diff computation reference) ──
     grandTotal: { type: Number, default: 0 },
 
