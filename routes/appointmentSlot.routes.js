@@ -4653,6 +4653,13 @@ router.post("/book", async (req, res) => {
       serviceItems,
       services,
 
+      // ===== ✅ LAB / PHARMACY (Lab + / Pharmacy + popup jaisa same shape) =====
+      labItems,
+      medicineItems,
+      labTotal,
+      medicineTotal,
+      categoryPayment,
+
       // ===== ✅ OFFER APPLIED =====
       offerApplied,
       addedBy // ✅ NEW FIELD ADD KIYA
@@ -4792,8 +4799,59 @@ router.post("/book", async (req, res) => {
       0
     );
 
+    // ===== ✅ LAB / PHARMACY ITEMS NORMALIZE =====
+    const normalizeCatItems = (arr, category) =>
+      (Array.isArray(arr) ? arr : []).map((s, idx) => {
+        const price = Number(s.price) || 0;
+        const discount = Number(s.discount) || 0;
+        const dType = s.discountType === "%" ? "%" : "₹";
+        const discountAmt = dType === "%" ? (price * discount) / 100 : discount;
+        const net = Math.max(0, price - discountAmt);
+        let paid = Number(s.paidAmount) || 0;
+        if (s.paymentStatus === "Paid" && paid === 0) paid = net;
+        const mode = s.paymentMode && s.paymentMode !== "N/A" ? s.paymentMode : "";
+        let status = "Due";
+        if (mode) {
+          if (paid > 0 && paid >= net) status = "Paid";
+          else if (paid > 0) status = "Partial";
+        }
+        return {
+          serviceId: s.serviceId || "",
+          name: s.name || (category === "lab" ? `Lab Test ${idx + 1}` : `Medicine ${idx + 1}`),
+          price,
+          discount,
+          discountType: dType,
+          paidAmount: paid,
+          dueAmount: Math.max(0, net - paid),
+          description: s.description || "",
+          category,
+          paymentMode: mode,
+          paymentStatus: status,
+          transactionId: s.transactionId || "",
+        };
+      });
+    const finalLabItems = normalizeCatItems(labItems, "lab");
+    const finalMedicineItems = normalizeCatItems(medicineItems, "pharmacy");
+    const netOf = (it) => {
+      const discountAmt = it.discountType === "%" ? (it.price * it.discount) / 100 : it.discount;
+      return Math.max(0, it.price - discountAmt);
+    };
+    const finalLabTotal = finalLabItems.length
+      ? finalLabItems.reduce((sum, it) => sum + netOf(it), 0)
+      : Number(labTotal) || 0;
+    const finalMedicineTotal = finalMedicineItems.length
+      ? finalMedicineItems.reduce((sum, it) => sum + netOf(it), 0)
+      : Number(medicineTotal) || 0;
+    const finalCategoryPayment = categoryPayment
+      ? {
+          clinic: { paidAmount: Number(categoryPayment.clinic?.paidAmount) || 0 },
+          lab: { paidAmount: Number(categoryPayment.lab?.paidAmount) || 0 },
+          pharmacy: { paidAmount: Number(categoryPayment.pharmacy?.paidAmount) || 0 },
+        }
+      : undefined;
+
     const commissionPercent = parseFloat(referralCommission) || 0;
-    const serverSubtotal = servicesTotal;
+    const serverSubtotal = servicesTotal + finalLabTotal + finalMedicineTotal;
     const serverCommissionAmount = (serverSubtotal * commissionPercent) / 100;
     const serverDiscountAmount = Number(discount) || 0;
 
@@ -4979,6 +5037,12 @@ router.post("/book", async (req, res) => {
               : "",
       })),
 
+      labItems: finalLabItems,
+      labTotal: finalLabTotal,
+      medicineItems: finalMedicineItems,
+      medicineTotal: finalMedicineTotal,
+      ...(finalCategoryPayment ? { categoryPayment: finalCategoryPayment } : {}),
+
       servicesTotal,
       subtotal,
       commissionAmount,
@@ -5016,6 +5080,11 @@ router.post("/book", async (req, res) => {
         $set: {
           customPID: customPID,       // ✅
           bookingType: bookingType,   // ✅
+          labItems: finalLabItems,
+          labTotal: finalLabTotal,
+          medicineItems: finalMedicineItems,
+          medicineTotal: finalMedicineTotal,
+          ...(finalCategoryPayment ? { categoryPayment: finalCategoryPayment } : {}),
           servicesTotal,
           subtotal,
           commissionAmount,
