@@ -6869,10 +6869,14 @@ router.post("/save-invoice", async (req, res) => {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
 
+    // 🔧 FIX: format "A4" hata kar exact invoice size (210mm x 148mm) set kiya
+    // preferCSSPageSize: true => HTML ka @page { size: 210mm 148mm } bhi maana jayega
     await page.pdf({
       path: filePath,
-      format: "A4",
+      width: "210mm",
+      height: "148mm",
       printBackground: true,
+      preferCSSPageSize: true,
       margin: { top: "0", right: "0", bottom: "0", left: "0" },
     });
 
